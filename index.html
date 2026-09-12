@@ -50,6 +50,11 @@
   .mono{ font-family:"JetBrains Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
 
   .app{ display:grid; grid-template-columns:300px 1fr; min-height:100vh; }
+  /* El atributo "hidden" no gana por si solo frente a un display puesto por
+     clase con la misma especificidad (aqui .app y .login-screen), asi que sin
+     esta regla ambas pantallas podian quedar visibles a la vez, una debajo de
+     la otra. */
+  .app[hidden]{ display:none; }
 
   /* ---------- Sidebar ---------- */
   .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:100vh; }
@@ -368,6 +373,7 @@
   @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
 
   .login-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:1rem; }
+  .login-screen[hidden]{ display:none; }
   .login-card{ width:100%; max-width:340px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.6rem; box-shadow:var(--shadow); }
   .login-card .brand{ padding:0 0 1rem; }
   .login-card label{ display:block; font-size:.72rem; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.03em; margin:.7rem 0 .25rem; }
