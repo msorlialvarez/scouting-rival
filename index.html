@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f47721">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scouting Rival">
 <title>Scouting Rival</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,28 +27,17 @@
 <!-- Cliente de Supabase: sustituye a la capacidad `db` de Claude. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
+  /* Paleta alineada con la app de Rotaciones (VBC Minutajes): naranja
+     corporativo del Valencia Basket sobre fondo claro. A diferencia de antes,
+     ya no cambia a un tema oscuro segun el sistema — igual que Rotaciones,
+     esta app siempre se ve igual (clara), para que las dos tengan la misma
+     identidad visual. */
   :root{
-    --bg:#eef0f2; --surface:#ffffff; --surface-2:#e4e7eb; --border:#d3d7dd;
-    --text:#14171c; --text-dim:#5b6270; --accent:#c9540c; --accent-ink:#ffffff;
-    --good:#1f8a5f; --warn:#a56b00; --danger:#c73434;
-    --good-bg:#e3f3ec; --warn-bg:#f6ecd8; --danger-bg:#f8e3e3;
-    --shadow: 0 1px 2px rgba(20,23,28,.06), 0 8px 24px -12px rgba(20,23,28,.18);
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#14161b; --surface:#1b1e24; --surface-2:#23262e; --border:#2f3340;
-      --text:#eef0f3; --text-dim:#9aa1ad; --accent:#ff7a1a; --accent-ink:#1a0e04;
-      --good:#4fbf88; --warn:#e8b93a; --danger:#f0555a;
-      --good-bg:#173026; --warn-bg:#332a12; --danger-bg:#3a1c1d;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#14161b; --surface:#1b1e24; --surface-2:#23262e; --border:#2f3340;
-    --text:#eef0f3; --text-dim:#9aa1ad; --accent:#ff7a1a; --accent-ink:#1a0e04;
-    --good:#4fbf88; --warn:#e8b93a; --danger:#f0555a;
-    --good-bg:#173026; --warn-bg:#332a12; --danger-bg:#3a1c1d;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+    --bg:#e9edf0; --surface:#ffffff; --surface-2:#f3f5f7; --border:#d8dde2;
+    --text:#171a1e; --text-dim:#707983; --accent:#f47721; --accent-ink:#ffffff;
+    --good:#3f8f5c; --warn:#c98a13; --danger:#d9534f;
+    --good-bg:#e6f4ea; --warn-bg:#fbf1dc; --danger-bg:#fbebea;
+    --shadow: 0 1px 2px rgba(23,26,30,.06), 0 8px 24px -12px rgba(23,26,30,.18);
   }
 
   *{box-sizing:border-box;}
@@ -59,7 +56,7 @@
   /* ---------- Sidebar ---------- */
   .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:100vh; }
   .brand{ display:flex; align-items:center; gap:.7rem; padding:1.1rem 1rem .9rem; border-bottom:1px solid var(--border); }
-  .brand-mark{ width:34px;height:34px;border-radius:8px; background:var(--accent); color:var(--accent-ink); display:flex;align-items:center;justify-content:center; font-family:"Oswald",sans-serif; font-weight:700; font-size:.95rem; flex:none; }
+  .brand-mark{ width:34px;height:34px;border-radius:8px; flex:none; display:block; overflow:hidden; }
   .brand-text{ display:flex; flex-direction:column; line-height:1.15; min-width:0;}
   .brand-text strong{ font-family:"Oswald",sans-serif; font-size:.95rem; text-transform:uppercase; letter-spacing:.03em;}
   .brand-text span{ font-size:.72rem; color:var(--text-dim); }
@@ -388,9 +385,32 @@
 </head>
 <body>
 
+<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="srLogoMark" viewBox="0 0 64 64">
+      <linearGradient id="srLogoGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff9d55"/>
+        <stop offset="1" stop-color="#f47721"/>
+      </linearGradient>
+      <clipPath id="srBallClip"><circle cx="32" cy="32" r="20"/></clipPath>
+      <rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="url(#srLogoGrad)" stroke="#171a1e" stroke-width="2.5"/>
+      <g clip-path="url(#srBallClip)">
+        <circle cx="32" cy="32" r="20" fill="#fff8f1"/>
+        <g stroke="#171a1e" stroke-width="2.4" fill="none" stroke-linecap="round">
+          <path d="M12 32 H52"/>
+          <path d="M32 12 V52"/>
+          <path d="M18 14 Q34 32 18 50"/>
+          <path d="M46 14 Q30 32 46 50"/>
+        </g>
+      </g>
+      <circle cx="32" cy="32" r="20" fill="none" stroke="#171a1e" stroke-width="2.4"/>
+    </symbol>
+  </defs>
+</svg>
+
 <div id="loginScreen" class="login-screen">
   <form class="login-card" id="loginForm">
-    <div class="brand"><span class="brand-mark">SR</span><div class="brand-text"><strong>Scouting rival</strong><span>Cuaderno de equipo del staff</span></div></div>
+    <div class="brand"><svg class="brand-mark" viewBox="0 0 64 64"><use href="#srLogoMark"></use></svg><div class="brand-text"><strong>Scouting rival</strong><span>Cuaderno de equipo del staff</span></div></div>
     <label for="loginEmail">Email</label>
     <input type="email" id="loginEmail" autocomplete="username" required>
     <label for="loginPassword">Contraseña</label>
@@ -403,7 +423,7 @@
 <div class="app" id="appShell" hidden>
   <aside class="sidebar">
     <div class="brand">
-      <span class="brand-mark">SR</span>
+      <svg class="brand-mark" viewBox="0 0 64 64"><use href="#srLogoMark"></use></svg>
       <div class="brand-text"><strong>Scouting rival</strong><span>Cuaderno de equipo del staff</span></div>
     </div>
     <div class="mode-toggle scout-mode-switch" id="scoutModeSwitch">
