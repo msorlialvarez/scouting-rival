@@ -161,6 +161,13 @@
   .add-picker-divider{ text-align:center; font-size:.68rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em; }
   .add-picker-create{ align-self:flex-start; border:1px dashed var(--accent); background:transparent; color:var(--accent); font-size:.78rem; font-weight:700; padding:.5rem .85rem; border-radius:7px; cursor:pointer; }
   .add-picker-create:hover{ background:var(--accent); color:var(--accent-ink); }
+  .feb-import-row{ display:grid; grid-template-columns:auto auto 1fr 1fr 5.5rem 3.4rem; gap:.4rem; align-items:center; padding:.4rem .5rem; border:1px solid var(--border); border-radius:8px; font-size:.8rem; }
+  .feb-import-row input[type="text"], .feb-import-row select{ background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:.3rem .4rem; font-size:.78rem; width:100%; }
+  .feb-import-row input[type="checkbox"]{ width:16px; height:16px; accent-color:var(--accent); }
+  .feb-import-row .feb-avatar{ width:28px; height:28px; border-radius:7px; background:var(--surface-2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:.6rem; color:var(--text-dim); flex:none; }
+  .feb-import-row .feb-avatar img{ width:100%; height:100%; object-fit:cover; }
+  .feb-import-list{ display:flex; flex-direction:column; gap:.4rem; max-height:280px; overflow-y:auto; }
+  .feb-import-head{ display:grid; grid-template-columns:auto auto 1fr 1fr 5.5rem 3.4rem; gap:.4rem; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); padding:0 .5rem; }
 
   /* ---------- Collective scout ---------- */
   .collective-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.4rem; }
@@ -528,7 +535,18 @@
     <section class="view" id="prepView" hidden>
       <div class="panel-head">
         <h2>Plantilla rival</h2>
-        <button class="btn-add" id="btnTogglePicker" type="button">+ Añadir jugadora</button>
+        <div style="display:flex; gap:.5rem;">
+          <button class="btn-add" id="btnToggleFebImport" type="button">Importar desde FEB</button>
+          <button class="btn-add" id="btnTogglePicker" type="button">+ Añadir jugadora</button>
+        </div>
+      </div>
+      <div class="add-picker" id="febImportPanel">
+        <label for="febImportUrl" style="font-size:.72rem; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.03em;">Enlace del equipo en feb.es</label>
+        <input type="text" id="febImportUrl" placeholder="https://www.feb.es/competiciones/equipo/…">
+        <button type="button" class="add-picker-create" id="btnFebImportFetch">Buscar plantilla</button>
+        <p class="empty-hint" id="febImportError" hidden style="color:var(--danger);"></p>
+        <div id="febImportResults"></div>
+        <button type="button" class="add-picker-create" id="btnFebImportConfirm" hidden>Añadir jugadoras seleccionadas</button>
       </div>
       <div class="add-picker" id="addPicker">
         <input type="text" id="addPickerSearch" placeholder="Buscar jugadora existente por nombre…">
@@ -807,6 +825,7 @@
     permSub: [], rivalSub: [],
     expanded: {}, playerStats: {}, statsUnsub: {},
     addPickerOpen: false,
+    febImportOpen: false, febImportLoading: false, febImportError: '', febImportPlayers: null,
     collapsedSeasons: {}, collapsedComps: {}, collapsedLetters: {},
     reportLang: 'es', competitionLogos: {},
     offSourceOptions: [], defSourceOptions: [],
@@ -1845,6 +1864,9 @@
 
     $('#btnTogglePicker').addEventListener('click', toggleAddPicker);
     $('#addPickerSearch').addEventListener('input', renderAddPicker);
+    $('#btnToggleFebImport').addEventListener('click', toggleFebImport);
+    $('#btnFebImportFetch').addEventListener('click', fetchFebRoster);
+    $('#btnFebImportConfirm').addEventListener('click', confirmFebImport);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
     $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
@@ -1983,6 +2005,143 @@
       selectPlayerProfile(newId);
       setTimeout(function(){ var i = $('#profileView [data-field="firstName"]'); if(i){ i.focus(); i.select(); } }, 150);
     }).catch(function(err){ console.error('create+link player', err); });
+  }
+
+  // ---------------- Importar plantilla desde la FEB ----------------
+  // Llama a una funcion (Edge Function) de Supabase que descarga la pagina del
+  // equipo rival en feb.es desde el servidor (para saltarse el bloqueo de
+  // CORS que impide pedirla directamente desde el navegador) y la interpreta.
+  // El resultado se muestra editable antes de guardar nada, porque el
+  // reconocimiento del nombre/posicion/altura es por patrones y puede
+  // equivocarse en alguna fila.
+  function toggleFebImport(){
+    state.febImportOpen = !state.febImportOpen;
+    $('#febImportPanel').classList.toggle('open', state.febImportOpen);
+    $('#btnToggleFebImport').textContent = state.febImportOpen ? 'Cerrar' : 'Importar desde FEB';
+    if(state.febImportOpen){
+      state.febImportPlayers = null; state.febImportError = '';
+      $('#febImportError').hidden = true;
+      $('#febImportResults').innerHTML = '';
+      $('#btnFebImportConfirm').hidden = true;
+      $('#febImportUrl').value = '';
+      $('#febImportUrl').focus();
+    }
+  }
+  var FEB_POSITION_CANON = ['Base', 'Escolta', 'Alero', 'Ala-pívot', 'Pívot'];
+  function normalizeFebPosition(raw){
+    var t = (raw || '').toLowerCase();
+    if(t.indexOf('ala') !== -1 && t.indexOf('p') !== -1) return 'Ala-pívot';
+    if(t.indexOf('base') !== -1) return 'Base';
+    if(t.indexOf('escolta') !== -1) return 'Escolta';
+    if(t.indexOf('alero') !== -1) return 'Alero';
+    if(t.indexOf('piv') !== -1 || t.indexOf('pív') !== -1) return 'Pívot';
+    return '';
+  }
+  function fetchFebRoster(){
+    var url = ($('#febImportUrl').value || '').trim();
+    var btn = $('#btnFebImportFetch');
+    $('#febImportError').hidden = true;
+    if(!url){ $('#febImportError').hidden = false; $('#febImportError').textContent = 'Pega primero el enlace del equipo.'; return; }
+    btn.disabled = true; btn.textContent = 'Buscando…';
+    supabaseClient.functions.invoke('import-feb-roster', { body: { url: url } }).then(function(res){
+      btn.disabled = false; btn.textContent = 'Buscar plantilla';
+      if(res.error){ throw res.error; }
+      var data = res.data || {};
+      if(data.error){ throw new Error(data.error); }
+      var players = (data.players || []).map(function(p){
+        return {
+          selected: true,
+          firstName: p.firstName || '',
+          lastName: p.lastName || '',
+          position: normalizeFebPosition(p.position),
+          height: p.height || null,
+          number: (p.number === 0 || p.number) ? p.number : null,
+          photo: p.photo || ''
+        };
+      });
+      if(!players.length){
+        $('#febImportError').hidden = false;
+        $('#febImportError').textContent = 'No se ha encontrado ninguna jugadora en esa pagina. Puede que la FEB haya cambiado el formato — avisa para revisarlo.';
+        state.febImportPlayers = null;
+        $('#febImportResults').innerHTML = '';
+        $('#btnFebImportConfirm').hidden = true;
+        return;
+      }
+      state.febImportPlayers = players;
+      renderFebImportResults();
+    }).catch(function(err){
+      btn.disabled = false; btn.textContent = 'Buscar plantilla';
+      console.error('import-feb-roster', err);
+      $('#febImportError').hidden = false;
+      $('#febImportError').textContent = 'No se pudo importar: ' + (err && err.message ? err.message : err);
+    });
+  }
+  function renderFebImportResults(){
+    var box = $('#febImportResults');
+    var list = state.febImportPlayers;
+    if(!list || !list.length){ box.innerHTML = ''; $('#btnFebImportConfirm').hidden = true; return; }
+    var posOptions = FEB_POSITION_CANON.map(function(p){ return '<option value="' + esc(p) + '">' + esc(p) + '</option>'; }).join('');
+    box.innerHTML =
+      '<div class="feb-import-head"><span></span><span></span><span>Nombre</span><span>Apellidos</span><span>Posición</span><span>Dorsal</span></div>' +
+      '<div class="feb-import-list">' +
+      list.map(function(p, i){
+        var avatarInner = p.photo ? '<img src="' + p.photo + '" alt="">' : '🏀';
+        return '<div class="feb-import-row" data-i="' + i + '">' +
+          '<input type="checkbox" data-feb-field="selected"' + (p.selected ? ' checked' : '') + '>' +
+          '<div class="feb-avatar">' + avatarInner + '</div>' +
+          '<input type="text" data-feb-field="firstName" value="' + esc(p.firstName) + '">' +
+          '<input type="text" data-feb-field="lastName" value="' + esc(p.lastName) + '">' +
+          '<select data-feb-field="position"><option value="">—</option>' + posOptions + '</select>' +
+          '<input type="text" inputmode="numeric" maxlength="3" data-feb-field="number" value="' + (p.number != null ? p.number : '') + '">' +
+        '</div>';
+      }).join('') +
+      '</div>';
+    $all('.feb-import-row').forEach(function(row){
+      var i = Number(row.getAttribute('data-i'));
+      var sel = row.querySelector('select[data-feb-field="position"]');
+      if(sel) sel.value = list[i].position || '';
+      row.querySelectorAll('[data-feb-field]').forEach(function(input){
+        input.addEventListener('change', function(){
+          var field = input.getAttribute('data-feb-field');
+          var p = state.febImportPlayers[i];
+          if(!p) return;
+          if(field === 'selected') p.selected = input.checked;
+          else if(field === 'number') p.number = input.value.trim() === '' ? null : Number(input.value);
+          else p[field] = input.value;
+        });
+      });
+    });
+    $('#btnFebImportConfirm').hidden = false;
+  }
+  function confirmFebImport(){
+    if(!db) return;
+    var rivalRef = currentRivalRef();
+    if(!rivalRef || !state.febImportPlayers) return;
+    var toAdd = state.febImportPlayers.filter(function(p){ return p.selected && (p.firstName || p.lastName); });
+    if(!toAdd.length) return;
+    var btn = $('#btnFebImportConfirm');
+    btn.disabled = true; btn.textContent = 'Añadiendo…';
+    var chain = Promise.resolve();
+    toAdd.forEach(function(p){
+      chain = chain.then(function(){
+        return db.collection('players').add({
+          firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', position: p.position || '', hand: '',
+          height: p.height || null, threat: 'media', shootThreat: 'amarillo', strengths: '', weaknesses: '', defend: '',
+          updatedAt: nowIso()
+        }).then(function(ref){
+          return rivalRef.collection('roster').add({ playerId: ref.id, number: p.number || 0, addedAt: nowIso() });
+        });
+      });
+    });
+    chain.then(function(){
+      btn.disabled = false; btn.textContent = 'Añadir jugadoras seleccionadas';
+      toggleFebImport();
+    }).catch(function(err){
+      btn.disabled = false; btn.textContent = 'Añadir jugadoras seleccionadas';
+      console.error('confirm feb import', err);
+      $('#febImportError').hidden = false;
+      $('#febImportError').textContent = 'Algunas jugadoras no se pudieron guardar: ' + (err && err.message ? err.message : err);
+    });
   }
 
   // ---------------- Roster rendering ----------------
