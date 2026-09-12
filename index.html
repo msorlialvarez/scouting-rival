@@ -1119,15 +1119,24 @@
 
   var appStarted = false;
   function startApp(session){
-    var emailEl = $('#userEmail');
-    if(emailEl) emailEl.textContent = (session && session.user && session.user.email) || '';
-    hideLoginScreen();
-    if(appStarted) return;
-    appStarted = true;
-    db = createSupabaseDb(supabaseClient);
-    subscribeRivals();
-    subscribeAllPlayers();
-    subscribeSettings();
+    try{
+      var emailEl = $('#userEmail');
+      if(emailEl) emailEl.textContent = (session && session.user && session.user.email) || '';
+      hideLoginScreen();
+      if(appStarted) return;
+      appStarted = true;
+      db = createSupabaseDb(supabaseClient);
+      subscribeRivals();
+      subscribeAllPlayers();
+      subscribeSettings();
+    }catch(err){
+      // Si algo falla al arrancar la app tras un login correcto, que se vea
+      // en pantalla en vez de quedarse "sin hacer nada" — mas facil de
+      // diagnosticar a distancia que un fallo silencioso.
+      console.error('startApp error', err);
+      appStarted = false;
+      showLoginScreen('Se ha producido un error al cargar la app: ' + (err && err.message ? err.message : err));
+    }
   }
 
   function bindLoginUI(){
@@ -1141,9 +1150,18 @@
         btn.disabled = false; btn.textContent = 'Entrar';
         if(res.error){
           showLoginScreen(res.error.message === 'Invalid login credentials' ? 'Email o contrasena incorrectos.' : res.error.message);
+        } else if(res.data && res.data.session){
+          // No dependemos solo de onAuthStateChange: si el login ha ido bien,
+          // arrancamos la app directamente aqui tambien, por si ese evento
+          // no llega (por ejemplo, si el navegador bloquea el almacenamiento
+          // local que usa Supabase para recordar la sesion).
+          startApp(res.data.session);
+        } else {
+          showLoginScreen('No se ha podido iniciar sesion (respuesta inesperada del servidor).');
         }
-      }).catch(function(){
+      }).catch(function(err){
         btn.disabled = false; btn.textContent = 'Entrar';
+        console.error('signInWithPassword error', err);
         showLoginScreen('No se pudo conectar. Revisa tu conexion a internet.');
       });
     });
