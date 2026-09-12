@@ -2072,8 +2072,20 @@
     }).catch(function(err){
       btn.disabled = false; btn.textContent = 'Buscar plantilla';
       console.error('import-feb-roster', err);
-      $('#febImportError').hidden = false;
-      $('#febImportError').textContent = 'No se pudo importar: ' + (err && err.message ? err.message : err);
+      var showErr = function(msg){ $('#febImportError').hidden = false; $('#febImportError').textContent = 'No se pudo importar: ' + msg; };
+      // Cuando la funcion responde con un error, supabase-js solo da un
+      // mensaje generico ("Edge Function returned a non-2xx status code") en
+      // vez del motivo real, que va dentro de err.context (la respuesta HTTP
+      // de la funcion). Lo leemos para poder mostrar el motivo de verdad.
+      if(err && err.context && typeof err.context.json === 'function'){
+        err.context.json().then(function(body){
+          showErr((body && body.error) ? body.error : (err.message || err));
+        }).catch(function(){
+          showErr(err.message || err);
+        });
+      } else {
+        showErr(err && err.message ? err.message : err);
+      }
     });
   }
   function renderFebImportResults(){
