@@ -4105,11 +4105,16 @@
       var ny = 0.95;
       nameLines.slice(0,2).forEach(function(line){ ctx.fillText(line, IN(0.62), IN(ny)); ny += nameSize/72 * 1.08; });
 
-      roundRect(ctx, 0.62, ny + 0.12, 3.05, 0.5, 0.25, accentHex);
-      ctx.fillStyle = relLuma(accentHex) > 0.6 ? '#111111' : '#FFFFFF';
+      // El ancho de la píldora se calcula a partir del texto real (en vez de un ancho fijo)
+      // para que el padding quede igual a los dos lados y el texto salga bien centrado,
+      // tanto en español como en inglés.
+      var scoutingLabel = lang === 'en' ? 'INDIVIDUAL SCOUTING' : 'SCOUTING INDIVIDUAL';
       setFont(ctx, PT(17), {bold:true, italic:false});
+      var scoutingPadX = 0.28, scoutingPillW = ctx.measureText(scoutingLabel).width / PX + scoutingPadX * 2, scoutingPillH = 0.5;
+      roundRect(ctx, 0.62, ny + 0.12, scoutingPillW, scoutingPillH, scoutingPillH/2, accentHex);
+      ctx.fillStyle = relLuma(accentHex) > 0.6 ? '#111111' : '#FFFFFF';
       ctx.textBaseline = 'middle';
-      ctx.fillText((lang === 'en' ? 'INDIVIDUAL SCOUTING' : 'SCOUTING INDIVIDUAL'), IN(0.62 + 0.28), IN(ny + 0.12 + 0.25));
+      ctx.fillText(scoutingLabel, IN(0.62 + scoutingPadX), IN(ny + 0.12 + scoutingPillH/2));
       ctx.textBaseline = 'top';
 
       var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
@@ -4169,9 +4174,12 @@
       diagBand(cutTopX, 0.13, accentHex);
       diagBand(cutTopX + 0.13, 0.06, shadeLight);
 
-      var compLogoY = photoY + photoH + 0.18, compLogoH = 0.95;
+      // Logo de competición discreto bajo la foto: ahora que se recorta el aire que trae el
+      // archivo (trimImagePadding) se ve más grande que antes con la misma caja, así que aquí
+      // se le da una caja más pequeña a propósito para que no compita en protagonismo con la foto.
+      var compLogoY = photoY + photoH + 0.2, compLogoH = 0.55;
       if(compLogoImg){
-        drawContainFit(ctx, compLogoImg, 0.3, compLogoY, 2.7, Math.min(compLogoH, Hin - 0.15 - compLogoY));
+        drawContainFit(ctx, compLogoImg, 0.3, compLogoY, 1.9, Math.min(compLogoH, Hin - 0.15 - compLogoY));
       }
 
       // número de dorsal fantasma, más abajo (debajo del logo de competición) para que no quede tapado por la foto
@@ -4223,7 +4231,7 @@
       if(handRaw){
         var handKey = handRaw.toLowerCase();
         var handIcon = handKey.indexOf('zurd') === 0 ? '👈' : (handKey.indexOf('ambi') === 0 ? '🤲' : '👉');
-        var handLabel = handRaw.toUpperCase();
+        var handLabel = (translateHand(lang, handRaw) || handRaw).toUpperCase();
         setFont(ctx, PT(12), {bold:true, italic:false});
         var handTextW = ctx.measureText(handLabel).width / PX;
         var handIconW = 0.3, handPadX = 0.14, handGap = 0.08;
