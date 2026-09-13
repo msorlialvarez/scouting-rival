@@ -2078,7 +2078,7 @@
     }
     if(name && (position || height !== null)){
       var parts = splitFebName(name);
-      return { selected: true, firstName: parts.firstName, lastName: parts.lastName, position: position, height: height, number: number, photo: imgSrc || '' };
+      return { selected: true, firstName: parts.firstName, lastName: parts.lastName, position: position, height: height, number: number, photo: imgSrc || '', photoUrl: imgSrc || '' };
     }
     return null;
   }
@@ -2110,7 +2110,12 @@
             canvas.width = size; canvas.height = size;
             var ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, size, size);
-            var scale = Math.max(size / img.width, size / img.height);
+            // "contain" (no "cover"): las fotos de la FEB suelen ser de cuerpo entero o
+            // con la jugadora descentrada, así que recortar a cuadrado por el centro
+            // dejaba a veces la cabeza o los pies fuera. Aquí se encoge la foto entera
+            // para que quepa completa dentro del cuadrado, con margen a los lados si
+            // hace falta, en vez de recortar nada.
+            var scale = Math.min(size / img.width, size / img.height);
             var w = img.width * scale, h = img.height * scale;
             ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
             var dataUrl = canvas.toDataURL('image/png');
@@ -2248,7 +2253,7 @@
     toAdd.forEach(function(p){
       chain = chain.then(function(){
         return db.collection('players').add({
-          firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', position: p.position || '', hand: '',
+          firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', photoSourceUrl: p.photoUrl || '', position: p.position || '', hand: '',
           height: p.height || null, threat: 'media', shootThreat: 'amarillo', strengths: '', weaknesses: '', defend: '',
           updatedAt: nowIso()
         }).then(function(ref){
@@ -2286,25 +2291,26 @@
 
   // ---------------- Reparar fotos de jugadoras importadas de la FEB ----------------
   // Una jugadora importada de la FEB antes de que existiera la conversion
-  // automatica (o cuya foto no se consiguio convertir en su momento) se queda
-  // con la foto guardada como un enlace externo en vez de como los datos de la
-  // imagen — se ve bien en la app pero no sale en el PDF. Este botón vuelve a
-  // intentar la descarga+conversion para esos casos concretos, sin tener que
-  // volver a importar (lo que duplicaria a las jugadoras) ni subir nada a mano.
-  function rosterPlayersWithExternalPhoto(){
+  // automatica (o cuya foto no se consiguio convertir en su momento, o se
+  // recorto mal) se queda con la foto sin arreglar del todo. Este botón vuelve
+  // a intentar la descarga+recorte desde el enlace original de la FEB (guardado
+  // aparte en "photoSourceUrl" precisamente para poder repetir este paso más
+  // adelante si hace falta ajustar el recorte), sin tener que volver a
+  // importar (lo que duplicaria a las jugadoras) ni subir nada a mano.
+  function rosterPlayersToRepairFebPhoto(){
     return state.roster.map(function(r){
       return state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
-    }).filter(function(p){ return p && p.photo && /^https?:\/\//i.test(p.photo); });
+    }).filter(function(p){ return p && (p.photoSourceUrl || (p.photo && /^https?:\/\//i.test(p.photo))); });
   }
   function updateRepairFebPhotosButton(){
     var btn = $('#btnRepairFebPhotos');
     if(!btn) return;
-    var pending = rosterPlayersWithExternalPhoto();
+    var pending = rosterPlayersToRepairFebPhoto();
     btn.hidden = pending.length === 0;
     if(!btn.disabled) btn.textContent = 'Reparar fotos FEB (' + pending.length + ')';
   }
   function repairFebPhotos(){
-    var pending = rosterPlayersWithExternalPhoto();
+    var pending = rosterPlayersToRepairFebPhoto();
     if(!pending.length || !db) return;
     var btn = $('#btnRepairFebPhotos');
     var msg = $('#febRepairMsg');
@@ -2315,10 +2321,11 @@
     var chain = Promise.resolve();
     pending.forEach(function(p){
       chain = chain.then(function(){
-        return fetchFebPhotoAsDataUri(p.photo).then(function(dataUri){
+        var sourceUrl = p.photoSourceUrl || p.photo;
+        return fetchFebPhotoAsDataUri(sourceUrl).then(function(dataUri){
           if(!dataUri) return;
           fixed++;
-          return playerRef(p.id).update({photo: dataUri, updatedAt: nowIso()});
+          return playerRef(p.id).update({photo: dataUri, photoSourceUrl: sourceUrl, updatedAt: nowIso()});
         });
       });
     });
