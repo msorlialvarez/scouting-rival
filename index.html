@@ -48,10 +48,12 @@
 
   .app{ display:grid; grid-template-columns:300px 1fr; min-height:100vh; }
   /* El atributo "hidden" no gana por si solo frente a un display puesto por
-     clase con la misma especificidad (aqui .app y .login-screen), asi que sin
-     esta regla ambas pantallas podian quedar visibles a la vez, una debajo de
-     la otra. */
+     clase con la misma especificidad (aqui .app, .login-screen, .topbar y
+     .empty-state), asi que sin esta regla varias pantallas/paneles podian
+     quedar visibles a la vez, uno debajo de otro. */
   .app[hidden]{ display:none; }
+  .topbar[hidden]{ display:none; }
+  .empty-state[hidden]{ display:none; }
 
   /* ---------- Sidebar ---------- */
   .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:100vh; }
@@ -2092,7 +2094,7 @@
   function fetchFebPhotoAsDataUri(url){
     if(!url) return Promise.resolve(null);
     return fetch(url).then(function(res){
-      if(!res.ok) return null;
+      if(!res.ok){ console.warn('[FEB foto] respuesta no OK', res.status, url); return null; }
       return res.blob();
     }).then(function(blob){
       if(!blob) return null;
@@ -2120,13 +2122,14 @@
               while(dataUrl.length > MAX_PHOTO_CHARS && quality > 0.3){ quality -= 0.12; dataUrl = canvas.toDataURL('image/jpeg', quality); }
             }
             URL.revokeObjectURL(objectUrl);
+            if(dataUrl.length > MAX_PHOTO_CHARS) console.warn('[FEB foto] pesa demasiado incluso comprimida', url);
             resolve(dataUrl.length > MAX_PHOTO_CHARS ? null : dataUrl);
-          }catch(err){ URL.revokeObjectURL(objectUrl); resolve(null); }
+          }catch(err){ console.warn('[FEB foto] fallo al recortar/leer los píxeles (posible bloqueo CORS)', url, err && err.message); URL.revokeObjectURL(objectUrl); resolve(null); }
         };
-        img.onerror = function(){ URL.revokeObjectURL(objectUrl); resolve(null); };
+        img.onerror = function(){ console.warn('[FEB foto] la imagen descargada no se pudo decodificar', url); URL.revokeObjectURL(objectUrl); resolve(null); };
         img.src = objectUrl;
       });
-    }).catch(function(){ return null; });
+    }).catch(function(err){ console.warn('[FEB foto] fetch() ha fallado (probable bloqueo CORS del servidor de la FEB)', url, err && err.message); return null; });
   }
   function parseFebPastedContent(){
     var zone = $('#febPasteZone');
