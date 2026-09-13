@@ -2091,10 +2091,9 @@
   // bloqueaba la FEB), queda lista para el PDF sin ningún paso manual. Si para
   // alguna foto en concreto no se puede, se deja la URL tal cual (se sigue
   // viendo en la app, aunque no salga en el PDF) en vez de rompler el resto.
-  function fetchFebPhotoAsDataUri(url){
-    if(!url) return Promise.resolve(null);
-    return fetch(url).then(function(res){
-      if(!res.ok){ console.warn('[FEB foto] respuesta no OK', res.status, url); return null; }
+  function downloadAndCropPhoto(fetchUrl, label, origUrl){
+    return fetch(fetchUrl).then(function(res){
+      if(!res.ok){ console.warn('[FEB foto] respuesta no OK (' + label + ')', res.status, origUrl); return null; }
       return res.blob();
     }).then(function(blob){
       if(!blob) return null;
@@ -2122,14 +2121,30 @@
               while(dataUrl.length > MAX_PHOTO_CHARS && quality > 0.3){ quality -= 0.12; dataUrl = canvas.toDataURL('image/jpeg', quality); }
             }
             URL.revokeObjectURL(objectUrl);
-            if(dataUrl.length > MAX_PHOTO_CHARS) console.warn('[FEB foto] pesa demasiado incluso comprimida', url);
+            if(dataUrl.length > MAX_PHOTO_CHARS) console.warn('[FEB foto] pesa demasiado incluso comprimida (' + label + ')', origUrl);
             resolve(dataUrl.length > MAX_PHOTO_CHARS ? null : dataUrl);
-          }catch(err){ console.warn('[FEB foto] fallo al recortar/leer los píxeles (posible bloqueo CORS)', url, err && err.message); URL.revokeObjectURL(objectUrl); resolve(null); }
+          }catch(err){ console.warn('[FEB foto] fallo al recortar/leer los píxeles (' + label + ', posible bloqueo CORS)', origUrl, err && err.message); URL.revokeObjectURL(objectUrl); resolve(null); }
         };
-        img.onerror = function(){ console.warn('[FEB foto] la imagen descargada no se pudo decodificar', url); URL.revokeObjectURL(objectUrl); resolve(null); };
+        img.onerror = function(){ console.warn('[FEB foto] la imagen descargada no se pudo decodificar (' + label + ')', origUrl); URL.revokeObjectURL(objectUrl); resolve(null); };
         img.src = objectUrl;
       });
-    }).catch(function(err){ console.warn('[FEB foto] fetch() ha fallado (probable bloqueo CORS del servidor de la FEB)', url, err && err.message); return null; });
+    }).catch(function(err){ console.warn('[FEB foto] fetch() ha fallado (' + label + ')', origUrl, err && err.message); return null; });
+  }
+  // La FEB no manda cabecera CORS en sus fotos (se confirmo con el aviso de
+  // consola "has been blocked by CORS policy: No Access-Control-Allow-Origin
+  // header"), asi que un fetch() directo del navegador NUNCA va a poder leer
+  // esos pixeles, la bloquee o no a nivel de red. Como segundo intento, se pide
+  // la misma foto a traves de wsrv.nl, un servicio publico de terceros que
+  // descarga la imagen en sus propios servidores y la vuelve a servir con
+  // permiso CORS abierto — si ese intermediario tampoco consigue llegar a la
+  // FEB o tambien falla, la foto se queda como estaba (solo visible en la app).
+  function fetchFebPhotoAsDataUri(url){
+    if(!url) return Promise.resolve(null);
+    return downloadAndCropPhoto(url, 'directo', url).then(function(result){
+      if(result) return result;
+      var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(url);
+      return downloadAndCropPhoto(proxied, 'via wsrv.nl', url);
+    });
   }
   function parseFebPastedContent(){
     var zone = $('#febPasteZone');
