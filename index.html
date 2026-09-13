@@ -2077,6 +2077,57 @@
     }
     return null;
   }
+  // La FEB no deja "leer" (descargar los bytes de) sus fotos desde fuera de su
+  // propia página — por eso, aunque <img src="URL de la FEB"> se ve bien en
+  // pantalla, esa misma URL falla al intentar meterla dentro de un PDF (el
+  // generador de PDF necesita los bytes de la imagen, no solo poder mostrarla).
+  // Para arreglarlo, el propio navegador de la usuaria intenta descargar cada
+  // foto y convertirla en el mismo formato (data URI, recortada a cuadrado)
+  // que ya usan las fotos subidas a mano — así, si aquí sí se puede leer el
+  // pixel a pixel (cosa que sí puede que funcione, porque quien pide la foto
+  // aquí es un navegador normal y no un servidor en la nube, que es lo que
+  // bloqueaba la FEB), queda lista para el PDF sin ningún paso manual. Si para
+  // alguna foto en concreto no se puede, se deja la URL tal cual (se sigue
+  // viendo en la app, aunque no salga en el PDF) en vez de rompler el resto.
+  function fetchFebPhotoAsDataUri(url){
+    if(!url) return Promise.resolve(null);
+    return fetch(url).then(function(res){
+      if(!res.ok) return null;
+      return res.blob();
+    }).then(function(blob){
+      if(!blob) return null;
+      return new Promise(function(resolve){
+        var objectUrl = URL.createObjectURL(blob);
+        var img = new Image();
+        img.onload = function(){
+          try{
+            var size = 220;
+            var canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, size, size);
+            var scale = Math.max(size / img.width, size / img.height);
+            var w = img.width * scale, h = img.height * scale;
+            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+            var dataUrl = canvas.toDataURL('image/png');
+            if(dataUrl.length > MAX_PHOTO_CHARS){
+              ctx.globalCompositeOperation = 'destination-over';
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, size, size);
+              ctx.globalCompositeOperation = 'source-over';
+              var quality = 0.72;
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+              while(dataUrl.length > MAX_PHOTO_CHARS && quality > 0.3){ quality -= 0.12; dataUrl = canvas.toDataURL('image/jpeg', quality); }
+            }
+            URL.revokeObjectURL(objectUrl);
+            resolve(dataUrl.length > MAX_PHOTO_CHARS ? null : dataUrl);
+          }catch(err){ URL.revokeObjectURL(objectUrl); resolve(null); }
+        };
+        img.onerror = function(){ URL.revokeObjectURL(objectUrl); resolve(null); };
+        img.src = objectUrl;
+      });
+    }).catch(function(){ return null; });
+  }
   function parseFebPastedContent(){
     var zone = $('#febPasteZone');
     $('#febImportError').hidden = true;
@@ -2110,6 +2161,22 @@
     }
     state.febImportPlayers = players;
     renderFebImportResults();
+    var btn = $('#btnFebImportFetch');
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Descargando fotos…';
+    Promise.all(players.map(function(p){
+      if(!p.photo) return null;
+      var originalUrl = p.photo;
+      return fetchFebPhotoAsDataUri(originalUrl).then(function(dataUri){
+        if(dataUri) p.photo = dataUri;
+        // si falla, se deja la URL original: sigue viéndose en la app aunque no salga en el PDF
+      });
+    })).then(function(){
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      renderFebImportResults();
+    });
   }
   function renderFebImportResults(){
     var box = $('#febImportResults');
