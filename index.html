@@ -325,6 +325,11 @@
   .stoplight button.dot-amarillo{ background:var(--warn); border-color:var(--warn); }
   .stoplight button.dot-verde{ background:var(--good); border-color:var(--good); }
   .stoplight button.selected{ opacity:1; box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px currentColor; }
+  .type-row{ display:flex; flex-direction:column; gap:.3rem; }
+  .type-btns{ display:flex; gap:.4rem; flex-wrap:wrap; }
+  .type-btn{ display:flex; align-items:center; gap:.3rem; border:1px solid var(--border); background:var(--surface-2); border-radius:99px; padding:.28rem .6rem; font-size:.72rem; font-weight:600; color:var(--text-dim); cursor:pointer; opacity:.6; }
+  .type-btn .type-icon{ font-size:.95rem; line-height:1; }
+  .type-btn.selected{ opacity:1; border-color:var(--accent, #c9540c); color:var(--text); background:var(--accent-bg, var(--surface-2)); }
 
   .btn-expand{ align-self:flex-start; background:transparent; border:none; color:var(--accent); font-weight:700; font-size:.76rem; cursor:pointer; padding:.15rem 0; text-transform:uppercase; letter-spacing:.03em; }
   .btn-link-profile{ align-self:flex-start; background:transparent; border:none; color:var(--accent); font-weight:700; font-size:.76rem; cursor:pointer; padding:0; }
@@ -337,6 +342,9 @@
 
   .stats-section{ display:flex; flex-direction:column; gap:.6rem; }
   .stats-head{ display:flex; align-items:center; justify-content:space-between; }
+  .highlight-stat-row{ display:flex; align-items:center; gap:.4rem; }
+  .highlight-stat-row label{ font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim); }
+  .highlight-stat-row select{ font-size:.78rem; border-radius:7px; padding:.25rem .4rem; border:1px solid var(--border); background:var(--surface-2); }
   .stats-head span{ font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim); }
   .btn-mini-add{ border:1px dashed var(--border); background:transparent; color:var(--text-dim); font-size:.7rem; font-weight:700; padding:.25rem .55rem; border-radius:6px; cursor:pointer; }
   .btn-mini-add:hover{ border-color:var(--accent); color:var(--accent); }
@@ -714,12 +722,25 @@
   var THREAT_LABEL = {alta:'Amenaza total: alta', media:'Amenaza total: media', baja:'Amenaza total: baja'};
   var SHOOT_ORDER = {rojo:0, amarillo:1, verde:2};
   var SHOOT_COLOR_VAR = {rojo:'--danger', amarillo:'--warn', verde:'--good'};
+  // Tipo de jugadora: multi-selección (una jugadora puede ser varias cosas a la vez), cada
+  // opción vinculada a un icono/dibujo distinto para que se reconozca de un vistazo en las
+  // portadas de scouting, sin depender del idioma del informe.
+  var PLAYER_TYPE_ORDER = ['generadora', 'shooter', 'paint', 'energia'];
+  var PLAYER_TYPE_ICONS = {generadora:'🧠', shooter:'🎯', paint:'💪', energia:'⚡'};
+  var PLAYER_TYPE_LABELS_ES = {generadora:'Generadora', shooter:'Shooter', paint:'Paint', energia:'Energía'};
+  // Estadística que se puede resaltar en la línea de marcador de la ficha (p.ej. destacar
+  // "Reb" en una reboteadora). Los grupos coinciden con los tramos de la línea de estadísticas
+  // ("20' – 2 pts – 6 FG (2 3P/20%) – FT 50% (25/50) – 4 Reb (1 Off) – 5 Ast").
+  var HIGHLIGHT_STAT_ORDER = ['minutes', 'pts', 'fg', 'ft', 'reb', 'ast'];
+  var HIGHLIGHT_STAT_LABELS_ES = {minutes:'Minutos', pts:'Puntos', fg:'Tiros de campo', ft:'Tiros libres', reb:'Rebotes', ast:'Asistencias'};
   var STAT_FIELDS = [
     {key:'pts', label:'Pts/p'}, {key:'fgPct', label:'% T2'}, {key:'threePct', label:'% T3'},
     {key:'ftPct', label:'% TL'}, {key:'reb', label:'Reb/p'}, {key:'ast', label:'Ast/p'}, {key:'to', label:'Pérd/p'},
     // Añadidos para poder componer la línea de marcador estilo "20' – 10 pts – 6 FG (3 3P/30%) –
     // FT 87% – 5 Reb (1 Off) – 2 Ast" de la plantilla de PowerPoint de Marta (buildScoutingPptx).
-    {key:'minutes', label:'Min/p'}, {key:'fga', label:'Tiros/p'}, {key:'threeAtt', label:'Triples/p'}, {key:'offReb', label:'RebOf/p'}
+    {key:'minutes', label:'Min/p'}, {key:'fga', label:'Tiros/p'}, {key:'threeAtt', label:'Triples/p'}, {key:'offReb', label:'RebOf/p'},
+    // Tiros libres anotados/intentados, para mostrar "FT 50% (25/50)" en vez de solo el porcentaje.
+    {key:'ftMade', label:'TL anot./p'}, {key:'ftAtt', label:'TL int./p'}
   ];
   var MAX_PHOTO_CHARS = 150000;
   // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it —
@@ -749,11 +770,15 @@
       playersSuffixN: ' jugadoras en la plantilla',
       seasonCompUnspecified: 'Temporada y competición sin especificar',
       roster: 'PLANTILLA',
-      colNum: 'Nº', colPlayer: 'Jugadora', colPosition: 'Posición', colThreat: 'Amenaza total', colShot: 'Tiro',
+      colNum: 'Nº', colPlayer: 'Jugadora', colPosition: 'Posición', colThreat: 'Importancia', colShot: 'Tiro',
       positionHandUnspecified: 'Posición y mano sin especificar',
-      threatTotalBadge: 'AMENAZA TOTAL: ',
+      threatTotalBadge: 'IMPORTANCIA: ',
       threatShotBadge: 'AMENAZA DE TIRO: ',
-      strengths: 'Fortalezas', weaknesses: 'Debilidades', defend: 'Cómo defenderla',
+      clutchBadge: 'CLUTCH: ',
+      templeBadge: 'TEMPLE: ',
+      playerTypesLabel: 'Tipo de jugadora',
+      playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
+      strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Cómo defenderla',
       noNotes: 'Sin notas.',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
       competitionFallback: 'Competición',
@@ -787,11 +812,15 @@
       playersSuffixN: ' players in the roster',
       seasonCompUnspecified: 'Season and competition not specified',
       roster: 'ROSTER',
-      colNum: 'No.', colPlayer: 'Player', colPosition: 'Position', colThreat: 'Overall threat', colShot: 'Shot',
+      colNum: 'No.', colPlayer: 'Player', colPosition: 'Position', colThreat: 'Importance', colShot: 'Shot',
       positionHandUnspecified: 'Position and hand not specified',
-      threatTotalBadge: 'OVERALL THREAT: ',
+      threatTotalBadge: 'IMPORTANCE: ',
       threatShotBadge: 'SHOOTING THREAT: ',
-      strengths: 'Strengths', weaknesses: 'Weaknesses', defend: 'How to defend her',
+      clutchBadge: 'CLUTCH: ',
+      templeBadge: 'COMPOSURE: ',
+      playerTypesLabel: 'Player type',
+      playerTypeNames: {generadora:'Playmaker', shooter:'Shooter finisher', paint:'Paint finisher', energia:'Energy/hustle'},
+      strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'How to defend her',
       noNotes: 'No notes.',
       statsTitle: 'STATS BY COMPETITION',
       competitionFallback: 'Competition',
@@ -877,6 +906,7 @@
     if(h === null || h === undefined || h === '') return '';
     var n = Number(h);
     if(isNaN(n)) return '';
+    if(n > 3) n = n / 100; // por si la altura llegó guardada en cm (p.ej. importada de la FEB) en vez de en metros
     return n.toFixed(2).replace('.', ',') + 'm';
   }
   function slug(s){
@@ -1812,7 +1842,8 @@
     if(!db) return;
     db.collection('players').add({
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
-      threat: 'media', shootThreat: 'amarillo', strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
+      threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
+      strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
     }).then(function(ref){
       selectPlayerProfile(ref.id);
       setTimeout(function(){ var i = $('#profileView [data-field="firstName"]'); if(i){ i.focus(); i.select(); } }, 150);
@@ -2014,7 +2045,8 @@
     if(!rivalRef) return;
     db.collection('players').add({
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
-      threat: 'media', shootThreat: 'amarillo', strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
+      threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
+      strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
     }).then(function(ref){
       return rivalRef.collection('roster').add({ playerId: ref.id, number: 0, addedAt: nowIso() }).then(function(){ return ref.id; });
     }).then(function(newId){
@@ -2261,7 +2293,8 @@
       chain = chain.then(function(){
         return db.collection('players').add({
           firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', photoSourceUrl: p.photoUrl || '', position: p.position || '', hand: '',
-          height: p.height || null, threat: 'media', shootThreat: 'amarillo', strengths: '', weaknesses: '', defend: '',
+          height: p.height || null, threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
+          strengths: '', weaknesses: '', defend: '',
           updatedAt: nowIso()
         }).then(function(ref){
           return rivalRef.collection('roster').add({ playerId: ref.id, number: p.number || 0, addedAt: nowIso() });
@@ -2394,6 +2427,20 @@
       var sel = (p.shootThreat || 'amarillo') === c ? ' selected' : '';
       return '<button type="button" class="dot-' + c + sel + '" data-shoot="' + c + '" title="Amenaza de tiro: ' + c + '"></button>';
     }).join('');
+    var clutchBtns = ['rojo','amarillo','verde'].map(function(c){
+      var sel = (p.clutch || 'amarillo') === c ? ' selected' : '';
+      return '<button type="button" class="dot-' + c + sel + '" data-clutch="' + c + '" title="Nivel de clutch: ' + c + '"></button>';
+    }).join('');
+    var templeBtns = ['rojo','amarillo','verde'].map(function(c){
+      var sel = (p.temple || 'amarillo') === c ? ' selected' : '';
+      return '<button type="button" class="dot-' + c + sel + '" data-temple="' + c + '" title="Temple: ' + c + '"></button>';
+    }).join('');
+    var playerTypesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+    var typeBtns = PLAYER_TYPE_ORDER.map(function(t){
+      var sel = playerTypesArr.indexOf(t) !== -1 ? ' selected' : '';
+      return '<button type="button" class="type-btn' + sel + '" data-playertype="' + t + '" title="' + esc(PLAYER_TYPE_LABELS_ES[t]) + '">' +
+        '<span class="type-icon">' + PLAYER_TYPE_ICONS[t] + '</span><span class="type-label">' + esc(PLAYER_TYPE_LABELS_ES[t]) + '</span></button>';
+    }).join('');
     var numberHtml = mode === 'roster'
       ? '<input class="pnum mono" type="text" inputmode="numeric" maxlength="3" data-roster-number value="' + esc(ctx.number != null ? ctx.number : '') + '">'
       : '';
@@ -2431,12 +2478,22 @@
         '</div>' +
       '</div>' +
 
+      '<div class="type-row"><span class="tb-label">Tipo de jugadora (puede ser varias)</span>' +
+        '<div class="type-btns">' + typeBtns + '</div>' +
+      '</div>' +
+
       '<div class="threat-row2">' +
-        '<div class="threat-block"><span class="tb-label">Amenaza total</span>' +
+        '<div class="threat-block"><span class="tb-label">Importancia / jugadora clave</span>' +
           '<div class="total-chip total-' + (p.threat || 'media') + '"><select data-field="threat">' + opt('alta','Alta',p.threat) + opt('media','Media',p.threat) + opt('baja','Baja',p.threat) + '</select></div>' +
         '</div>' +
         '<div class="threat-block"><span class="tb-label">Amenaza de tiro (rol)</span>' +
           '<div class="stoplight" data-stoplight>' + stoplightBtns + '</div>' +
+        '</div>' +
+        '<div class="threat-block"><span class="tb-label">Nivel de clutch</span>' +
+          '<div class="stoplight" data-stoplight>' + clutchBtns + '</div>' +
+        '</div>' +
+        '<div class="threat-block"><span class="tb-label">Temple (dureza mental)</span>' +
+          '<div class="stoplight" data-stoplight>' + templeBtns + '</div>' +
         '</div>' +
       '</div>' +
 
@@ -2444,10 +2501,14 @@
 
       '<div class="player-detail' + (open ? ' open' : '') + '" data-detail>' +
         '<div class="player-field"><label>Fortalezas</label><textarea data-field="strengths" placeholder="Ej. tiradora exterior, transición">' + esc(p.strengths) + '</textarea></div>' +
-        '<div class="player-field"><label>Debilidades</label><textarea data-field="weaknesses" placeholder="Ej. pierde el balón bajo presión">' + esc(p.weaknesses) + '</textarea></div>' +
+        '<div class="player-field"><label>Qué queremos que pase</label><textarea data-field="weaknesses" placeholder="Relacionado con sus fortalezas. Ej. si es tiradora: que bote y vaya para dentro">' + esc(p.weaknesses) + '</textarea></div>' +
         '<div class="player-field player-defend"><label>Cómo defenderla</label><textarea data-field="defend" placeholder="Instrucción concreta para banquillo">' + esc(p.defend) + '</textarea></div>' +
         '<div class="stats-section">' +
           '<div class="stats-head"><span>Estadísticas por competición</span><button type="button" class="btn-mini-add" data-add-stat>+ Añadir competición</button></div>' +
+          '<div class="highlight-stat-row"><label>Resaltar en la ficha</label><select data-field="highlightStat">' +
+            opt('', 'Ninguna', p.highlightStat) +
+            HIGHLIGHT_STAT_ORDER.map(function(k){ return opt(k, HIGHLIGHT_STAT_LABELS_ES[k], p.highlightStat); }).join('') +
+          '</select></div>' +
           '<div class="stat-blocks" data-stat-blocks><p class="empty-hint" style="padding:.2rem 0;">Cargando…</p></div>' +
         '</div>' +
       '</div>' +
@@ -2483,6 +2544,32 @@
         var val = btn.getAttribute('data-shoot');
         ref.update({shootThreat: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
         card.querySelectorAll('[data-shoot]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
+      });
+    });
+
+    card.querySelectorAll('[data-clutch]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var val = btn.getAttribute('data-clutch');
+        ref.update({clutch: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        card.querySelectorAll('[data-clutch]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
+      });
+    });
+
+    card.querySelectorAll('[data-temple]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var val = btn.getAttribute('data-temple');
+        ref.update({temple: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        card.querySelectorAll('[data-temple]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
+      });
+    });
+
+    card.querySelectorAll('[data-playertype]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var willSelect = !btn.classList.contains('selected');
+        btn.classList.toggle('selected', willSelect);
+        var vals = [];
+        card.querySelectorAll('[data-playertype].selected').forEach(function(b){ vals.push(b.getAttribute('data-playertype')); });
+        ref.update({playerTypes: vals, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
       });
     });
 
@@ -3801,7 +3888,7 @@
       var statsText;
       if(statsBlock){
         var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : v; };
-        statsText = sv('minutes') + '’ – ' + sv('pts') + ' pts – ' + sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) – FT ' + sv('ftPct') + '% – ' + sv('reb') + ' Reb (' + sv('offReb') + ' Off) – ' + sv('ast') + ' Ast';
+        statsText = sv('minutes') + '’ – ' + sv('pts') + ' pts – ' + sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) – FT ' + sv('ftPct') + '% (' + sv('ftMade') + '/' + sv('ftAtt') + ') – ' + sv('reb') + ' Reb (' + sv('offReb') + ' Off) – ' + sv('ast') + ' Ast';
       } else {
         statsText = L.noStats;
       }
@@ -3985,8 +4072,7 @@
       ctx.fillText(metaLine, IN(0.62), IN(ny + 0.86));
 
       if(compLogoImg){
-        roundRect(ctx, 0.62, 4.55, 3.6, 0.8, 0.1, '#F4F4F5');
-        drawContainFit(ctx, compLogoImg, 0.78, 4.63, 3.28, 0.64);
+        drawContainFit(ctx, compLogoImg, 0.6, 4.35, 4.4, 1.1);
       }
     }
 
@@ -3996,37 +4082,33 @@
       ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
 
-      // ---- panel de foto a sangre, con corte diagonal ----
-      var cutTopX = 4.35, cutBotX = 3.85;
+      // ---- panel izquierdo: fondo diagonal suave + foto enmarcada (más pequeña, para no pixelar fotos de poca calidad) ----
+      var cutTopX = 4.0, cutBotX = 3.55;
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
       ctx.closePath(); ctx.clip();
-      if(photoImg){
-        drawCoverFit(ctx, photoImg, 0, 0, 4.4, Hin);
-      } else {
-        ctx.fillStyle = '#E9E9EC'; ctx.fillRect(0,0, IN(4.4), IN(Hin));
-        ctx.fillStyle = '#B9BAC0';
-        setFont(ctx, PT(64), {bold:true});
-        ctx.fillText(initialsFor(p), IN(0.7), IN(2.1));
-      }
-      // velo oscuro abajo para apoyar el logo de competición
-      var grad = ctx.createLinearGradient(0, IN(Hin-1.1), 0, IN(Hin));
-      grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-      ctx.fillStyle = grad; ctx.fillRect(0, IN(Hin-1.1), IN(4.4), IN(1.1));
+      ctx.fillStyle = shadeLighter; ctx.fillRect(0, 0, IN(cutTopX), IN(Hin));
       ctx.restore();
 
-      // número de dorsal fantasma, superpuesto a la foto
-      if(item.number !== undefined && item.number !== null && item.number !== ''){
+      var photoX = 0.45, photoY = 0.48, photoW = 2.35, photoH = 2.93;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(IN(photoX-0.07), IN(photoY-0.07), IN(photoW+0.14), IN(photoH+0.14));
+      ctx.strokeStyle = '#E4E4E4'; ctx.lineWidth = IN(0.01);
+      ctx.strokeRect(IN(photoX-0.07), IN(photoY-0.07), IN(photoW+0.14), IN(photoH+0.14));
+      if(photoImg){
         ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
-        ctx.closePath(); ctx.clip();
-        ctx.globalAlpha = 0.45;
-        setFont(ctx, PT(120), {bold:true, italic:true});
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = IN(0.035);
-        ctx.strokeText('#' + item.number, IN(0.18), IN(0.35));
+        ctx.beginPath(); ctx.rect(IN(photoX), IN(photoY), IN(photoW), IN(photoH)); ctx.clip();
+        drawCoverFit(ctx, photoImg, photoX, photoY, photoW, photoH);
         ctx.restore();
+      } else {
+        rect(ctx, photoX, photoY, photoW, photoH, '#ECECEC');
+        ctx.strokeStyle = '#D6D6D6'; ctx.strokeRect(IN(photoX), IN(photoY), IN(photoW), IN(photoH));
+        ctx.fillStyle = '#A0A0A0';
+        setFont(ctx, PT(38), {bold:true});
+        ctx.textAlign = 'center';
+        ctx.fillText(initialsFor(p), IN(photoX + photoW/2), IN(photoY + photoH/2 - 0.26));
+        ctx.textAlign = 'left';
       }
 
       // tiras diagonales de acento junto al corte
@@ -4039,9 +4121,23 @@
       diagBand(cutTopX, 0.13, accentHex);
       diagBand(cutTopX + 0.13, 0.06, shadeLight);
 
+      var compLogoY = photoY + photoH + 0.22, compLogoH = 0.75;
       if(compLogoImg){
-        roundRect(ctx, 0.22, Hin - 0.78, 2.5, 0.56, 0.08, 'rgba(255,255,255,0.92)');
-        drawContainFit(ctx, compLogoImg, 0.34, Hin - 0.7, 2.26, 0.4);
+        drawContainFit(ctx, compLogoImg, 0.3, compLogoY, 3.1, Math.min(compLogoH, Hin - 0.15 - compLogoY));
+      }
+
+      // número de dorsal fantasma, más abajo (debajo del logo de competición) para que no quede tapado por la foto
+      if(item.number !== undefined && item.number !== null && item.number !== ''){
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
+        ctx.closePath(); ctx.clip();
+        ctx.globalAlpha = 0.6;
+        setFont(ctx, PT(95), {bold:true, italic:true});
+        ctx.fillStyle = shadeLight;
+        ctx.fillText('#' + item.number, IN(0.28), IN(compLogoY + compLogoH + 0.14));
+        ctx.globalAlpha = 1;
+        ctx.restore();
       }
 
       // ---- contenido, a la derecha del corte ----
@@ -4073,62 +4169,118 @@
       ctx.fillText(subLine, IN(cx0 + pillPadX), IN(pillY + pillH/2));
       ctx.textBaseline = 'top';
 
-      // ---- medidores de amenaza (barra en vez de semáforo de puntos) ----
+      // ---- mano dominante (visual: icono + etiqueta), junto a la píldora de altura/posición ----
+      var rowCursorX = cx0 + pillW + 0.14;
+      var handRaw = (p.hand || '').trim();
+      if(handRaw){
+        var handKey = handRaw.toLowerCase();
+        var handIcon = handKey.indexOf('zurd') === 0 ? '👈' : (handKey.indexOf('ambi') === 0 ? '🤲' : '👉');
+        var handLabel = handRaw.toUpperCase();
+        setFont(ctx, PT(12), {bold:true, italic:false});
+        var handTextW = ctx.measureText(handLabel).width / PX;
+        var handIconW = 0.3, handPadX = 0.14, handGap = 0.08;
+        var handBadgeW = handPadX*2 + handIconW + handGap + handTextW;
+        var handBadgeX = rowCursorX;
+        roundRect(ctx, handBadgeX, pillY, handBadgeW, pillH, pillH/2, '#F4F4F5');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        setFont(ctx, PT(17), {italic:false});
+        ctx.fillText(handIcon, IN(handBadgeX + handPadX + handIconW/2), IN(pillY + pillH/2) + 1);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = dimHex;
+        setFont(ctx, PT(12), {bold:true, italic:false});
+        ctx.fillText(handLabel, IN(handBadgeX + handPadX + handIconW + handGap), IN(pillY + pillH/2));
+        ctx.textBaseline = 'top';
+        rowCursorX = handBadgeX + handBadgeW + 0.14;
+      }
+
+      // ---- tipo de jugadora: iconos pequeños en la misma línea que altura/posición y mano ----
+      var playerTypesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+      if(playerTypesArr.length){
+        var typeDia = pillH, typeGap = 0.08, typeTx = rowCursorX;
+        PLAYER_TYPE_ORDER.forEach(function(t){
+          if(playerTypesArr.indexOf(t) === -1) return;
+          roundRect(ctx, typeTx, pillY, typeDia, typeDia, typeDia/2, '#F4F4F5');
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          setFont(ctx, PT(16), {italic:false});
+          ctx.fillText(PLAYER_TYPE_ICONS[t], IN(typeTx + typeDia/2), IN(pillY + typeDia/2) + 1);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          typeTx += typeDia + typeGap;
+        });
+      }
+
+      // ---- medidores (barra en vez de semáforo de puntos), en rejilla 2x2 para caber
+      // importancia / amenaza de tiro / clutch / temple sin ocupar más espacio vertical ----
       var meterY = 1.32;
+      var meterColGap = 0.18;
+      var meterColW = (cW - meterColGap) / 2;
+      var meterCol2X = cx0 + meterColW + meterColGap;
       var levelColors = [dangerHex, warnHex, goodHex];
-      function meter(caption, activeIndex, y){
+      function meter(caption, activeIndex, x, y, w){
         ctx.fillStyle = '#6B6F76';
-        setFont(ctx, PT(10), {bold:true, italic:false});
-        ctx.fillText(caption, IN(cx0), IN(y));
-        var barY = y + 0.19, barH = 0.13;
-        roundRect(ctx, cx0, barY, cW, barH, barH/2, '#E9E9EC');
+        setFont(ctx, PT(9.5), {bold:true, italic:false});
+        ctx.fillText(caption, IN(x), IN(y));
+        var barY = y + 0.18, barH = 0.12;
+        roundRect(ctx, x, barY, w, barH, barH/2, '#E9E9EC');
         var fillRatio = (3 - activeIndex) / 3;
         if(fillRatio > 0.02){
-          roundRect(ctx, cx0, barY, cW * fillRatio, barH, barH/2, levelColors[activeIndex]);
+          roundRect(ctx, x, barY, w * fillRatio, barH, barH/2, levelColors[activeIndex]);
         }
       }
       var threatActive = p.threat === 'alta' ? 0 : (p.threat === 'baja' ? 2 : 1);
       var shootActive = p.shootThreat === 'rojo' ? 0 : (p.shootThreat === 'verde' ? 2 : 1);
-      meter(L.threatTotalBadge.replace(':', '').trim(), threatActive, meterY);
-      meter(L.threatShotBadge.replace(':', '').trim(), shootActive, meterY + 0.38);
+      var clutchActive = p.clutch === 'rojo' ? 0 : (p.clutch === 'verde' ? 2 : 1);
+      var templeActive = p.temple === 'rojo' ? 0 : (p.temple === 'verde' ? 2 : 1);
+      meter(L.threatTotalBadge.replace(':', '').trim(), threatActive, cx0, meterY, meterColW);
+      meter(L.threatShotBadge.replace(':', '').trim(), shootActive, meterCol2X, meterY, meterColW);
+      meter(L.clutchBadge.replace(':', '').trim(), clutchActive, cx0, meterY + 0.34, meterColW);
+      meter(L.templeBadge.replace(':', '').trim(), templeActive, meterCol2X, meterY + 0.34, meterColW);
 
-      // ---- estadísticas como tarjetas/chips ----
+      // ---- estadísticas como línea de marcador (estilo "20' – 2 pts – 6 FG (2 3P/20%) –
+      // FT 50% (25/50) – 4 Reb (1 Off) – 5 Ast"), con la posibilidad de resaltar un tramo ----
       var statsBlock = (item.stats && item.stats[0]) || null;
-      var statsY = meterY + 0.78;
+      var statsY = meterY + 0.68;
+      var statsLineH = 0.4;
       if(statsBlock){
         var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : String(v); };
-        function statChips(y, h, items, valSize, labSize){
-          var gap = 0.07, w = (cW - gap*(items.length-1)) / items.length;
-          items.forEach(function(it, i){
-            var x = cx0 + i*(w+gap);
-            roundRect(ctx, x, y, w, h, 0.08, '#F4F4F5');
-            ctx.fillStyle = inkHex;
-            setFont(ctx, PT(valSize), {bold:true, italic:false});
-            ctx.textAlign = 'center';
-            ctx.fillText(it.v, IN(x + w/2), IN(y + 0.06));
-            ctx.fillStyle = dimHex;
-            setFont(ctx, PT(labSize), {bold:false, italic:false});
-            ctx.fillText(it.l, IN(x + w/2), IN(y + h - labSize/72 - 0.05));
-            ctx.textAlign = 'left';
+        var hi = p.highlightStat || '';
+        var segments = [
+          { key: 'minutes', text: sv('minutes') + '’ ' },
+          { key: null, text: '– ' },
+          { key: 'pts', text: sv('pts') + ' pts ' },
+          { key: null, text: '– ' },
+          { key: 'fg', text: sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) ' },
+          { key: null, text: '– ' },
+          { key: 'ft', text: 'FT ' + sv('ftPct') + '% (' + sv('ftMade') + '/' + sv('ftAtt') + ') ' },
+          { key: null, text: '– ' },
+          { key: 'reb', text: sv('reb') + ' Reb (' + sv('offReb') + ' Off) ' },
+          { key: null, text: '– ' },
+          { key: 'ast', text: sv('ast') + ' Ast' }
+        ];
+        function measureSegments(size){
+          var w = 0;
+          segments.forEach(function(seg){
+            var isHi = seg.key && seg.key === hi;
+            setFont(ctx, PT(size), {bold: isHi, italic: !isHi});
+            w += ctx.measureText(seg.text).width;
           });
+          return w;
         }
-        statChips(statsY, 0.48, [
-          {v: sv('minutes') + '’', l: 'MIN'},
-          {v: sv('pts'), l: 'PTS'},
-          {v: sv('reb'), l: 'REB'},
-          {v: sv('ast'), l: 'AST'}
-        ], 20, 9);
-        statChips(statsY + 0.53, 0.38, [
-          {v: sv('fga'), l: 'TC'},
-          {v: sv('threeAtt') + ' (' + sv('threePct') + '%)', l: '3PT'},
-          {v: sv('ftPct') + '%', l: 'TL'},
-          {v: sv('offReb'), l: 'REB OF'}
-        ], 14, 8);
+        var statsFontSize = 16.5;
+        while(statsFontSize > 9 && measureSegments(statsFontSize) > IN(cW)){ statsFontSize -= 0.5; }
+        var sx = IN(cx0);
+        var statsBaselineY = statsY + (statsLineH - statsFontSize / 72) / 2;
+        segments.forEach(function(seg){
+          var isHi = seg.key && seg.key === hi;
+          setFont(ctx, PT(statsFontSize), {bold: isHi, italic: !isHi});
+          ctx.fillStyle = isHi ? accentDeepHex : inkHex;
+          ctx.fillText(seg.text, sx, IN(statsBaselineY));
+          sx += ctx.measureText(seg.text).width;
+        });
         if(statsBlock.competition){
           var caveat = '*' + statsBlock.competition + ' — ' + (lang === 'en' ? 'season average' : 'media de la temporada');
           ctx.fillStyle = caveatHex;
           setFont(ctx, PT(8.5), {italic:true});
-          ctx.fillText(caveat, IN(cx0), IN(statsY + 0.99));
+          ctx.fillText(caveat, IN(cx0), IN(statsY + statsLineH + 0.03));
         }
       } else {
         roundRect(ctx, cx0, statsY, cW, 0.42, 0.08, '#F4F4F5');
@@ -4137,55 +4289,70 @@
         ctx.textAlign = 'center';
         ctx.fillText(L.noStats, IN(cx0 + cW/2), IN(statsY + 0.13));
         ctx.textAlign = 'left';
+        statsLineH = 0.42;
       }
 
-      // ---- fortalezas / debilidades / cómo defenderla, como tarjetas con barra de color ----
-      var noteAreaTop = statsY + (statsBlock ? 1.24 : 0.56);
+      // ---- fortalezas / qué queremos que pase (en columnas, para relacionarlas) / cómo
+      // defenderla (fila completa debajo, para instrucciones defensivas específicas) ----
+      var noteAreaTop = statsY + statsLineH + (statsBlock && statsBlock.competition ? 0.36 : 0.18);
       var noteAreaBottom = Hin - 0.16;
       var noteAvail = Math.max(noteAreaBottom - noteAreaTop, 0.6);
-      var noteMaxWidthPx = IN(cW - 0.28);
-      var noteCards = [
-        { label: L.strengths, color: goodHex, value: (p.strengths || '').trim() || '—' },
-        { label: L.weaknesses, color: warnHex, value: (p.weaknesses || '').trim() || '—' },
-        { label: L.defend, color: accentDeepHex, value: (p.defend || '').trim() || '—' }
-      ];
       var CARD_CHROME = 0.27, CARD_GAP = 0.07, CARD_LABEL_H = 0.22;
-      // reduce el tamaño de letra de las notas hasta que las 3 tarjetas quepan en el hueco disponible
+      // Fortalezas y "qué queremos que pase" van en dos columnas, una junto a la otra, para que
+      // se puedan relacionar de un vistazo (p.ej. fortaleza "shooter" -> qué queremos que pase
+      // "que bote y vaya para dentro"); cómo defenderla va como fila completa debajo, por si hay
+      // alguna instrucción defensiva específica más larga.
+      var noteColGap = 0.14;
+      var noteColW = (cW - noteColGap) / 2;
+      var noteColWidthPx = IN(noteColW - 0.28);
+      var noteFullWidthPx = IN(cW - 0.28);
+      var colCards = [
+        { label: L.strengths, color: goodHex, value: (p.strengths || '').trim() || '—' },
+        { label: L.weaknesses, color: warnHex, value: (p.weaknesses || '').trim() || '—' }
+      ];
+      var fullCard = { label: L.defend, color: accentDeepHex, value: (p.defend || '').trim() || '—' };
+      // reduce el tamaño de letra de las notas hasta que quepan en el hueco disponible. Antes se
+      // paraba en 9pt aunque no cupiese (podía desbordar por debajo del lienzo con texto muy
+      // largo); ahora sigue probando tamaños más pequeños y, si aun así ninguno cabe del todo, se
+      // queda con el que menos se desborda en vez de con el último probado.
       var noteFontSize = 13;
-      var fitted = null;
-      while(true){
+      var fitted = null; var bestSoFar = null;
+      while(noteFontSize >= 6){
         setFont(ctx, PT(noteFontSize), {italic:false});
         var lineHIn = (noteFontSize * 1.24) / 72;
-        var total = 0;
-        var linesByCard = noteCards.map(function(c){
-          var lines = wrapLines(ctx, c.value, noteMaxWidthPx);
-          var cardH = CARD_CHROME + lines.length * lineHIn;
-          total += cardH + CARD_GAP;
-          return { lines: lines, cardH: cardH };
+        var colLines = colCards.map(function(c){
+          var lines = wrapLines(ctx, c.value, noteColWidthPx);
+          return { lines: lines, cardH: CARD_CHROME + lines.length * lineHIn };
         });
-        total -= CARD_GAP;
-        if(total <= noteAvail || noteFontSize <= 9){
-          fitted = { fontSize: noteFontSize, lineHIn: lineHIn, cards: linesByCard };
-          break;
-        }
+        var colRowH = Math.max(colLines[0].cardH, colLines[1].cardH);
+        var fullLines = wrapLines(ctx, fullCard.value, noteFullWidthPx);
+        var fullCardH = CARD_CHROME + fullLines.length * lineHIn;
+        var total = colRowH + CARD_GAP + fullCardH;
+        var candidate = { fontSize: noteFontSize, lineHIn: lineHIn, colLines: colLines, colRowH: colRowH, fullLines: fullLines, fullCardH: fullCardH, total: total };
+        if(!bestSoFar || total < bestSoFar.total) bestSoFar = candidate;
+        if(total <= noteAvail){ fitted = candidate; break; }
         noteFontSize -= 0.5;
       }
-      var noteActualTotal = fitted.cards.reduce(function(sum, c){ return sum + c.cardH + CARD_GAP; }, 0) - CARD_GAP;
-      var noteSlack = Math.max(noteAvail - noteActualTotal, 0);
+      if(!fitted) fitted = bestSoFar;
+      var noteSlack = Math.max(noteAvail - fitted.total, 0);
       var noteY = noteAreaTop + Math.min(noteSlack / 2, 0.5);
-      noteCards.forEach(function(c, idx){
-        var info = fitted.cards[idx];
-        roundRect(ctx, cx0, noteY, cW, info.cardH, 0.08, '#FAFAFA');
-        rect(ctx, cx0, noteY, 0.06, info.cardH, c.color);
-        ctx.fillStyle = c.color;
+      function drawNoteCard(x, y, w, h, label, color, lines){
+        roundRect(ctx, x, y, w, h, 0.08, '#FAFAFA');
+        rect(ctx, x, y, 0.06, h, color);
+        ctx.fillStyle = color;
         setFont(ctx, PT(11.5), {bold:true, italic:false});
-        ctx.fillText(c.label.toUpperCase(), IN(cx0 + 0.2), IN(noteY + 0.09));
+        ctx.fillText(label.toUpperCase(), IN(x + 0.2), IN(y + 0.09));
         ctx.fillStyle = noteInkHex;
         setFont(ctx, PT(fitted.fontSize), {italic:false});
-        var ly = noteY + CARD_LABEL_H + 0.06;
-        info.lines.forEach(function(l){ ctx.fillText(l, IN(cx0 + 0.2), IN(ly)); ly += fitted.lineHIn; });
-        noteY += info.cardH + CARD_GAP;
+        var ly = y + CARD_LABEL_H + 0.06;
+        lines.forEach(function(l){ ctx.fillText(l, IN(x + 0.2), IN(ly)); ly += fitted.lineHIn; });
+      }
+      colCards.forEach(function(c, idx){
+        var cx = cx0 + idx * (noteColW + noteColGap);
+        drawNoteCard(cx, noteY, noteColW, fitted.colRowH, c.label, c.color, fitted.colLines[idx].lines);
       });
+      var defendY = noteY + fitted.colRowH + CARD_GAP;
+      drawNoteCard(cx0, defendY, cW, fitted.fullCardH, fullCard.label, fullCard.color, fitted.fullLines);
     }
 
     var sorted = rosterJoined.slice().sort(function(a,b){
