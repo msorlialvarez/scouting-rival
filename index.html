@@ -542,10 +542,12 @@
       <div class="panel-head">
         <h2>Plantilla rival</h2>
         <div style="display:flex; gap:.5rem;">
+          <button class="btn-add" id="btnRepairFebPhotos" type="button" hidden>Reparar fotos FEB</button>
           <button class="btn-add" id="btnToggleFebImport" type="button">Importar desde FEB</button>
           <button class="btn-add" id="btnTogglePicker" type="button">+ Añadir jugadora</button>
         </div>
       </div>
+      <p class="empty-hint" id="febRepairMsg" hidden style="margin:0 0 .8rem;"></p>
       <div class="add-picker" id="febImportPanel">
         <p class="empty-hint" style="margin:0;">
           1) Abre la página del equipo en feb.es en otra pestaña. 2) Selecciona la tabla de la plantilla (puedes seleccionar toda la página con Ctrl+A / Cmd+A). 3) Cópiala (Ctrl+C / Cmd+C). 4) Pégala aquí abajo (Ctrl+V / Cmd+V).
@@ -1875,6 +1877,7 @@
     $('#btnToggleFebImport').addEventListener('click', toggleFebImport);
     $('#btnFebImportFetch').addEventListener('click', parseFebPastedContent);
     $('#btnFebImportConfirm').addEventListener('click', confirmFebImport);
+    $('#btnRepairFebPhotos').addEventListener('click', repairFebPhotos);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
     $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
@@ -2278,6 +2281,69 @@
       if(p) wirePlayerCard(r.playerId, 'roster', r.id); else wireOrphanCard(r.id);
     });
     restoreFocus(grid, focus);
+    updateRepairFebPhotosButton();
+  }
+
+  // ---------------- Reparar fotos de jugadoras importadas de la FEB ----------------
+  // Una jugadora importada de la FEB antes de que existiera la conversion
+  // automatica (o cuya foto no se consiguio convertir en su momento) se queda
+  // con la foto guardada como un enlace externo en vez de como los datos de la
+  // imagen — se ve bien en la app pero no sale en el PDF. Este botón vuelve a
+  // intentar la descarga+conversion para esos casos concretos, sin tener que
+  // volver a importar (lo que duplicaria a las jugadoras) ni subir nada a mano.
+  function rosterPlayersWithExternalPhoto(){
+    return state.roster.map(function(r){
+      return state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
+    }).filter(function(p){ return p && p.photo && /^https?:\/\//i.test(p.photo); });
+  }
+  function updateRepairFebPhotosButton(){
+    var btn = $('#btnRepairFebPhotos');
+    if(!btn) return;
+    var pending = rosterPlayersWithExternalPhoto();
+    btn.hidden = pending.length === 0;
+    if(!btn.disabled) btn.textContent = 'Reparar fotos FEB (' + pending.length + ')';
+  }
+  function repairFebPhotos(){
+    var pending = rosterPlayersWithExternalPhoto();
+    if(!pending.length || !db) return;
+    var btn = $('#btnRepairFebPhotos');
+    var msg = $('#febRepairMsg');
+    btn.disabled = true;
+    btn.textContent = 'Reparando fotos…';
+    msg.hidden = true;
+    var fixed = 0;
+    var chain = Promise.resolve();
+    pending.forEach(function(p){
+      chain = chain.then(function(){
+        return fetchFebPhotoAsDataUri(p.photo).then(function(dataUri){
+          if(!dataUri) return;
+          fixed++;
+          return playerRef(p.id).update({photo: dataUri, updatedAt: nowIso()});
+        });
+      });
+    });
+    chain.then(function(){
+      btn.disabled = false;
+      msg.hidden = false;
+      if(fixed === pending.length){
+        msg.style.color = 'var(--good)';
+        msg.textContent = 'Listo: se han reparado las ' + fixed + ' fotos. Ya deberían salir en el PDF.';
+      } else if(fixed > 0){
+        msg.style.color = 'var(--warn)';
+        msg.textContent = 'Se han reparado ' + fixed + ' de ' + pending.length + ' fotos. Las que quedan siguen bloqueadas por la FEB (revisa la consola para más detalle) — se quedan como estaban, visibles en la app pero no en el PDF.';
+      } else {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = 'No se ha podido reparar ninguna foto — la FEB las sigue bloqueando incluso por el segundo camino. Revisa la consola (avisos "[FEB foto]") para ver el detalle.';
+      }
+      updateRepairFebPhotosButton();
+    }).catch(function(err){
+      btn.disabled = false;
+      console.error('repair feb photos', err);
+      msg.hidden = false;
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'Algo ha fallado reparando las fotos: ' + (err && err.message ? err.message : err);
+      updateRepairFebPhotosButton();
+    });
   }
 
   function orphanCardHtml(r){
