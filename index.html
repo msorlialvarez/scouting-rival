@@ -54,6 +54,7 @@
   .app[hidden]{ display:none; }
   .topbar[hidden]{ display:none; }
   .empty-state[hidden]{ display:none; }
+  .mode-toggle[hidden]{ display:none; }
 
   /* ---------- Sidebar ---------- */
   .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:100vh; }
@@ -527,7 +528,7 @@
         <button class="btn-export" id="btnExportPlayersPdf" type="button">Informe Jugadoras</button>
         <button class="btn-export" id="btnExportPptx" type="button">Portadas Scouting</button>
         <span class="export-error" id="teamExportError"></span>
-        <div class="mode-toggle" id="modeToggle">
+        <div class="mode-toggle" id="modeToggle" hidden>
           <button type="button" data-mode="prep" class="active">Preparación</button>
           <button type="button" data-mode="game">Partido</button>
         </div>
@@ -713,7 +714,10 @@
   var SHOOT_COLOR_VAR = {rojo:'--danger', amarillo:'--warn', verde:'--good'};
   var STAT_FIELDS = [
     {key:'pts', label:'Pts/p'}, {key:'fgPct', label:'% T2'}, {key:'threePct', label:'% T3'},
-    {key:'ftPct', label:'% TL'}, {key:'reb', label:'Reb/p'}, {key:'ast', label:'Ast/p'}, {key:'to', label:'Pérd/p'}
+    {key:'ftPct', label:'% TL'}, {key:'reb', label:'Reb/p'}, {key:'ast', label:'Ast/p'}, {key:'to', label:'Pérd/p'},
+    // Añadidos para poder componer la línea de marcador estilo "20' – 10 pts – 6 FG (3 3P/30%) –
+    // FT 87% – 5 Reb (1 Off) – 2 Ast" de la plantilla de PowerPoint de Marta (buildScoutingPptx).
+    {key:'minutes', label:'Min/p'}, {key:'fga', label:'Tiros/p'}, {key:'threeAtt', label:'Triples/p'}, {key:'offReb', label:'RebOf/p'}
   ];
   var MAX_PHOTO_CHARS = 150000;
   // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it —
@@ -2290,17 +2294,16 @@
   }
 
   // ---------------- Reparar fotos de jugadoras importadas de la FEB ----------------
-  // Una jugadora importada de la FEB antes de que existiera la conversion
-  // automatica (o cuya foto no se consiguio convertir en su momento, o se
-  // recorto mal) se queda con la foto sin arreglar del todo. Este botón vuelve
-  // a intentar la descarga+recorte desde el enlace original de la FEB (guardado
-  // aparte en "photoSourceUrl" precisamente para poder repetir este paso más
-  // adelante si hace falta ajustar el recorte), sin tener que volver a
-  // importar (lo que duplicaria a las jugadoras) ni subir nada a mano.
+  // Solo aparece cuando de verdad hay algo pendiente: una jugadora importada
+  // cuya foto se quedo sin convertir (se nota porque "photo" sigue siendo un
+  // enlace externo en vez de la imagen ya lista). Se guarda aparte el enlace
+  // original ("photoSourceUrl") para poder reintentarlo sin tener que volver a
+  // importar (lo que duplicaria a las jugadoras) ni subir nada a mano. En
+  // cuanto no quede ninguna pendiente, el botón se oculta solo.
   function rosterPlayersToRepairFebPhoto(){
     return state.roster.map(function(r){
       return state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
-    }).filter(function(p){ return p && (p.photoSourceUrl || (p.photo && /^https?:\/\//i.test(p.photo))); });
+    }).filter(function(p){ return p && p.photo && /^https?:\/\//i.test(p.photo); });
   }
   function updateRepairFebPhotosButton(){
     var btn = $('#btnRepairFebPhotos');
@@ -3673,18 +3676,45 @@
     function threatHex(t){ return t === 'alta' ? dangerHex : (t === 'baja' ? goodHex : warnHex); }
     function shootHex(s){ return s === 'rojo' ? dangerHex : (s === 'verde' ? goodHex : warnHex); }
 
-    // Decorative diagonal accent — a rotated, semi-opaque rival-colour band placed behind the
-    // crest/photo corners (never behind body text). Mirrors the bold-but-mostly-white look of
-    // the two real example decks Marta sent (subtle white canvas, one confident colour accent).
-    function accentSwoosh(target, x, y, w, h, rot){
-      target.addShape('rect', { x:x, y:y, w:w, h:h, rotate:rot, fill:{color: accentHex, transparency:40}, line:{type:'none'} });
+    // Bloque de cuadrados rosas — medido directamente de la plantilla real de Marta
+    // (Plantilla_Scouting_Individual.pptx: una franja fina a la izquierda + un grupo de
+    // cuadrados abajo a la derecha en la portada, y un grupo más pequeño abajo a la derecha
+    // en cada slide de jugadora), con los tonos calculados a partir del color del informe de
+    // cada rival en vez de fijos, para que cada rival salga en "su" color.
+    function mixWhite(hex, ratio){
+      hex = hexNoHash(hex || DEFAULT_COLOR);
+      var r = parseInt(hex.substr(0,2),16) || 0, g = parseInt(hex.substr(2,2),16) || 0, b = parseInt(hex.substr(4,2),16) || 0;
+      function mix(c){ return Math.round(c + (255 - c) * ratio); }
+      function h2(n){ var s = n.toString(16).toUpperCase(); return s.length < 2 ? '0' + s : s; }
+      return h2(mix(r)) + h2(mix(g)) + h2(mix(b));
+    }
+    var shadeMid = accentHex, shadeLight = mixWhite(accentHex, 0.35), shadeLighter = mixWhite(accentHex, 0.62), shadeNeutral = 'EEEEEE';
+    function checkerRect(target, x, y, w, h, color){
+      target.addShape('rect', { x:x, y:y, w:w, h:h, fill:{color:color}, line:{type:'none'} });
+    }
+    // Portada: franja fina a lo largo del borde izquierdo (6 bloques, simétrica) + grupo de
+    // 4 piezas abajo a la derecha.
+    function drawCoverChecker(target){
+      var stripX = 0, stripW = 0.207;
+      [[0.002,0.937,shadeLighter],[0.940,0.893,shadeLight],[1.834,0.893,shadeMid],
+       [2.898,0.893,shadeMid],[3.792,0.893,shadeLight],[4.685,0.937,shadeLighter]
+      ].forEach(function(b){ checkerRect(target, stripX, b[0], stripW, b[1], b[2]); });
+      checkerRect(target, 8.688, 4.685, 1.312, 0.937, shadeLight);
+      checkerRect(target, 8.688, 3.748, 1.312, 0.937, shadeMid);
+      checkerRect(target, 7.376, 4.680, 1.312, 0.937, shadeLighter);
+      checkerRect(target, 8.688, 3.657, 1.312, 0.176, shadeNeutral);
+    }
+    // Slide de jugadora: solo el grupo pequeño abajo a la derecha (3 piezas).
+    function drawPlayerChecker(target){
+      checkerRect(target, 9.220, 4.688, 0.780, 0.937, shadeLight);
+      checkerRect(target, 9.220, 3.750, 0.780, 0.937, shadeLighter);
+      checkerRect(target, 8.440, 4.688, 0.780, 0.937, shadeMid);
     }
 
     // ---- Cover slide ----
     var cover = pptx.addSlide();
     cover.background = { color: 'FFFFFF' };
-    accentSwoosh(cover, 6.6, -1.6, 5.4, 2.6, 18);
-    accentSwoosh(cover, -2.6, 4.2, 6.2, 2.3, -14);
+    drawCoverChecker(cover);
     if(rival.logo){
       try{ cover.addImage({ data: rival.logo, x:7.05, y:0.35, w:2.35, h:2.35 }); }
       catch(e){ console.error('pptx cover logo', e); }
@@ -3695,7 +3725,9 @@
     var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
     cover.addText(metaLine, { x:0.62, y:2.8, w:6.3, h:0.5, fontSize:16, italic:true, color: dimHex, fontFace: FONT_LIGHT, valign:'middle' });
     if(compLogo){
-      try{ cover.addImage({ data: compLogo, x:5.9, y:4.49, w:3.26, h:0.82, sizing:{ type:'contain', w:3.26, h:0.82 } }); }
+      // Abajo a la izquierda (como en la plantilla), para no quedar debajo del grupo de
+      // cuadrados que ahora ocupa la esquina inferior derecha.
+      try{ cover.addImage({ data: compLogo, x:0.78, y:4.55, w:4.2, h:0.85, sizing:{ type:'contain', w:4.2, h:0.85 } }); }
       catch(e){ console.error('pptx cover comp logo', e); }
     }
 
@@ -3711,11 +3743,7 @@
       var p = item.player;
       var slide = pptx.addSlide();
       slide.background = { color: 'FFFFFF' };
-      // Diagonal accents, per Marta's own mock-up: a bigger sweep behind the photo (pushed
-      // further into the corner), the crest one unchanged, and a third echo at bottom-left.
-      accentSwoosh(slide, -4.57, -1.09, 4.85, 4.48, 16);
-      accentSwoosh(slide, 7.6, -1.31, 4.4, 3.2, -16);
-      accentSwoosh(slide, -1.62, 5.11, 4.85, 4.48, 16);
+      drawPlayerChecker(slide);
 
       var photoX = 0.78, photoY = 0.49, photoW = 1.75, photoH = 2.18;
       // Thin white frame behind the photo for a clean, printed-card feel against the accent.
@@ -3736,7 +3764,12 @@
       var textX = 2.85, textW = 4.2;
       var numLabel = (item.number !== undefined && item.number !== null && item.number !== '') ? ('#' + item.number + '  ') : '';
       var surname = (p.lastName && p.lastName.trim()) ? p.lastName.trim() : (fullName(p) || L.noName);
-      slide.addText(numLabel + surname.toUpperCase(), { x:textX, y:0.4, w:textW, h:0.62, fontSize:31, bold:true, italic:true, color: inkHex, fontFace: FONT_BOLD, valign:'top' });
+      var nameStr = numLabel + surname.toUpperCase();
+      // Un apellido largo (p.ej. "SÁNCHEZ-RAMOS") no cabe en una línea a 31pt y al partirse en
+      // dos se comía la línea de altura/posición de justo debajo — se reduce el tamaño según
+      // la longitud del texto en vez de dejarlo partirse.
+      var nameFontSize = nameStr.length > 20 ? 20 : (nameStr.length > 13 ? 24 : 31);
+      slide.addText(nameStr, { x:textX, y:0.4, w:textW, h:0.62, fontSize:nameFontSize, bold:true, italic:true, color: inkHex, fontFace: FONT_BOLD, valign:'top' });
       var subLine = [formatHeight(p.height), positionAbbr(p.position)].filter(Boolean).join(' / ');
       slide.addText(subLine || L.positionHandUnspecified, { x:textX, y:1.06, w:textW, h:0.4, fontSize:20, italic:true, color: inkHex, fontFace: FONT_LIGHT });
 
@@ -3759,21 +3792,23 @@
       trafficLight(L.threatShotBadge.replace(':', '').trim(), shootActive, textX + 2.1, 1.58);
 
       var statsBlock = (item.stats && item.stats[0]) || null;
-      var pptxKeyStats = ['pts', 'reb', 'ast', 'threePct', 'fgPct'];
+      // Línea de marcador estilo la plantilla: "20' – 10 pts – 6 FG (3 3P/30%) – FT 87% –
+      // 5 Reb (1 Off) – 2 Ast". Las etiquetas van siempre en inglés (pts/FG/3P/FT/Reb/Off/Ast),
+      // igual que en la plantilla original, sea cual sea el idioma del informe.
       var statsText;
       if(statsBlock){
-        statsText = pptxKeyStats.map(function(k){
-          var v = statsBlock[k];
-          var field = STAT_FIELDS.filter(function(f){ return f.key === k; })[0];
-          return (L.statLabels[k] || (field && field.label) || k) + ' ' + ((v === undefined || v === null || v === '') ? '—' : v);
-        }).join('  –  ');
+        var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : v; };
+        statsText = sv('minutes') + '’ – ' + sv('pts') + ' pts – ' + sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) – FT ' + sv('ftPct') + '% – ' + sv('reb') + ' Reb (' + sv('offReb') + ' Off) – ' + sv('ast') + ' Ast';
       } else {
         statsText = L.noStats;
       }
-      slide.addText(statsText, { x:textX, y:2.1, w:6.35, h:0.42, fontSize:17, italic:true, color: inkHex, fontFace: FONT_MEDIUM, valign:'top' });
+      // Tamaño reducido respecto al de antes: el marcador nuevo (con minutos, tiros y
+      // rebotes ofensivos) es una frase más larga que la anterior y a 17pt podía ocupar
+      // dos líneas y pisar la línea de "*competición" de justo debajo.
+      slide.addText(statsText, { x:textX, y:2.1, w:6.35, h:0.55, fontSize:14, italic:true, color: inkHex, fontFace: FONT_MEDIUM, valign:'top' });
       if(statsBlock && statsBlock.competition){
         var caveat = '*' + statsBlock.competition + ' — ' + (lang === 'en' ? 'season average' : 'media de la temporada');
-        slide.addText(caveat, { x:textX, y:2.53, w:6.35, h:0.24, fontSize:8, italic:true, color: caveatHex, fontFace: FONT_LIGHT });
+        slide.addText(caveat, { x:textX, y:2.72, w:6.35, h:0.24, fontSize:8, italic:true, color: caveatHex, fontFace: FONT_LIGHT });
       }
 
       var strengthsVal = (p.strengths || '').trim() || '—';
@@ -3786,7 +3821,7 @@
         { text: weaknessesVal, options: { breakLine:true } },
         { text: '– ' + L.defend.toUpperCase() + ':  ', options: { bold:true, color: accentHex } },
         { text: defendVal, options: { breakLine:true } }
-      ], { x:0.78, y:2.9, w:8.43, h:1.8, fontSize:15, italic:true, color: noteInkHex, fontFace: FONT_MEDIUM, valign:'top', lineSpacingMultiple:1.4 });
+      ], { x:0.78, y:3.05, w:7.5, h:1.65, fontSize:15, italic:true, color: noteInkHex, fontFace: FONT_MEDIUM, valign:'top', lineSpacingMultiple:1.3 });
 
       if(compLogo){
         try{ slide.addImage({ data: compLogo, x:3.5, y:4.85, w:3.0, h:0.6, sizing:{ type:'contain', w:3.0, h:0.6 } }); }
