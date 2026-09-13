@@ -551,6 +551,9 @@
             <option value="en">English</option>
           </select>
         </label>
+        <label class="lang-field" id="exportCompetitionField" hidden><span class="tb-label">Competición</span>
+          <select class="mini-input lang-select" id="exportCompetitionSelect" title="Competición a mostrar en el escudo y las estadísticas de los informes"></select>
+        </label>
         <button class="btn-export" id="btnExportStaffPdf" type="button">Informe Staff</button>
         <button class="btn-export" id="btnExportPlayersPdf" type="button">Informe Jugadoras</button>
         <button class="btn-export" id="btnExportScoutingImages" type="button">Portadas Individuales</button>
@@ -918,7 +921,7 @@
     instatImportOpen: false, instatImportLoading: false, instatImportError: '', instatImportRows: null, instatImportConfirming: false,
     fibaImportOpen: false, fibaImportError: '', fibaImportPlayers: null,
     collapsedSeasons: {}, collapsedComps: {}, collapsedLetters: {},
-    reportLang: 'es', competitionLogos: {},
+    reportLang: 'es', competitionLogos: {}, exportCompetition: '',
     offSourceOptions: [], defSourceOptions: [],
     offSources: [], defSources: [], offSystems: [], attackPlayers: [],
     offEssenceItems: [], defEssenceItems: [],
@@ -1686,6 +1689,43 @@
         saveRivalCompetitions(comps.filter(function(c){ return c !== val; }));
       });
     });
+    renderExportCompetitionSelect();
+  }
+
+  // Un rival con varias competiciones (Liga + EuroLeague Women, etc.) tiene un escudo y unas
+  // estadísticas distintos por competición; sin este selector, los informes/portadas no tenían
+  // forma de saber cuál mostrar y siempre acababan cogiendo la primera que se hubiera añadido.
+  // Con una sola competición (el caso normal) el selector se queda oculto y no cambia nada.
+  function renderExportCompetitionSelect(){
+    var field = $('#exportCompetitionField');
+    var sel = $('#exportCompetitionSelect');
+    if(!field || !sel) return;
+    var comps = rivalCompetitions(state.rival);
+    if(comps.length < 2){
+      field.hidden = true;
+      state.exportCompetition = comps[0] || '';
+      return;
+    }
+    var prevValue = state.exportCompetition;
+    sel.innerHTML = comps.map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
+    var value = (prevValue && comps.indexOf(prevValue) !== -1) ? prevValue : comps[0];
+    sel.value = value;
+    state.exportCompetition = value;
+    field.hidden = false;
+  }
+
+  // Elige, de entre los posibles bloques de estadísticas de una jugadora (uno por
+  // competición), el que corresponde a la competición seleccionada para exportar — o el
+  // primero disponible si no hay selección o ninguno coincide (rival de una sola competición).
+  function pickStatsForExport(statsArr, competition){
+    if(!statsArr || !statsArr.length) return null;
+    if(competition){
+      var wanted = competition.trim().toLowerCase();
+      for(var i=0;i<statsArr.length;i++){
+        if((statsArr[i].competition||'').trim().toLowerCase() === wanted) return statsArr[i];
+      }
+    }
+    return statsArr[0];
   }
 
   function selectRival(id){
@@ -2030,6 +2070,7 @@
     }
     $('#reportLangSelect').addEventListener('change', function(e){ applyLangChange(e.target.value); });
     $('#collLangSelect').addEventListener('change', function(e){ applyLangChange(e.target.value); });
+    $('#exportCompetitionSelect').addEventListener('change', function(e){ state.exportCompetition = e.target.value; });
   }
 
   function triggerBrowserDownload(filename, blob){
@@ -4247,8 +4288,9 @@
   function exportPlayersTeamPdf(){
     var lang = state.reportLang || 'es';
     runTeamExport($('#btnExportPlayersPdf'), 'scouting_jugadoras_', function(rival, rosterJoined){
+      var competition = state.exportCompetition || rivalCompetitions(rival)[0];
       var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
-      drawPlayerFacingReport(doc, rival, rosterJoined, lang);
+      drawPlayerFacingReport(doc, rival, rosterJoined, lang, competition);
       addFooters(doc, lang);
       return doc;
     });
@@ -4512,7 +4554,7 @@
     } catch(e){ return img; }
   }
 
-  function buildScoutingImagesZip(rival, rosterJoined, lang, compLogo){
+  function buildScoutingImagesZip(rival, rosterJoined, lang, compLogo, competition){
     lang = lang || 'es';
     var L = tr(lang);
     var PX = 192; // px por pulgada -> 1920x1080 (16:9), misma proporción que el PowerPoint (10x5.625in)
@@ -4830,7 +4872,7 @@
 
       // ---- estadísticas como línea de marcador (estilo "20' – 2 pts – 6 FG (2 3P/20%) –
       // FT 50% (25/50) – 4 Reb (1 Off) – 5 Ast"), con la posibilidad de resaltar un tramo ----
-      var statsBlock = (item.stats && item.stats[0]) || null;
+      var statsBlock = pickStatsForExport(item.stats, competition);
       var statsY = meterY + 0.68;
       var statsLineH = 0.4;
       if(statsBlock){
@@ -4996,9 +5038,10 @@
     var rival = state.rival || {name: 'Rival'};
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
     gatherRosterJoined().then(function(rosterJoined){
-      var compLogoEntry = findCompetitionLogo(rivalCompetitions(rival)[0]);
-      return buildScoutingImagesZip(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data);
+      var compLogoEntry = findCompetitionLogo(competition);
+      return buildScoutingImagesZip(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data, competition);
     }).then(function(blob){
       return downloadsCap.save({filename: 'imagenes_scouting_' + slug(rival.name) + '.zip', data: blob});
     }).then(function(){ btn.disabled = false; btn.textContent = original; })
@@ -6030,7 +6073,7 @@
     cursor.y = y;
   }
 
-  function drawPlayerFacingReport(doc, rival, rosterJoined, lang){
+  function drawPlayerFacingReport(doc, rival, rosterJoined, lang, competition){
     lang = lang || 'es';
     var L = tr(lang);
     var pageW = 210, pageH = 297, margin = 14;
@@ -6116,7 +6159,7 @@
       doc.setTextColor.apply(doc, textDim);
       doc.text(truncateForWidth(doc, [formatHeight(p.height), translatePosition(lang, p.position), translateHand(lang, p.hand)].filter(Boolean).join(' · '), textMaxW), tx, y + 17.5);
 
-      var statsBlock = (item.stats && item.stats[0]) || null;
+      var statsBlock = pickStatsForExport(item.stats, competition);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.3);
       doc.setTextColor.apply(doc, textInk);
       if(statsBlock){
