@@ -3932,6 +3932,52 @@
     });
   }
 
+  // Muchos logos de competición vienen exportados con un margen de aire alrededor que no se ve
+  // pero cuenta como parte de la imagen: al centrarlos y encajarlos en su hueco (drawContainFit)
+  // ese margen hace que el logo se vea más pequeño de lo necesario y, si el margen no es igual
+  // por los cuatro lados, que se vea descentrado. Esta función recorta ese margen (transparente,
+  // o de color sólido si el logo no tiene canal alfa) antes de dibujarlo, para que ocupe el
+  // máximo posible de su hueco y quede perfectamente centrado en él.
+  function trimImagePadding(img){
+    try{
+      var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if(!w || !h) return img;
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var cctx = c.getContext('2d');
+      cctx.drawImage(img, 0, 0, w, h);
+      var data;
+      try{ data = cctx.getImageData(0, 0, w, h).data; }
+      catch(e){ return img; } // imagen de otro origen sin CORS: no se puede inspeccionar, se usa tal cual
+      var bgR = data[0], bgG = data[1], bgB = data[2], bgA = data[3];
+      var alphaThresh = 10, colorThresh = 14;
+      var minX = w, minY = h, maxX = -1, maxY = -1;
+      for(var y = 0; y < h; y++){
+        for(var x = 0; x < w; x++){
+          var i = (y * w + x) * 4;
+          var a = data[i+3];
+          var isBg = a <= alphaThresh;
+          if(!isBg && bgA > 250){
+            isBg = Math.abs(data[i]-bgR) <= colorThresh && Math.abs(data[i+1]-bgG) <= colorThresh && Math.abs(data[i+2]-bgB) <= colorThresh;
+          }
+          if(!isBg){
+            if(x < minX) minX = x;
+            if(x > maxX) maxX = x;
+            if(y < minY) minY = y;
+            if(y > maxY) maxY = y;
+          }
+        }
+      }
+      if(maxX < minX || maxY < minY) return img; // no se detectó contenido: se usa la imagen tal cual
+      var cw = maxX - minX + 1, ch = maxY - minY + 1;
+      if(cw >= w * 0.98 && ch >= h * 0.98) return img; // apenas había margen, no merece la pena recortar
+      var out = document.createElement('canvas');
+      out.width = cw; out.height = ch;
+      out.getContext('2d').drawImage(c, minX, minY, cw, ch, 0, 0, cw, ch);
+      return out;
+    } catch(e){ return img; }
+  }
+
   function buildScoutingImagesZip(rival, rosterJoined, lang, compLogo){
     lang = lang || 'es';
     var L = tr(lang);
@@ -4072,7 +4118,7 @@
       ctx.fillText(metaLine, IN(0.62), IN(ny + 0.86));
 
       if(compLogoImg){
-        drawContainFit(ctx, compLogoImg, 0.6, 4.35, 4.4, 1.1);
+        drawContainFit(ctx, compLogoImg, 0.6, 4.28, 4.7, 1.27);
       }
     }
 
@@ -4082,8 +4128,10 @@
       ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
 
-      // ---- panel izquierdo: fondo diagonal suave + foto enmarcada (más pequeña, para no pixelar fotos de poca calidad) ----
-      var cutTopX = 4.0, cutBotX = 3.55;
+      // ---- panel izquierdo: fondo diagonal suave + foto enmarcada (más pequeña, para no pixelar fotos de poca calidad).
+      // El corte va más a la izquierda que el ancho real de la foto: al ser esta más pequeña que
+      // el panel de antes, se deja el panel justo, para ganar anchura para la columna de info ----
+      var cutTopX = 3.35, cutBotX = 2.95;
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
@@ -4121,9 +4169,9 @@
       diagBand(cutTopX, 0.13, accentHex);
       diagBand(cutTopX + 0.13, 0.06, shadeLight);
 
-      var compLogoY = photoY + photoH + 0.22, compLogoH = 0.75;
+      var compLogoY = photoY + photoH + 0.18, compLogoH = 0.95;
       if(compLogoImg){
-        drawContainFit(ctx, compLogoImg, 0.3, compLogoY, 3.1, Math.min(compLogoH, Hin - 0.15 - compLogoY));
+        drawContainFit(ctx, compLogoImg, 0.3, compLogoY, 2.7, Math.min(compLogoH, Hin - 0.15 - compLogoY));
       }
 
       // número de dorsal fantasma, más abajo (debajo del logo de competición) para que no quede tapado por la foto
@@ -4141,7 +4189,7 @@
       }
 
       // ---- contenido, a la derecha del corte ----
-      var cx0 = 4.75, cRight = 9.82, cW = cRight - cx0;
+      var cx0 = 4.10, cRight = 9.82, cW = cRight - cx0;
 
       if(rivalLogoImg){
         roundRect(ctx, cRight - 1.05, 0.22, 1.05, 0.85, 0.08, '#F4F4F5');
@@ -4363,7 +4411,8 @@
     });
 
     return Promise.all([loadImageAsync(rival.logo), loadImageAsync(compLogo)]).then(function(loaded){
-      var rivalLogoImg = loaded[0], compLogoImg = loaded[1];
+      var rivalLogoImg = loaded[0];
+      var compLogoImg = loaded[1] ? trimImagePadding(loaded[1]) : loaded[1];
       return Promise.all(sorted.map(function(item){ return loadImageAsync(item.player.photo); })).then(function(photoImgs){
         var zip = new window.JSZip();
         function canvasToPngBlob(canvas){
