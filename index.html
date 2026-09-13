@@ -145,7 +145,6 @@
 
   .empty-state{ flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:.95rem; text-align:center; padding:3rem; }
   .view{ padding:1.5rem 1.6rem 3rem; flex:1; }
-  #collectiveView{ max-width:1040px; }
 
   .panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:1.1rem; gap:1rem; flex-wrap:wrap; }
   .panel-head h2{ font-size:1.05rem; }
@@ -3456,10 +3455,10 @@
     if(!container) return;
     var collName = kind + 'Sources';
 
-    if(!rows.length){
-      container.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">Todavía no hay filas. Añade la primera.</p>';
-      return;
-    }
+    // Sin filas todavía se muestra igualmente una fila vacía y editable (con data-src-id=""),
+    // en vez del aviso de "todavía no hay filas" — así el apartado no parece que falte. Esa
+    // fila no existe de verdad en la base de datos hasta que se escribe algo en ella.
+    var displayRows = rows.length ? rows : [{ id: '', source: '', notes: '', systems: '' }];
 
     function optionsHtml(selected){
       var opts = options.slice();
@@ -3469,7 +3468,7 @@
       }).join('');
     }
 
-    container.innerHTML = rows.map(function(r){
+    container.innerHTML = displayRows.map(function(r){
       return '<div class="src-row" data-src-id="' + esc(r.id) + '">' +
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
@@ -3480,22 +3479,32 @@
 
     container.querySelectorAll('[data-src-field]').forEach(function(el){
       el.addEventListener('change', function(){
-        var id = el.closest('[data-src-id]').getAttribute('data-src-id');
-        var field = el.getAttribute('data-src-field');
+        var row = el.closest('[data-src-id]');
+        var id = row.getAttribute('data-src-id');
         var ref = currentRivalRef();
         if(!ref) return;
+        if(!id){
+          // Fila fantasma: al tocar cualquier campo se crea de verdad, con lo que ya
+          // hubiera en el resto de campos de esa misma fila.
+          var data = { source: '', notes: '', systems: '', order: Date.now() };
+          row.querySelectorAll('[data-src-field]').forEach(function(f){ data[f.getAttribute('data-src-field')] = f.value; });
+          ref.collection(collName).add(data).catch(function(err){ console.error('add src row', err); });
+          return;
+        }
+        var field = el.getAttribute('data-src-field');
         var patch = {}; patch[field] = el.value;
         ref.collection(collName).doc(id).update(patch).catch(function(err){ console.error('save src field', err); });
       });
     });
     container.querySelectorAll('[data-src-del]').forEach(function(btn){
       btn.addEventListener('click', function(){
+        var id = btn.closest('[data-src-id]').getAttribute('data-src-id');
+        if(!id) return; // fila fantasma: todavía no hay nada que borrar
         if(!btn.classList.contains('confirm')){
           btn.classList.add('confirm'); btn.textContent = '¿Seguro?';
           setTimeout(function(){ btn.classList.remove('confirm'); btn.textContent = '✕'; }, 3000);
           return;
         }
-        var id = btn.closest('[data-src-id]').getAttribute('data-src-id');
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete src row', err); });
@@ -3549,11 +3558,12 @@
   function renderOffSystems(){
     var list = $('#offSystemsList');
     if(!list) return;
-    if(!state.offSystems.length){
-      list.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">Todavía no hay sistemas. Añade el primero.</p>';
-      return;
-    }
-    list.innerHTML = state.offSystems.map(function(s){
+    // Sin sistemas todavía se muestra igualmente una tarjeta vacía y editable (con
+    // data-sys-id=""), en vez del aviso de "todavía no hay sistemas" — así el apartado no
+    // parece que falte. Esa tarjeta no existe de verdad en la base de datos hasta que se
+    // escribe algo en ella (nombre, notas o una imagen).
+    var displaySystems = state.offSystems.length ? state.offSystems : [{ id: '', name: '', notes: '', image: '' }];
+    list.innerHTML = displaySystems.map(function(s){
       var imgHtml = s.image
         ? ('<img src="' + s.image + '" alt="">' + '<button type="button" class="sys-img-remove" data-sys-img-remove title="Quitar imagen">✕</button>')
         : ('<span class="sys-img-hint">Sube una captura del sistema (Fastdraw)</span><input type="file" accept="image/*" data-sys-img>');
@@ -3569,9 +3579,22 @@
       '</div>';
     }).join('');
 
+    // Para una tarjeta fantasma (id vacío), cualquiera de estas acciones la crea de verdad
+    // primero, con lo que ya hubiera en el resto de campos de esa misma tarjeta.
+    function createFromCard(card, extra){
+      var data = { name: '', notes: '', image: '', order: Date.now() };
+      card.querySelectorAll('[data-sys-field]').forEach(function(f){ data[f.getAttribute('data-sys-field')] = f.value; });
+      Object.assign(data, extra);
+      var ref = currentRivalRef();
+      if(!ref) return;
+      ref.collection('offSystems').add(data).catch(function(err){ console.error('add system', err); });
+    }
+
     list.querySelectorAll('[data-sys-field]').forEach(function(el){
       el.addEventListener('change', function(){
-        var id = el.closest('[data-sys-id]').getAttribute('data-sys-id');
+        var card = el.closest('[data-sys-id]');
+        var id = card.getAttribute('data-sys-id');
+        if(!id){ createFromCard(card); return; }
         var field = el.getAttribute('data-sys-field');
         var ref = currentRivalRef();
         if(!ref) return;
@@ -3581,12 +3604,13 @@
     });
     list.querySelectorAll('[data-sys-del]').forEach(function(btn){
       btn.addEventListener('click', function(){
+        var id = btn.closest('[data-sys-id]').getAttribute('data-sys-id');
+        if(!id) return; // tarjeta fantasma: todavía no hay nada que borrar
         if(!btn.classList.contains('confirm')){
           btn.classList.add('confirm'); btn.textContent = '¿Seguro?';
           setTimeout(function(){ btn.classList.remove('confirm'); btn.textContent = 'Eliminar'; }, 3000);
           return;
         }
-        var id = btn.closest('[data-sys-id]').getAttribute('data-sys-id');
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection('offSystems').doc(id).delete().catch(function(err){ console.error('delete system', err); });
@@ -3595,10 +3619,12 @@
     list.querySelectorAll('[data-sys-img]').forEach(function(input){
       input.addEventListener('change', function(){
         var file = input.files && input.files[0];
-        var id = input.closest('[data-sys-id]').getAttribute('data-sys-id');
-        if(!file || !id) return;
+        var card = input.closest('[data-sys-id]');
+        var id = card.getAttribute('data-sys-id');
+        if(!file) return;
         processSystemImageFile(file, function(dataUrl){
           if(!dataUrl) return;
+          if(!id){ createFromCard(card, { image: dataUrl }); return; }
           var ref = currentRivalRef();
           if(!ref) return;
           ref.collection('offSystems').doc(id).update({image: dataUrl}).catch(function(err){ console.error('save system image', err); });
@@ -3609,6 +3635,7 @@
       btn.addEventListener('click', function(e){
         e.preventDefault();
         var id = btn.closest('[data-sys-id]').getAttribute('data-sys-id');
+        if(!id) return;
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection('offSystems').doc(id).update({image: ''}).catch(function(err){ console.error('remove system image', err); });
