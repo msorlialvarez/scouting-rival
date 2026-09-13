@@ -2662,6 +2662,19 @@
       return w.charAt(0).toUpperCase() + w.slice(1);
     }).join(' ');
   }
+  // Las fotos de fiba.basketball vienen de Cloudinary con el tamaño final ya fijado en la
+  // propia URL (algo como ".../w_100,h_100,c_fill,g_north/..."), pensado para un avatar
+  // pequeño en su web — si se descarga tal cual y se estira al recuadro de 220x220 que usa
+  // esta app, sale borrosa/pixelada. Como Cloudinary sirve cualquier tamaño con solo cambiar
+  // ese número en la URL (la foto original es mucho más grande), aquí se pide una versión más
+  // grande antes de descargarla, para que el recorte a 220x220 parta de una imagen nítida.
+  function upsizeFibaPhotoUrl(url){
+    if(!url) return url;
+    try{
+      if(url.indexOf('fiba.basketball') === -1) return url;
+      return url.replace(/\/w_\d+,h_\d+,c_fill/, '/w_800,h_800,c_fill');
+    }catch(e){ return url; }
+  }
   function toggleFibaImport(){
     state.fibaImportOpen = !state.fibaImportOpen;
     $('#fibaImportPanel').classList.toggle('open', state.fibaImportOpen);
@@ -2693,10 +2706,11 @@
     var parts = splitFebName(fullName);
     var heightRaw = colMap.height != null && cells[colMap.height] ? cells[colMap.height].textContent.trim() : '';
     var positionRaw = colMap.position != null && cells[colMap.position] ? cells[colMap.position].textContent.trim() : '';
+    var photoUrl = upsizeFibaPhotoUrl(img ? img.src : '');
     return {
       selected: true, firstName: parts.firstName, lastName: parts.lastName,
       position: normalizeFibaPosition(positionRaw), height: parseFibaHeightCm(heightRaw),
-      number: number, photo: img ? img.src : '', photoUrl: img ? img.src : ''
+      number: number, photo: photoUrl, photoUrl: photoUrl
     };
   }
   function parseFibaPastedContent(){
