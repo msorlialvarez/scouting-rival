@@ -168,6 +168,10 @@
   .feb-import-row .feb-avatar img{ width:100%; height:100%; object-fit:cover; }
   .feb-import-list{ display:flex; flex-direction:column; gap:.4rem; max-height:280px; overflow-y:auto; }
   .feb-import-head{ display:grid; grid-template-columns:auto auto 1fr 1fr 5.5rem 3.4rem; gap:.4rem; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); padding:0 .5rem; }
+  #febPasteZone{ min-height:4.5rem; max-height:220px; overflow:auto; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; padding:.6rem .7rem; font-size:.78rem; }
+  #febPasteZone:empty:before{ content:attr(data-placeholder); color:var(--text-dim); }
+  #febPasteZone table{ font-size:.72rem; border-collapse:collapse; }
+  #febPasteZone img{ max-width:32px; max-height:32px; }
 
   /* ---------- Collective scout ---------- */
   .collective-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.4rem; }
@@ -541,9 +545,11 @@
         </div>
       </div>
       <div class="add-picker" id="febImportPanel">
-        <label for="febImportUrl" style="font-size:.72rem; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.03em;">Enlace del equipo en feb.es</label>
-        <input type="text" id="febImportUrl" placeholder="https://www.feb.es/competiciones/equipo/…">
-        <button type="button" class="add-picker-create" id="btnFebImportFetch">Buscar plantilla</button>
+        <p class="empty-hint" style="margin:0;">
+          1) Abre la página del equipo en feb.es en otra pestaña. 2) Selecciona la tabla de la plantilla (puedes seleccionar toda la página con Ctrl+A / Cmd+A). 3) Cópiala (Ctrl+C / Cmd+C). 4) Pégala aquí abajo (Ctrl+V / Cmd+V).
+        </p>
+        <div id="febPasteZone" contenteditable="true" data-placeholder="Pega aquí la plantilla copiada de la FEB…"></div>
+        <button type="button" class="add-picker-create" id="btnFebImportFetch">Leer plantilla pegada</button>
         <p class="empty-hint" id="febImportError" hidden style="color:var(--danger);"></p>
         <div id="febImportResults"></div>
         <button type="button" class="add-picker-create" id="btnFebImportConfirm" hidden>Añadir jugadoras seleccionadas</button>
@@ -836,7 +842,7 @@
   };
 
   function $(sel){ return document.querySelector(sel); }
-  function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function $all(sel, root){ return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -1865,7 +1871,7 @@
     $('#btnTogglePicker').addEventListener('click', toggleAddPicker);
     $('#addPickerSearch').addEventListener('input', renderAddPicker);
     $('#btnToggleFebImport').addEventListener('click', toggleFebImport);
-    $('#btnFebImportFetch').addEventListener('click', fetchFebRoster);
+    $('#btnFebImportFetch').addEventListener('click', parseFebPastedContent);
     $('#btnFebImportConfirm').addEventListener('click', confirmFebImport);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
     $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
@@ -2008,12 +2014,15 @@
   }
 
   // ---------------- Importar plantilla desde la FEB ----------------
-  // Llama a una funcion (Edge Function) de Supabase que descarga la pagina del
-  // equipo rival en feb.es desde el servidor (para saltarse el bloqueo de
-  // CORS que impide pedirla directamente desde el navegador) y la interpreta.
-  // El resultado se muestra editable antes de guardar nada, porque el
-  // reconocimiento del nombre/posicion/altura es por patrones y puede
-  // equivocarse en alguna fila.
+  // La FEB bloquea las peticiones que le llegan desde servidores en la nube
+  // (se probo pedirselo directamente desde una funcion de Supabase, y tambien
+  // a traves de un intermediario publico, y las dos veces corto la conexion),
+  // asi que en vez de eso se lee la tabla directamente en el navegador de la
+  // usuaria: copia la plantilla desde la pagina de la FEB (a un navegador
+  // normal no le bloquean) y la pega en una zona editable de aqui, que se
+  // interpreta igual que se iba a interpretar en el servidor. El resultado
+  // sale editable antes de guardar nada, porque el reconocimiento de
+  // nombre/posicion/altura es por patrones y puede equivocarse en alguna fila.
   function toggleFebImport(){
     state.febImportOpen = !state.febImportOpen;
     $('#febImportPanel').classList.toggle('open', state.febImportOpen);
@@ -2023,8 +2032,8 @@
       $('#febImportError').hidden = true;
       $('#febImportResults').innerHTML = '';
       $('#btnFebImportConfirm').hidden = true;
-      $('#febImportUrl').value = '';
-      $('#febImportUrl').focus();
+      $('#febPasteZone').innerHTML = '';
+      $('#febPasteZone').focus();
     }
   }
   var FEB_POSITION_CANON = ['Base', 'Escolta', 'Alero', 'Ala-pívot', 'Pívot'];
@@ -2037,56 +2046,70 @@
     if(t.indexOf('piv') !== -1 || t.indexOf('pív') !== -1) return 'Pívot';
     return '';
   }
-  function fetchFebRoster(){
-    var url = ($('#febImportUrl').value || '').trim();
-    var btn = $('#btnFebImportFetch');
+  function parseFebHeightCm(raw){
+    if(!raw) return null;
+    var cmMatch = raw.match(/(\d{3})\s*cm/i);
+    if(cmMatch) return parseInt(cmMatch[1], 10);
+    var meterMatch = raw.match(/(\d)[.,](\d{2})\s*m?\b/);
+    if(meterMatch) return parseInt(meterMatch[1] + meterMatch[2], 10);
+    var bare = raw.match(/^(\d{3})$/);
+    if(bare){ var n = parseInt(bare[1], 10); if(n > 140 && n < 230) return n; }
+    return null;
+  }
+  function splitFebName(full){
+    var parts = full.trim().split(/\s+/).filter(Boolean);
+    if(parts.length <= 1) return { firstName: full.trim(), lastName: '' };
+    return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+  }
+  function classifyFebRow(cells, imgSrc){
+    var name = '', number = null, position = '', height = null;
+    for(var i = 0; i < cells.length; i++){
+      var cell = cells[i];
+      if(!cell) continue;
+      if(!position){ var pos = normalizeFebPosition(cell); if(pos){ position = pos; continue; } }
+      if(height === null){ var h = parseFebHeightCm(cell); if(h !== null){ height = h; continue; } }
+      if(number === null && /^\d{1,3}$/.test(cell)){ number = parseInt(cell, 10); continue; }
+      if(!name && /[a-zA-ZÀ-ÿ]{3,}/.test(cell) && /\s/.test(cell)) name = cell;
+    }
+    if(name && (position || height !== null)){
+      var parts = splitFebName(name);
+      return { selected: true, firstName: parts.firstName, lastName: parts.lastName, position: position, height: height, number: number, photo: imgSrc || '' };
+    }
+    return null;
+  }
+  function parseFebPastedContent(){
+    var zone = $('#febPasteZone');
     $('#febImportError').hidden = true;
-    if(!url){ $('#febImportError').hidden = false; $('#febImportError').textContent = 'Pega primero el enlace del equipo.'; return; }
-    btn.disabled = true; btn.textContent = 'Buscando…';
-    supabaseClient.functions.invoke('import-feb-roster', { body: { url: url } }).then(function(res){
-      btn.disabled = false; btn.textContent = 'Buscar plantilla';
-      if(res.error){ throw res.error; }
-      var data = res.data || {};
-      if(data.error){ throw new Error(data.error); }
-      var players = (data.players || []).map(function(p){
-        return {
-          selected: true,
-          firstName: p.firstName || '',
-          lastName: p.lastName || '',
-          position: normalizeFebPosition(p.position),
-          height: p.height || null,
-          number: (p.number === 0 || p.number) ? p.number : null,
-          photo: p.photo || ''
-        };
+    var tables = zone.querySelectorAll('table');
+    if(!tables.length){
+      $('#febImportError').hidden = false;
+      $('#febImportError').textContent = 'No se ha encontrado ninguna tabla en lo pegado. Asegúrate de copiar la tabla de la plantilla tal cual (Ctrl+C / Cmd+C normal, sin "pegar como texto").';
+      return;
+    }
+    var players = [];
+    var seen = {};
+    tables.forEach(function(table){
+      $all('tr', table).forEach(function(row){
+        var cells = $all('td', row).map(function(td){ return (td.textContent || '').replace(/\s+/g, ' ').trim(); });
+        if(cells.length < 2) return;
+        var img = row.querySelector('img');
+        var p = classifyFebRow(cells, img ? img.src : '');
+        if(p){
+          var key = (p.firstName + ' ' + p.lastName).toLowerCase();
+          if(!seen[key]){ seen[key] = true; players.push(p); }
+        }
       });
-      if(!players.length){
-        $('#febImportError').hidden = false;
-        $('#febImportError').textContent = 'No se ha encontrado ninguna jugadora en esa pagina. Puede que la FEB haya cambiado el formato — avisa para revisarlo.';
-        state.febImportPlayers = null;
-        $('#febImportResults').innerHTML = '';
-        $('#btnFebImportConfirm').hidden = true;
-        return;
-      }
-      state.febImportPlayers = players;
-      renderFebImportResults();
-    }).catch(function(err){
-      btn.disabled = false; btn.textContent = 'Buscar plantilla';
-      console.error('import-feb-roster', err);
-      var showErr = function(msg){ $('#febImportError').hidden = false; $('#febImportError').textContent = 'No se pudo importar: ' + msg; };
-      // Cuando la funcion responde con un error, supabase-js solo da un
-      // mensaje generico ("Edge Function returned a non-2xx status code") en
-      // vez del motivo real, que va dentro de err.context (la respuesta HTTP
-      // de la funcion). Lo leemos para poder mostrar el motivo de verdad.
-      if(err && err.context && typeof err.context.json === 'function'){
-        err.context.json().then(function(body){
-          showErr((body && body.error) ? body.error : (err.message || err));
-        }).catch(function(){
-          showErr(err.message || err);
-        });
-      } else {
-        showErr(err && err.message ? err.message : err);
-      }
     });
+    if(!players.length){
+      $('#febImportError').hidden = false;
+      $('#febImportError').textContent = 'Se han encontrado tablas, pero ninguna fila parece una jugadora. Puede que la FEB haya cambiado el formato — avisa para revisarlo.';
+      state.febImportPlayers = null;
+      $('#febImportResults').innerHTML = '';
+      $('#btnFebImportConfirm').hidden = true;
+      return;
+    }
+    state.febImportPlayers = players;
+    renderFebImportResults();
   }
   function renderFebImportResults(){
     var box = $('#febImportResults');
