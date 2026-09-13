@@ -3854,8 +3854,8 @@
     function PT(pt){ return pt * PX / 72; }
 
     var accentHex = '#' + hexNoHash(rival.color);
-    var inkHex = '#000000', noteInkHex = '#0D0D0D', dimHex = '#5B6270', caveatHex = '#8A8A8A';
-    var goodHex = '#1F8A5F', warnHex = '#A56B00', dangerHex = '#C73434';
+    var inkHex = '#0B0B0D', noteInkHex = '#1A1A1D', dimHex = '#5B6270', caveatHex = '#8A8A8A';
+    var goodHex = '#1F8A5F', warnHex = '#B4790A', dangerHex = '#C73434';
 
     function mixWhite(hex, ratio){
       hex = hexNoHash(hex || DEFAULT_COLOR);
@@ -3864,24 +3864,51 @@
       function h2(n){ var s = n.toString(16); return s.length < 2 ? '0' + s : s; }
       return '#' + h2(mix(r)) + h2(mix(g)) + h2(mix(b));
     }
-    var shadeMid = accentHex, shadeLight = mixWhite(accentHex, 0.35), shadeLighter = mixWhite(accentHex, 0.62), shadeNeutral = '#EEEEEE';
+    function mixColor(hexA, hexB, ratio){
+      hexA = hexNoHash(hexA); hexB = hexNoHash(hexB);
+      function ch(hex, i){ return parseInt(hex.substr(i,2),16) || 0; }
+      function h2(n){ var s = Math.round(n).toString(16); return s.length < 2 ? '0' + s : s; }
+      var r = ch(hexA,0) + (ch(hexB,0)-ch(hexA,0)) * ratio;
+      var g = ch(hexA,2) + (ch(hexB,2)-ch(hexA,2)) * ratio;
+      var b = ch(hexA,4) + (ch(hexB,4)-ch(hexA,4)) * ratio;
+      return '#' + h2(r) + h2(g) + h2(b);
+    }
+    // ¿el color del rival es tan claro que el texto blanco no se leería encima? entonces oscurecemos un pelín.
+    function relLuma(hex){
+      hex = hexNoHash(hex);
+      var r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+      return (0.299*r + 0.587*g + 0.114*b) / 255;
+    }
+    var accentDeepHex = relLuma(accentHex) > 0.72 ? mixColor(accentHex, '#000000', 0.35) : accentHex;
+    var shadeLight = mixWhite(accentHex, 0.45), shadeLighter = mixWhite(accentHex, 0.72);
 
     function rect(ctx, x, y, w, h, color){ ctx.fillStyle = color; ctx.fillRect(IN(x), IN(y), IN(w), IN(h)); }
 
-    function drawCoverChecker(ctx){
-      var stripX = 0, stripW = 0.207;
-      [[0.002,0.937,shadeLighter],[0.940,0.893,shadeLight],[1.834,0.893,shadeMid],
-       [2.898,0.893,shadeMid],[3.792,0.893,shadeLight],[4.685,0.937,shadeLighter]
-      ].forEach(function(b){ rect(ctx, stripX, b[0], stripW, b[1], b[2]); });
-      rect(ctx, 8.688, 4.685, 1.312, 0.937, shadeLight);
-      rect(ctx, 8.688, 3.748, 1.312, 0.937, shadeMid);
-      rect(ctx, 7.376, 4.680, 1.312, 0.937, shadeLighter);
-      rect(ctx, 8.688, 3.657, 1.312, 0.176, shadeNeutral);
+    function roundRectPath(ctx, x, y, w, h, r){
+      if(w < 2*r) r = w/2;
+      if(h < 2*r) r = h/2;
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.arcTo(x+w, y, x+w, y+h, r);
+      ctx.arcTo(x+w, y+h, x, y+h, r);
+      ctx.arcTo(x, y+h, x, y, r);
+      ctx.arcTo(x, y, x+w, y, r);
+      ctx.closePath();
     }
-    function drawPlayerChecker(ctx){
-      rect(ctx, 9.220, 4.688, 0.780, 0.937, shadeLight);
-      rect(ctx, 9.220, 3.750, 0.780, 0.937, shadeLighter);
-      rect(ctx, 8.440, 4.688, 0.780, 0.937, shadeMid);
+    function roundRect(ctx, x, y, w, h, r, color){
+      roundRectPath(ctx, IN(x), IN(y), IN(w), IN(h), IN(r));
+      ctx.fillStyle = color; ctx.fill();
+    }
+    function wrapLines(ctx, text, maxWidthPx){
+      var words = String(text||'').split(/\s+/).filter(Boolean);
+      var lines = []; var cur = '';
+      words.forEach(function(w){
+        var test = cur ? cur + ' ' + w : w;
+        if(ctx.measureText(test).width > maxWidthPx && cur){ lines.push(cur); cur = w; }
+        else cur = test;
+      });
+      if(cur) lines.push(cur);
+      return lines;
     }
 
     function drawCoverFit(ctx, img, x, y, w, h){ // "cover": recorta para llenar la caja
@@ -3915,139 +3942,250 @@
     function drawCoverSlide(ctx, rivalLogoImg, compLogoImg){
       ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
-      drawCoverChecker(ctx);
-      if(rivalLogoImg) drawStretch(ctx, rivalLogoImg, 7.05, 0.35, 2.35, 2.35);
 
+      // Panel diagonal de marca a la derecha, con el escudo del rival dentro.
+      var cutTopX = 6.55, cutBotX = 7.15;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(IN(cutTopX), 0); ctx.lineTo(IN(10), 0); ctx.lineTo(IN(10), IN(H/PX)); ctx.lineTo(IN(cutBotX), IN(H/PX));
+      ctx.closePath(); ctx.clip();
+      ctx.fillStyle = accentDeepHex; ctx.fillRect(IN(cutTopX)-4, 0, IN(10)-IN(cutTopX)+8, IN(H/PX));
+      ctx.fillStyle = shadeLight; ctx.fillRect(IN(cutTopX)+IN(2.55), 0, IN(10), IN(H/PX));
+      ctx.fillStyle = shadeLighter; ctx.fillRect(IN(cutTopX)+IN(3.35), 0, IN(10), IN(H/PX));
+      ctx.restore();
+      // línea fina blanca marcando el corte
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = IN(0.035);
+      ctx.beginPath(); ctx.moveTo(IN(cutTopX), 0); ctx.lineTo(IN(cutBotX), IN(H/PX)); ctx.stroke();
+
+      if(rivalLogoImg){
+        var logoBoxX = 7.55, logoBoxW = 2.1;
+        roundRect(ctx, logoBoxX - 0.18, 1.55 - 0.18, logoBoxW + 0.36, logoBoxW + 0.36, 0.14, 'rgba(255,255,255,0.94)');
+        drawContainFit(ctx, rivalLogoImg, logoBoxX, 1.55, logoBoxW, logoBoxW);
+      }
+
+      // Bloque de texto principal, a la izquierda.
+      var nameStr = (rival.name || 'Rival').toUpperCase();
+      var nameSize = nameStr.length > 16 ? 42 : (nameStr.length > 11 ? 50 : 60);
       ctx.fillStyle = inkHex;
-      setFont(ctx, PT(40), {bold:true});
-      ctx.fillText((rival.name || 'Rival').toUpperCase(), IN(0.6), IN(0.85));
+      setFont(ctx, PT(nameSize), {bold:true});
+      var nameLines = wrapLines(ctx, nameStr, IN(5.7));
+      var ny = 0.95;
+      nameLines.slice(0,2).forEach(function(line){ ctx.fillText(line, IN(0.62), IN(ny)); ny += nameSize/72 * 1.08; });
 
-      rect(ctx, 0.62, 1.98, 1.8, 0.06, accentHex);
-
-      ctx.fillStyle = inkHex;
-      setFont(ctx, PT(24), {});
-      ctx.fillText(lang === 'en' ? 'INDIVIDUAL SCOUTING' : 'SCOUTING INDIVIDUAL', IN(0.62), IN(2.2));
+      roundRect(ctx, 0.62, ny + 0.12, 3.05, 0.5, 0.25, accentHex);
+      ctx.fillStyle = relLuma(accentHex) > 0.6 ? '#111111' : '#FFFFFF';
+      setFont(ctx, PT(17), {bold:true, italic:false});
+      ctx.textBaseline = 'middle';
+      ctx.fillText((lang === 'en' ? 'INDIVIDUAL SCOUTING' : 'SCOUTING INDIVIDUAL'), IN(0.62 + 0.28), IN(ny + 0.12 + 0.25));
+      ctx.textBaseline = 'top';
 
       var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
       ctx.fillStyle = dimHex;
       setFont(ctx, PT(16), {});
-      ctx.fillText(metaLine, IN(0.62), IN(2.8));
+      ctx.fillText(metaLine, IN(0.62), IN(ny + 0.86));
 
-      if(compLogoImg) drawContainFit(ctx, compLogoImg, 0.78, 4.55, 4.2, 0.85);
+      if(compLogoImg){
+        roundRect(ctx, 0.62, 4.55, 3.6, 0.8, 0.1, '#F4F4F5');
+        drawContainFit(ctx, compLogoImg, 0.78, 4.63, 3.28, 0.64);
+      }
     }
 
     function drawPlayerSlide(ctx, item, photoImg, rivalLogoImg, compLogoImg){
       var p = item.player;
+      var Hin = H / PX;
       ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
-      drawPlayerChecker(ctx);
 
-      var photoX = 0.78, photoY = 0.49, photoW = 1.75, photoH = 2.18;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(IN(photoX-0.08), IN(photoY-0.08), IN(photoW+0.16), IN(photoH+0.16));
-      ctx.strokeStyle = '#E4E4E4'; ctx.lineWidth = 1;
-      ctx.strokeRect(IN(photoX-0.08), IN(photoY-0.08), IN(photoW+0.16), IN(photoH+0.16));
+      // ---- panel de foto a sangre, con corte diagonal ----
+      var cutTopX = 4.35, cutBotX = 3.85;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
+      ctx.closePath(); ctx.clip();
       if(photoImg){
-        drawCoverFit(ctx, photoImg, photoX, photoY, photoW, photoH);
+        drawCoverFit(ctx, photoImg, 0, 0, 4.4, Hin);
       } else {
-        rect(ctx, photoX, photoY, photoW, photoH, '#ECECEC');
-        ctx.strokeStyle = '#D6D6D6'; ctx.strokeRect(IN(photoX), IN(photoY), IN(photoW), IN(photoH));
-        ctx.fillStyle = '#A0A0A0';
-        setFont(ctx, PT(30), {bold:true});
-        ctx.textAlign = 'center';
-        ctx.fillText(initialsFor(p), IN(photoX + photoW/2), IN(photoY + photoH/2 - 0.2));
-        ctx.textAlign = 'left';
+        ctx.fillStyle = '#E9E9EC'; ctx.fillRect(0,0, IN(4.4), IN(Hin));
+        ctx.fillStyle = '#B9BAC0';
+        setFont(ctx, PT(64), {bold:true});
+        ctx.fillText(initialsFor(p), IN(0.7), IN(2.1));
+      }
+      // velo oscuro abajo para apoyar el logo de competición
+      var grad = ctx.createLinearGradient(0, IN(Hin-1.1), 0, IN(Hin));
+      grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = grad; ctx.fillRect(0, IN(Hin-1.1), IN(4.4), IN(1.1));
+      ctx.restore();
+
+      // número de dorsal fantasma, superpuesto a la foto
+      if(item.number !== undefined && item.number !== null && item.number !== ''){
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(0,0); ctx.lineTo(IN(cutTopX),0); ctx.lineTo(IN(cutBotX), IN(Hin)); ctx.lineTo(0, IN(Hin));
+        ctx.closePath(); ctx.clip();
+        ctx.globalAlpha = 0.45;
+        setFont(ctx, PT(120), {bold:true, italic:true});
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = IN(0.035);
+        ctx.strokeText('#' + item.number, IN(0.18), IN(0.35));
+        ctx.restore();
       }
 
-      if(rivalLogoImg) drawStretch(ctx, rivalLogoImg, 7.75, 0.18, 1.65, 1.65);
+      // tiras diagonales de acento junto al corte
+      function diagBand(topX, w, color){
+        ctx.beginPath();
+        ctx.moveTo(IN(topX),0); ctx.lineTo(IN(topX+w),0);
+        ctx.lineTo(IN(topX+w-(cutTopX-cutBotX)), IN(Hin)); ctx.lineTo(IN(topX-(cutTopX-cutBotX)), IN(Hin));
+        ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+      }
+      diagBand(cutTopX, 0.13, accentHex);
+      diagBand(cutTopX + 0.13, 0.06, shadeLight);
 
-      var textX = 2.85, textW = 4.2;
+      if(compLogoImg){
+        roundRect(ctx, 0.22, Hin - 0.78, 2.5, 0.56, 0.08, 'rgba(255,255,255,0.92)');
+        drawContainFit(ctx, compLogoImg, 0.34, Hin - 0.7, 2.26, 0.4);
+      }
+
+      // ---- contenido, a la derecha del corte ----
+      var cx0 = 4.75, cRight = 9.82, cW = cRight - cx0;
+
+      if(rivalLogoImg){
+        roundRect(ctx, cRight - 1.05, 0.22, 1.05, 0.85, 0.08, '#F4F4F5');
+        drawContainFit(ctx, rivalLogoImg, cRight - 0.95, 0.30, 0.85, 0.69);
+      }
+
       var numLabel = (item.number !== undefined && item.number !== null && item.number !== '') ? ('#' + item.number + '  ') : '';
       var surname = (p.lastName && p.lastName.trim()) ? p.lastName.trim() : (fullName(p) || L.noName);
       var nameStr = numLabel + surname.toUpperCase();
-      var nameFontSize = nameStr.length > 20 ? 20 : (nameStr.length > 13 ? 24 : 31);
+      var nameMaxW = cW - (rivalLogoImg ? 1.2 : 0);
+      var nameFontSize = nameStr.length > 20 ? 23 : (nameStr.length > 13 ? 28 : 34);
       ctx.fillStyle = inkHex;
       setFont(ctx, PT(nameFontSize), {bold:true});
-      ctx.fillText(nameStr, IN(textX), IN(0.4));
+      while(nameFontSize > 16 && ctx.measureText(nameStr).width > IN(nameMaxW)){
+        nameFontSize -= 1; setFont(ctx, PT(nameFontSize), {bold:true});
+      }
+      ctx.fillText(nameStr, IN(cx0), IN(0.24));
 
-      var subLine = [formatHeight(p.height), positionAbbr(p.position)].filter(Boolean).join(' / ');
-      setFont(ctx, PT(20), {});
-      ctx.fillText(subLine || L.positionHandUnspecified, IN(textX), IN(1.06));
+      var subLine = [formatHeight(p.height), positionAbbr(p.position)].filter(Boolean).join(' / ') || L.positionHandUnspecified;
+      setFont(ctx, PT(14.5), {bold:true, italic:false});
+      var pillPadX = 0.2, pillW = ctx.measureText(subLine).width / PX + pillPadX*2, pillH = 0.36, pillY = 0.88;
+      roundRect(ctx, cx0, pillY, pillW, pillH, pillH/2, accentHex);
+      ctx.fillStyle = relLuma(accentHex) > 0.6 ? '#111111' : '#FFFFFF';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(subLine, IN(cx0 + pillPadX), IN(pillY + pillH/2));
+      ctx.textBaseline = 'top';
 
-      var semaphoreColors = [dangerHex, warnHex, goodHex];
-      function trafficLight(caption, activeIndex, cx, cy){
+      // ---- medidores de amenaza (barra en vez de semáforo de puntos) ----
+      var meterY = 1.32;
+      var levelColors = [dangerHex, warnHex, goodHex];
+      function meter(caption, activeIndex, y){
         ctx.fillStyle = '#6B6F76';
-        setFont(ctx, PT(8.5), {bold:true});
-        ctx.fillText(caption, IN(cx), IN(cy));
-        var dotY = cy + 0.26, cell = 0.24, big = 0.2, small = 0.13;
-        for(var i=0;i<3;i++){
-          var active = i === activeIndex;
-          var size = active ? big : small;
-          var cxpx = IN(cx + i*cell + (big-size)/2 + size/2);
-          var cypx = IN(dotY + (big-size)/2 + size/2);
-          ctx.beginPath();
-          ctx.arc(cxpx, cypx, IN(size)/2, 0, Math.PI*2);
-          ctx.fillStyle = active ? semaphoreColors[i] : '#DBDDE1';
-          ctx.fill();
+        setFont(ctx, PT(10), {bold:true, italic:false});
+        ctx.fillText(caption, IN(cx0), IN(y));
+        var barY = y + 0.19, barH = 0.13;
+        roundRect(ctx, cx0, barY, cW, barH, barH/2, '#E9E9EC');
+        var fillRatio = (3 - activeIndex) / 3;
+        if(fillRatio > 0.02){
+          roundRect(ctx, cx0, barY, cW * fillRatio, barH, barH/2, levelColors[activeIndex]);
         }
       }
       var threatActive = p.threat === 'alta' ? 0 : (p.threat === 'baja' ? 2 : 1);
       var shootActive = p.shootThreat === 'rojo' ? 0 : (p.shootThreat === 'verde' ? 2 : 1);
-      trafficLight(L.threatTotalBadge.replace(':', '').trim(), threatActive, textX, 1.58);
-      trafficLight(L.threatShotBadge.replace(':', '').trim(), shootActive, textX + 2.1, 1.58);
+      meter(L.threatTotalBadge.replace(':', '').trim(), threatActive, meterY);
+      meter(L.threatShotBadge.replace(':', '').trim(), shootActive, meterY + 0.38);
 
+      // ---- estadísticas como tarjetas/chips ----
       var statsBlock = (item.stats && item.stats[0]) || null;
-      var statsText;
+      var statsY = meterY + 0.78;
       if(statsBlock){
-        var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : v; };
-        statsText = sv('minutes') + '’ – ' + sv('pts') + ' pts – ' + sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) – FT ' + sv('ftPct') + '% – ' + sv('reb') + ' Reb (' + sv('offReb') + ' Off) – ' + sv('ast') + ' Ast';
+        var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : String(v); };
+        function statChips(y, h, items, valSize, labSize){
+          var gap = 0.07, w = (cW - gap*(items.length-1)) / items.length;
+          items.forEach(function(it, i){
+            var x = cx0 + i*(w+gap);
+            roundRect(ctx, x, y, w, h, 0.08, '#F4F4F5');
+            ctx.fillStyle = inkHex;
+            setFont(ctx, PT(valSize), {bold:true, italic:false});
+            ctx.textAlign = 'center';
+            ctx.fillText(it.v, IN(x + w/2), IN(y + 0.06));
+            ctx.fillStyle = dimHex;
+            setFont(ctx, PT(labSize), {bold:false, italic:false});
+            ctx.fillText(it.l, IN(x + w/2), IN(y + h - labSize/72 - 0.05));
+            ctx.textAlign = 'left';
+          });
+        }
+        statChips(statsY, 0.48, [
+          {v: sv('minutes') + '’', l: 'MIN'},
+          {v: sv('pts'), l: 'PTS'},
+          {v: sv('reb'), l: 'REB'},
+          {v: sv('ast'), l: 'AST'}
+        ], 20, 9);
+        statChips(statsY + 0.53, 0.38, [
+          {v: sv('fga'), l: 'TC'},
+          {v: sv('threeAtt') + ' (' + sv('threePct') + '%)', l: '3PT'},
+          {v: sv('ftPct') + '%', l: 'TL'},
+          {v: sv('offReb'), l: 'REB OF'}
+        ], 14, 8);
+        if(statsBlock.competition){
+          var caveat = '*' + statsBlock.competition + ' — ' + (lang === 'en' ? 'season average' : 'media de la temporada');
+          ctx.fillStyle = caveatHex;
+          setFont(ctx, PT(8.5), {italic:true});
+          ctx.fillText(caveat, IN(cx0), IN(statsY + 0.99));
+        }
       } else {
-        statsText = L.noStats;
-      }
-      ctx.fillStyle = inkHex;
-      setFont(ctx, PT(14), {});
-      ctx.fillText(statsText, IN(textX), IN(2.1));
-
-      if(statsBlock && statsBlock.competition){
-        var caveat = '*' + statsBlock.competition + ' — ' + (lang === 'en' ? 'season average' : 'media de la temporada');
-        ctx.fillStyle = caveatHex;
-        setFont(ctx, PT(8), {});
-        ctx.fillText(caveat, IN(textX), IN(2.72));
+        roundRect(ctx, cx0, statsY, cW, 0.42, 0.08, '#F4F4F5');
+        ctx.fillStyle = dimHex;
+        setFont(ctx, PT(13), {italic:true});
+        ctx.textAlign = 'center';
+        ctx.fillText(L.noStats, IN(cx0 + cW/2), IN(statsY + 0.13));
+        ctx.textAlign = 'left';
       }
 
-      var boxX = 0.78, boxY = 3.05, boxW = 7.5;
-      var fontPx = PT(15);
-      var lineHeight = fontPx * 1.3;
-      var curY = IN(boxY);
-      function drawSection(label, color, value){
-        var labelText = '– ' + label.toUpperCase() + ':  ';
-        setFont(ctx, fontPx, {bold:true});
-        var labelWidthPx = ctx.measureText(labelText).width;
-        setFont(ctx, fontPx, {});
-        var words = String(value || '').split(/\s+/).filter(Boolean);
-        var lines = []; var cur = '';
-        var maxWidthPx = IN(boxW);
-        words.forEach(function(w){
-          var avail = lines.length === 0 ? (maxWidthPx - labelWidthPx) : maxWidthPx;
-          var test = cur ? cur + ' ' + w : w;
-          if(ctx.measureText(test).width > avail && cur){ lines.push(cur); cur = w; }
-          else cur = test;
+      // ---- fortalezas / debilidades / cómo defenderla, como tarjetas con barra de color ----
+      var noteAreaTop = statsY + (statsBlock ? 1.24 : 0.56);
+      var noteAreaBottom = Hin - 0.16;
+      var noteAvail = Math.max(noteAreaBottom - noteAreaTop, 0.6);
+      var noteMaxWidthPx = IN(cW - 0.28);
+      var noteCards = [
+        { label: L.strengths, color: goodHex, value: (p.strengths || '').trim() || '—' },
+        { label: L.weaknesses, color: warnHex, value: (p.weaknesses || '').trim() || '—' },
+        { label: L.defend, color: accentDeepHex, value: (p.defend || '').trim() || '—' }
+      ];
+      var CARD_CHROME = 0.27, CARD_GAP = 0.07, CARD_LABEL_H = 0.22;
+      // reduce el tamaño de letra de las notas hasta que las 3 tarjetas quepan en el hueco disponible
+      var noteFontSize = 13;
+      var fitted = null;
+      while(true){
+        setFont(ctx, PT(noteFontSize), {italic:false});
+        var lineHIn = (noteFontSize * 1.24) / 72;
+        var total = 0;
+        var linesByCard = noteCards.map(function(c){
+          var lines = wrapLines(ctx, c.value, noteMaxWidthPx);
+          var cardH = CARD_CHROME + lines.length * lineHIn;
+          total += cardH + CARD_GAP;
+          return { lines: lines, cardH: cardH };
         });
-        lines.push(cur);
-        setFont(ctx, fontPx, {bold:true});
-        ctx.fillStyle = color;
-        ctx.fillText(labelText, IN(boxX), curY);
-        setFont(ctx, fontPx, {});
-        ctx.fillStyle = noteInkHex;
-        ctx.fillText(lines[0] || '', IN(boxX) + labelWidthPx, curY);
-        curY += lineHeight;
-        for(var i=1;i<lines.length;i++){ ctx.fillText(lines[i], IN(boxX), curY); curY += lineHeight; }
+        total -= CARD_GAP;
+        if(total <= noteAvail || noteFontSize <= 9){
+          fitted = { fontSize: noteFontSize, lineHIn: lineHIn, cards: linesByCard };
+          break;
+        }
+        noteFontSize -= 0.5;
       }
-      drawSection(L.strengths, goodHex, (p.strengths || '').trim() || '—');
-      drawSection(L.weaknesses, warnHex, (p.weaknesses || '').trim() || '—');
-      drawSection(L.defend, accentHex, (p.defend || '').trim() || '—');
-
-      if(compLogoImg) drawContainFit(ctx, compLogoImg, 3.5, 4.85, 3.0, 0.6);
+      var noteActualTotal = fitted.cards.reduce(function(sum, c){ return sum + c.cardH + CARD_GAP; }, 0) - CARD_GAP;
+      var noteSlack = Math.max(noteAvail - noteActualTotal, 0);
+      var noteY = noteAreaTop + Math.min(noteSlack / 2, 0.5);
+      noteCards.forEach(function(c, idx){
+        var info = fitted.cards[idx];
+        roundRect(ctx, cx0, noteY, cW, info.cardH, 0.08, '#FAFAFA');
+        rect(ctx, cx0, noteY, 0.06, info.cardH, c.color);
+        ctx.fillStyle = c.color;
+        setFont(ctx, PT(11.5), {bold:true, italic:false});
+        ctx.fillText(c.label.toUpperCase(), IN(cx0 + 0.2), IN(noteY + 0.09));
+        ctx.fillStyle = noteInkHex;
+        setFont(ctx, PT(fitted.fontSize), {italic:false});
+        var ly = noteY + CARD_LABEL_H + 0.06;
+        info.lines.forEach(function(l){ ctx.fillText(l, IN(cx0 + 0.2), IN(ly)); ly += fitted.lineHIn; });
+        noteY += info.cardH + CARD_GAP;
+      });
     }
 
     var sorted = rosterJoined.slice().sort(function(a,b){
