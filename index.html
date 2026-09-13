@@ -18,6 +18,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Lee los archivos .xlsx exportados desde InStat para importar estadísticas sin escribirlas a mano. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Loaded statically (not injected at runtime) so it's guaranteed available the moment an
      export needs it. Used to append an uploaded advanced-stats PDF's own pages onto the end of
      a Scout Colectivo export (see maybeAppendAdvancedStatsPdf). -->
@@ -172,6 +174,19 @@
   .feb-import-row .feb-avatar img{ width:100%; height:100%; object-fit:cover; }
   .feb-import-list{ display:flex; flex-direction:column; gap:.4rem; max-height:280px; overflow-y:auto; }
   .feb-import-head{ display:grid; grid-template-columns:auto auto 1fr 1fr 5.5rem 3.4rem; gap:.4rem; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); padding:0 .5rem; }
+  .instat-import-row{ display:grid; grid-template-columns:auto 1fr 1.3fr; gap:.5rem; align-items:center; padding:.45rem .5rem; border:1px solid var(--border); border-radius:8px; font-size:.8rem; }
+  .instat-import-row select{ background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:.32rem .4rem; font-size:.78rem; width:100%; }
+  .instat-import-row input[type="checkbox"]{ width:16px; height:16px; accent-color:var(--accent); }
+  .instat-import-row .instat-name{ display:flex; flex-direction:column; gap:.1rem; min-width:0; }
+  .instat-import-row .instat-name strong{ font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .instat-import-row .instat-name span{ font-size:.68rem; color:var(--text-dim); }
+  .instat-import-row.unmatched{ border-color:var(--warn); background:var(--warn-bg); }
+  .instat-import-list{ display:flex; flex-direction:column; gap:.4rem; max-height:320px; overflow-y:auto; }
+  .instat-import-head{ display:grid; grid-template-columns:auto 1fr 1.3fr; gap:.5rem; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); padding:0 .5rem; }
+  .instat-comp-row{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+  .instat-comp-row label{ font-size:.78rem; font-weight:600; }
+  .instat-comp-row input{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .55rem; font-size:.82rem; min-width:220px; }
+  .instat-file-row{ display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
   #febPasteZone{ min-height:4.5rem; max-height:220px; overflow:auto; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; padding:.6rem .7rem; font-size:.78rem; }
   #febPasteZone:empty:before{ content:attr(data-placeholder); color:var(--text-dim); }
   #febPasteZone table{ font-size:.72rem; border-collapse:collapse; }
@@ -555,6 +570,7 @@
         <div style="display:flex; gap:.5rem;">
           <button class="btn-add" id="btnRepairFebPhotos" type="button" hidden>Reparar fotos FEB</button>
           <button class="btn-add" id="btnToggleFebImport" type="button">Importar desde FEB</button>
+          <button class="btn-add" id="btnToggleInstatImport" type="button">Importar estadísticas (InStat)</button>
           <button class="btn-add" id="btnTogglePicker" type="button">+ Añadir jugadora</button>
         </div>
       </div>
@@ -568,6 +584,21 @@
         <p class="empty-hint" id="febImportError" hidden style="color:var(--danger);"></p>
         <div id="febImportResults"></div>
         <button type="button" class="add-picker-create" id="btnFebImportConfirm" hidden>Añadir jugadoras seleccionadas</button>
+      </div>
+      <div class="add-picker" id="instatImportPanel">
+        <p class="empty-hint" style="margin:0;">
+          1) En InStat, ve a Players → Box score, filtra las jugadoras y el rango de partidos que quieras. 2) Descarga el XLS/XLSX. 3) Súbelo aquí. Se emparejará por nombre con las jugadoras ya añadidas a esta plantilla — las que no encuentre las podrás elegir a mano o dejarlas sin importar.
+        </p>
+        <div class="instat-comp-row">
+          <label for="instatImportCompetition">Competición para estos datos</label>
+          <input type="text" id="instatImportCompetition" list="competitionOptions" placeholder="Ej. Liga Femenina">
+        </div>
+        <div class="instat-file-row">
+          <input type="file" id="instatImportFile" accept=".xlsx,.xls">
+        </div>
+        <p class="empty-hint" id="instatImportError" hidden style="color:var(--danger);"></p>
+        <div id="instatImportResults"></div>
+        <button type="button" class="add-picker-create" id="btnInstatImportConfirm" hidden>Confirmar importación</button>
       </div>
       <div class="add-picker" id="addPicker">
         <input type="text" id="addPickerSearch" placeholder="Buscar jugadora existente por nombre…">
@@ -871,6 +902,7 @@
     expanded: {}, playerStats: {}, statsUnsub: {},
     addPickerOpen: false,
     febImportOpen: false, febImportLoading: false, febImportError: '', febImportPlayers: null,
+    instatImportOpen: false, instatImportLoading: false, instatImportError: '', instatImportRows: null, instatImportConfirming: false,
     collapsedSeasons: {}, collapsedComps: {}, collapsedLetters: {},
     reportLang: 'es', competitionLogos: {},
     offSourceOptions: [], defSourceOptions: [],
@@ -1915,6 +1947,9 @@
     $('#btnFebImportFetch').addEventListener('click', parseFebPastedContent);
     $('#btnFebImportConfirm').addEventListener('click', confirmFebImport);
     $('#btnRepairFebPhotos').addEventListener('click', repairFebPhotos);
+    $('#btnToggleInstatImport').addEventListener('click', toggleInstatImport);
+    $('#instatImportFile').addEventListener('change', handleInstatFileSelected);
+    $('#btnInstatImportConfirm').addEventListener('click', confirmInstatImport);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
     $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
@@ -2309,6 +2344,270 @@
       console.error('confirm feb import', err);
       $('#febImportError').hidden = false;
       $('#febImportError').textContent = 'Algunas jugadoras no se pudieron guardar: ' + (err && err.message ? err.message : err);
+    });
+  }
+
+  // ---------------- Importar estadísticas desde InStat ----------------
+  // InStat exporta, para las jugadoras de un equipo, la media por partido en
+  // formato .xlsx (hoja "Box score"). En vez de teclear cada estadística a
+  // mano, aquí se lee ese archivo en el propio navegador (con SheetJS) y se
+  // reparte cada fila en la jugadora de la plantilla que le corresponda por
+  // nombre — dejando siempre una casilla editable por si el emparejamiento
+  // automático se equivoca o hay alguna jugadora que aún no está en la
+  // plantilla. Los datos se etiquetan con la competición que Marta indique
+  // (InStat no la incluye en el archivo), y si la jugadora ya tenía un bloque
+  // de estadísticas con esa misma competición, se actualiza en vez de
+  // duplicarlo, para poder reimportar sin ir acumulando bloques repetidos
+  // cada vez que descargue un XLS más reciente de InStat.
+  var INSTAT_COLUMN_MAP = {
+    'Player': 'name',
+    'Minutes': 'minutes',
+    'Points': 'pts',
+    'Field goals attempted': 'fga',
+    'Field goals, %': 'fgPct',
+    '3-pt field goals attempted': 'threeAtt',
+    '3-pt field goals, %': 'threePct',
+    'Free throws made': 'ftMade',
+    'Free throws attempted': 'ftAtt',
+    'Free throws, %': 'ftPct',
+    'Rebounds': 'reb',
+    'Offensive rebounds': 'offReb',
+    'Assists': 'ast',
+    'Turnovers': 'to'
+  };
+  function toggleInstatImport(){
+    state.instatImportOpen = !state.instatImportOpen;
+    $('#instatImportPanel').classList.toggle('open', state.instatImportOpen);
+    $('#btnToggleInstatImport').textContent = state.instatImportOpen ? 'Cerrar' : 'Importar estadísticas (InStat)';
+    if(state.instatImportOpen){
+      state.instatImportRows = null; state.instatImportError = '';
+      $('#instatImportError').hidden = true;
+      $('#instatImportResults').innerHTML = '';
+      $('#btnInstatImportConfirm').hidden = true;
+      $('#instatImportFile').value = '';
+      var comp = rivalCompetitions(state.rival)[0] || '';
+      $('#instatImportCompetition').value = comp;
+    }
+  }
+  function normalizeNameForMatch(s){
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function tokenSetKey(s){
+    return normalizeNameForMatch(s).split(' ').filter(Boolean).sort().join(' ');
+  }
+  function parseInstatNum(v){
+    if(v === undefined || v === null) return null;
+    if(typeof v === 'number') return isNaN(v) ? null : v;
+    var s = String(v).trim();
+    if(s === '' || s === '-') return null;
+    if(s.charAt(s.length - 1) === '%') s = s.slice(0, -1);
+    var n = parseFloat(s.replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+  function parseInstatMinutes(v){
+    if(v === undefined || v === null) return null;
+    var s = String(v).trim();
+    if(s === '' || s === '-') return null;
+    var m = s.match(/^(\d+):(\d{2})$/);
+    if(m) return Math.round(parseInt(m[1], 10) + parseInt(m[2], 10) / 60);
+    return parseInstatNum(s);
+  }
+  function findInstatHeaderRowIndex(rows){
+    for(var i = 0; i < Math.min(rows.length, 5); i++){
+      var row = rows[i] || [];
+      for(var j = 0; j < row.length; j++){
+        if(String(row[j] || '').trim() === 'Player') return i;
+      }
+    }
+    return -1;
+  }
+  function rosterJoined(){
+    return state.roster.map(function(r){
+      var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
+      return p ? {rosterId: r.id, playerId: r.playerId, number: r.number, player: p} : null;
+    }).filter(Boolean);
+  }
+  function guessInstatMatch(instatName, joined){
+    var wantFull = tokenSetKey(instatName);
+    var exact = joined.filter(function(j){ return tokenSetKey(fullName(j.player)) === wantFull; });
+    if(exact.length === 1) return exact[0].playerId;
+    var wantTokens = normalizeNameForMatch(instatName).split(' ').filter(Boolean);
+    var lastToken = wantTokens[wantTokens.length - 1];
+    if(lastToken){
+      var bySurname = joined.filter(function(j){
+        var tokens = normalizeNameForMatch(fullName(j.player)).split(' ').filter(Boolean);
+        return tokens.indexOf(lastToken) !== -1;
+      });
+      if(bySurname.length === 1) return bySurname[0].playerId;
+    }
+    return null;
+  }
+  function handleInstatFileSelected(){
+    var input = $('#instatImportFile');
+    var file = input.files && input.files[0];
+    $('#instatImportError').hidden = true;
+    if(!file) return;
+    if(typeof window.XLSX === 'undefined'){
+      $('#instatImportError').hidden = false;
+      $('#instatImportError').style.color = 'var(--danger)';
+      $('#instatImportError').textContent = 'No se ha podido cargar el lector de Excel. Comprueba la conexión y vuelve a intentarlo.';
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        var data = new Uint8Array(e.target.result);
+        var wb = window.XLSX.read(data, {type: 'array'});
+        var sheetName = wb.SheetNames.indexOf('Box score') !== -1 ? 'Box score' : wb.SheetNames[0];
+        var ws = wb.Sheets[sheetName];
+        var rows = window.XLSX.utils.sheet_to_json(ws, {header: 1, defval: null, raw: true});
+        var headerIdx = findInstatHeaderRowIndex(rows);
+        if(headerIdx === -1){
+          $('#instatImportError').hidden = false;
+          $('#instatImportError').style.color = 'var(--danger)';
+          $('#instatImportError').textContent = 'No se ha encontrado la columna "Player" en el archivo. ¿Es un export de InStat en la vista Players → Box score?';
+          return;
+        }
+        var header = rows[headerIdx];
+        var colIndexToKey = {};
+        header.forEach(function(h, idx){
+          var key = INSTAT_COLUMN_MAP[String(h || '').trim()];
+          if(key) colIndexToKey[idx] = key;
+        });
+        if(!Object.keys(colIndexToKey).some(function(idx){ return colIndexToKey[idx] === 'name'; })){
+          $('#instatImportError').hidden = false;
+          $('#instatImportError').style.color = 'var(--danger)';
+          $('#instatImportError').textContent = 'No se ha reconocido la columna de nombre de jugadora en el archivo.';
+          return;
+        }
+        var joined = rosterJoined();
+        var out = [];
+        for(var r = headerIdx + 1; r < rows.length; r++){
+          var row = rows[r];
+          if(!row) continue;
+          var entry = {name: '', stats: {}};
+          Object.keys(colIndexToKey).forEach(function(idxStr){
+            var idx = Number(idxStr);
+            var key = colIndexToKey[idx];
+            var raw = row[idx];
+            if(key === 'name'){ entry.name = String(raw || '').trim(); }
+            else if(key === 'minutes'){ entry.stats.minutes = parseInstatMinutes(raw); }
+            else { entry.stats[key] = parseInstatNum(raw); }
+          });
+          if(!entry.name) continue;
+          entry.playerId = guessInstatMatch(entry.name, joined);
+          entry.selected = !!entry.playerId;
+          out.push(entry);
+        }
+        if(!out.length){
+          $('#instatImportError').hidden = false;
+          $('#instatImportError').style.color = 'var(--danger)';
+          $('#instatImportError').textContent = 'No se ha encontrado ninguna fila de jugadora en el archivo.';
+          return;
+        }
+        state.instatImportRows = out;
+        renderInstatImportResults();
+      }catch(err){
+        console.error('instat import parse', err);
+        $('#instatImportError').hidden = false;
+        $('#instatImportError').style.color = 'var(--danger)';
+        $('#instatImportError').textContent = 'No se ha podido leer el archivo: ' + (err && err.message ? err.message : err);
+      }
+    };
+    reader.onerror = function(){
+      $('#instatImportError').hidden = false;
+      $('#instatImportError').style.color = 'var(--danger)';
+      $('#instatImportError').textContent = 'No se ha podido leer el archivo.';
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  function instatStatsPreview(stats){
+    var sv = function(k){ return (stats[k] === undefined || stats[k] === null) ? '—' : stats[k]; };
+    return sv('minutes') + '’ · ' + sv('pts') + ' pts · ' + sv('reb') + ' reb · ' + sv('ast') + ' ast · FG% ' + sv('fgPct') + ' · 3P% ' + sv('threePct') + ' · TL% ' + sv('ftPct');
+  }
+  function renderInstatImportResults(){
+    var box = $('#instatImportResults');
+    var list = state.instatImportRows;
+    if(!list || !list.length){ box.innerHTML = ''; $('#btnInstatImportConfirm').hidden = true; return; }
+    var joined = rosterJoined();
+    var options = '<option value="">— No importar —</option>' + joined.map(function(j){
+      return '<option value="' + esc(j.playerId) + '">' + esc(fullName(j.player) || 'Sin nombre') + '</option>';
+    }).join('');
+    box.innerHTML =
+      '<div class="instat-import-head"><span></span><span>Jugadora en InStat</span><span>Emparejar con / vista previa</span></div>' +
+      '<div class="instat-import-list">' +
+      list.map(function(row, i){
+        var unmatched = !row.playerId;
+        return '<div class="instat-import-row' + (unmatched ? ' unmatched' : '') + '" data-i="' + i + '">' +
+          '<input type="checkbox" data-instat-field="selected"' + (row.selected ? ' checked' : '') + '>' +
+          '<div class="instat-name"><strong>' + esc(row.name) + '</strong><span>' + esc(instatStatsPreview(row.stats)) + '</span></div>' +
+          '<select data-instat-field="playerId">' + options + '</select>' +
+        '</div>';
+      }).join('') +
+      '</div>';
+    $all('.instat-import-row', box).forEach(function(rowEl){
+      var i = Number(rowEl.getAttribute('data-i'));
+      var sel = rowEl.querySelector('select[data-instat-field="playerId"]');
+      if(sel) sel.value = list[i].playerId || '';
+      rowEl.querySelectorAll('[data-instat-field]').forEach(function(input){
+        input.addEventListener('change', function(){
+          var field = input.getAttribute('data-instat-field');
+          var row = state.instatImportRows[i];
+          if(!row) return;
+          if(field === 'selected') row.selected = input.checked;
+          else if(field === 'playerId'){ row.playerId = input.value || null; if(row.playerId) row.selected = true; }
+          rowEl.classList.toggle('unmatched', !row.playerId);
+        });
+      });
+    });
+    $('#btnInstatImportConfirm').hidden = false;
+  }
+  function confirmInstatImport(){
+    if(!db || state.instatImportConfirming) return;
+    var rows = (state.instatImportRows || []).filter(function(r){ return r.selected && r.playerId; });
+    if(!rows.length) return;
+    var competition = ($('#instatImportCompetition').value || '').trim();
+    if(!competition){
+      $('#instatImportError').hidden = false;
+      $('#instatImportError').style.color = 'var(--danger)';
+      $('#instatImportError').textContent = 'Indica una competición para etiquetar estos datos antes de importar.';
+      return;
+    }
+    var compNorm = competition.toLowerCase();
+    state.instatImportConfirming = true;
+    var btn = $('#btnInstatImportConfirm');
+    btn.disabled = true; btn.textContent = 'Importando…';
+    var summary = {created: 0, updated: 0, failed: 0};
+    var chain = Promise.resolve();
+    rows.forEach(function(row){
+      chain = chain.then(function(){
+        var statsColl = playerRef(row.playerId).collection('stats');
+        return statsColl.orderBy('order', 'asc').get().then(function(snap){
+          var blocks = snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); });
+          var existing = blocks.find(function(b){ return (b.competition || '').trim().toLowerCase() === compNorm; });
+          var body = {};
+          STAT_FIELDS.forEach(function(s){
+            body[s.key] = row.stats[s.key] !== undefined ? row.stats[s.key] : null;
+          });
+          if(existing){
+            return statsColl.doc(existing.id).update(body).then(function(){ summary.updated++; });
+          }
+          body.competition = competition;
+          body.order = Date.now();
+          return statsColl.add(body).then(function(){ summary.created++; });
+        }).catch(function(err){ console.error('instat import row', row, err); summary.failed++; });
+      });
+    });
+    chain.then(function(){
+      state.instatImportConfirming = false;
+      btn.disabled = false; btn.textContent = 'Confirmar importación';
+      var msg = 'Importado en "' + competition + '": ' + summary.created + ' nuevas, ' + summary.updated + ' actualizadas' + (summary.failed ? ', ' + summary.failed + ' con error' : '') + '.';
+      $('#instatImportError').hidden = false;
+      $('#instatImportError').style.color = summary.failed ? 'var(--danger)' : 'var(--good)';
+      $('#instatImportError').textContent = msg;
+      if(!summary.failed){
+        setTimeout(function(){ toggleInstatImport(); }, 1800);
+      }
     });
   }
 
