@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#f47721">
 <link rel="manifest" href="manifest.json">
+<script>
+// Registra el Service Worker (sw.js) que cachea la propia app para que se pueda abrir sin
+// conexión (p. ej. en un avión). Los datos en sí (rivales, jugadoras…) los cachea aparte
+// index.html con localStorage — ver OFFLINE_CACHE_KEY más abajo en este archivo.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(err){ console.error('sw register failed', err); });
+  });
+}
+</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -497,6 +507,7 @@
       </div>
     </div>
     <div class="sidebar-status" id="sidebarStatus">Cargando…</div>
+    <div class="sync-status" id="syncStatus" hidden title="Pulsa para reintentar sincronizar ahora"></div>
     <div class="user-bar">
       <span id="userEmail"></span>
       <button type="button" id="btnLogout">Cerrar sesión</button>
@@ -1138,7 +1149,7 @@
     if(realtimeChannel || !supabaseClient) return;
     realtimeChannel = supabaseClient.channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, function(payload){
-        realtimeListeners.slice().forEach(function(l){ if(l.table === payload.table) l.refetch(); });
+        notifyTableListeners(payload.table);
       })
       .subscribe();
   }
@@ -1152,23 +1163,331 @@
     };
   }
 
+  // Vuelve a pedir los datos a todos los onSnapshot activos de una tabla — se usa tanto para
+  // los avisos de Realtime que llegan de verdad (otra persona cambió algo) como, más abajo,
+  // para que un cambio hecho en local mientras no hay conexión se vea en pantalla al momento.
+  function notifyTableListeners(table){
+    realtimeListeners.slice().forEach(function(l){ if(l.table === table) l.refetch(); });
+  }
+
+  // ============================================================
+  // Modo sin conexión ("modo avión"): caché local + cola de escritura
+  // ============================================================
+  // Objetivo: poder seguir viendo lo último cargado y rellenando campos sin conexión (por
+  // ejemplo viajando), aunque esos cambios no lleguen al resto del equipo hasta recuperar
+  // conexión. Todo pasa por AQUÍ porque docRef/collRef (justo debajo) son el único punto por el
+  // que pasan todas las lecturas y escrituras de la app — no hace falta tocar nada del resto
+  // del archivo.
+  //
+  // Alcance: esto cubre los CAMPOS de texto/datos (fichas, notas, estadísticas, plantillas,
+  // esencia ofensiva/defensiva…), que es lo que se pidió ("escribir e ir rellenando campos").
+  // Las fotos, escudos y los PDF de Sistemas de juego/Estadística avanzada se suben aparte a
+  // Supabase Storage (no pasan por aquí) y necesitan conexión — sin red, esa subida en
+  // concreto fallará con el aviso de error que ya tenía cada una.
+  var OFFLINE_CACHE_KEY = 'sr_offline_cache_v1';
+  var OFFLINE_QUEUE_KEY = 'sr_offline_queue_v1';
+
+  function loadJsonLS(key, fallback){
+    try{
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    }catch(e){ console.error('offline: no se pudo leer', key, e); return fallback; }
+  }
+  function saveJsonLS(key, val){
+    try{ localStorage.setItem(key, JSON.stringify(val)); }
+    catch(e){ console.error('offline: no se pudo guardar', key, e); }
+  }
+
+  // offlineCache: { [tabla]: [ {kind:'coll', filter, orderField, orderDir, rows:[...]}
+  //                            | {kind:'doc', idField, idValue, filter, row} ] }
+  // Cada entrada "coll" recuerda el filtro exacto (rival_id, player_id…) y el orden con el que
+  // se pidió, para poder servir exactamente esa misma consulta desde caché sin conexión.
+  var offlineCache = loadJsonLS(OFFLINE_CACHE_KEY, {});
+  // offlineQueue: [ {qid, table, op:'upsert'|'insert'|'update'|'delete', idField, idValue?,
+  //                  filter?, row?, patch?} ] — en el orden en que se hicieron, para
+  // reproducirlas en ese mismo orden al recuperar conexión.
+  var offlineQueue = loadJsonLS(OFFLINE_QUEUE_KEY, []);
+
+  function persistOfflineCache(){ saveJsonLS(OFFLINE_CACHE_KEY, offlineCache); }
+  function persistOfflineQueue(){ saveJsonLS(OFFLINE_QUEUE_KEY, offlineQueue); }
+
+  function shallowEqual(a, b){
+    a = a || {}; b = b || {};
+    var ka = Object.keys(a), kb = Object.keys(b);
+    if(ka.length !== kb.length) return false;
+    return ka.every(function(k){ return a[k] === b[k]; });
+  }
+  function rowMatchesFilter(row, filter){
+    return Object.keys(filter || {}).every(function(k){ return row[k] === filter[k]; });
+  }
+
+  // Campos "pesados" que nunca se guardan en la caché local: fotos de jugadora, escudos de
+  // rival y el mapa de logos de competición van en base64 y pueden pesar decenas o cientos de
+  // KB cada uno — cachearlos todos podría agotar la cuota de localStorage (unos 5-10 MB según
+  // el navegador) sin avisar, y dejar de funcionar el resto de la caché con ellos. Sin
+  // conexión esos campos sencillamente se ven vacíos (la propia app ya cae a las iniciales o al
+  // hueco en blanco cuando falta una foto) — lo que de verdad hace falta poder ver y rellenar
+  // sin conexión son los campos de texto, no las imágenes.
+  var OFFLINE_CACHE_STRIP_FIELDS = { players: ['photo'], rivals: ['logo'], app_settings: ['competition_logos'] };
+  function stripHeavyFieldsForCache(table, row){
+    var strip = OFFLINE_CACHE_STRIP_FIELDS[table];
+    if(!strip || !row) return row;
+    var out = Object.assign({}, row);
+    strip.forEach(function(k){ if(k in out) out[k] = null; });
+    return out;
+  }
+
+  function findCollCacheEntry(table, filter, orderField, orderDir){
+    var list = offlineCache[table] || [];
+    for(var i=0;i<list.length;i++){
+      var e = list[i];
+      if(e.kind === 'coll' && shallowEqual(e.filter, filter) && e.orderField === (orderField||null) && e.orderDir === (orderDir||'asc')) return e;
+    }
+    return null;
+  }
+  function upsertCollCache(table, filter, orderField, orderDir, rows){
+    var list = offlineCache[table] = offlineCache[table] || [];
+    var e = findCollCacheEntry(table, filter, orderField, orderDir);
+    if(!e){ e = {kind:'coll', filter: filter||{}, orderField: orderField||null, orderDir: orderDir||'asc', rows: []}; list.push(e); }
+    e.rows = (rows || []).map(function(r){ return stripHeavyFieldsForCache(table, r); });
+    persistOfflineCache();
+  }
+  // Como findCollCacheEntry, pero si no existe todavía la crea vacía en vez de descartarla —
+  // así, si esta es la primera vez que se consulta este filtro estando ya sin conexión (nunca
+  // se había abierto esta pantalla estando online), una escritura posterior sobre esa misma
+  // consulta (p. ej. "+ Añadir jugadora") tiene dónde aparecer en vez de perderse de la vista.
+  function ensureCollCacheEntry(table, filter, orderField, orderDir){
+    var e = findCollCacheEntry(table, filter, orderField, orderDir);
+    if(!e){
+      upsertCollCache(table, filter, orderField, orderDir, []);
+      e = findCollCacheEntry(table, filter, orderField, orderDir);
+    }
+    return e;
+  }
+  function findDocCacheEntry(table, idField, idValue, filter){
+    var list = offlineCache[table] || [];
+    for(var i=0;i<list.length;i++){
+      var e = list[i];
+      if(e.kind === 'doc' && e.idField === idField && String(e.idValue) === String(idValue) && shallowEqual(e.filter, filter)) return e;
+    }
+    return null;
+  }
+  function upsertDocCache(table, idField, idValue, filter, row){
+    var list = offlineCache[table] = offlineCache[table] || [];
+    var e = findDocCacheEntry(table, idField, idValue, filter);
+    if(!e){ e = {kind:'doc', idField: idField, idValue: idValue, filter: filter||{}, row: null}; list.push(e); }
+    e.row = stripHeavyFieldsForCache(table, row);
+    persistOfflineCache();
+  }
+  // Busca la última versión conocida de una fila concreta en CUALQUIER caché que la tenga
+  // (tanto una vista de documento suelto como una de colección) — se usa para poder componer
+  // una fila completa a partir de un simple patch parcial (ver mergeCachedRow).
+  function findAnyCachedRow(table, idField, idValue){
+    var list = offlineCache[table] || [];
+    for(var i=0;i<list.length;i++){
+      var e = list[i];
+      if(e.kind === 'doc' && e.idField === idField && String(e.idValue) === String(idValue) && e.row) return e.row;
+      if(e.kind === 'coll' && idField === 'id'){
+        for(var j=0;j<e.rows.length;j++){ if(String(e.rows[j].id) === String(idValue)) return e.rows[j]; }
+      }
+    }
+    return null;
+  }
+  function mergeCachedRow(table, idField, idValue, filter, patch){
+    var existing = findAnyCachedRow(table, idField, idValue) || {};
+    var merged = Object.assign({}, existing, filter, patch);
+    merged[idField] = idValue;
+    return merged;
+  }
+  // Aplica una mutación (insertar/actualizar/borrar) a TODAS las cachés de esa tabla que le
+  // correspondan, para que cualquier onSnapshot que las lea (vía refetch en modo sin conexión)
+  // vea el cambio al momento, igual que ya pasa hoy con los avisos de Realtime de otra persona.
+  // `filter` (opcional) es el extraFilter/baseFilter del documento que se está guardando: si
+  // esta es la primera vez que se guarda algo de este documento en caché (p. ej. la primera vez
+  // que se abre esta pantalla ya sin conexión, sin haberla visto antes estando online), se crea
+  // una entrada nueva en vez de descartar el cambio silenciosamente.
+  function applyMutationToCache(table, idField, idValue, op, row, filter){
+    row = stripHeavyFieldsForCache(table, row);
+    var list = offlineCache[table] = offlineCache[table] || [];
+    var matchedDoc = false;
+    list.forEach(function(e){
+      if(e.kind === 'doc'){
+        if(e.idField !== idField || String(e.idValue) !== String(idValue)) return;
+        matchedDoc = true;
+        e.row = (op === 'delete') ? null : row;
+        return;
+      }
+      if(idField !== 'id') return; // las cachés de colección solo indexan por id
+      var idx = -1;
+      for(var i=0;i<e.rows.length;i++){ if(String(e.rows[i].id) === String(idValue)){ idx = i; break; } }
+      if(op === 'delete'){
+        if(idx !== -1) e.rows.splice(idx, 1);
+        return;
+      }
+      var belongs = rowMatchesFilter(row, e.filter);
+      if(!belongs){
+        if(idx !== -1) e.rows.splice(idx, 1);
+        return;
+      }
+      if(idx === -1) e.rows.push(row); else e.rows[idx] = row;
+      if(e.orderField){
+        e.rows.sort(function(a, b){
+          var av = a[e.orderField], bv = b[e.orderField];
+          if(av === bv) return 0;
+          var cmp = (av < bv) ? -1 : 1;
+          return e.orderDir === 'desc' ? -cmp : cmp;
+        });
+      }
+    });
+    if(!matchedDoc && op !== 'delete'){
+      list.push({ kind: 'doc', idField: idField, idValue: idValue, filter: filter || {}, row: row });
+    }
+    persistOfflineCache();
+  }
+
+  // Generador de UUID v4 propio: no depende de que crypto.randomUUID exista (algunos WebViews
+  // antiguos no lo tienen), y así se puede usar el MISMO id tanto si la creación acaba yendo
+  // directa a Supabase como si se queda en la cola sin conexión — sin eso, un elemento creado
+  // sin conexión y editado justo después necesitaría reconciliar dos ids distintos.
+  function genUuid(){
+    if(window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    var d = Date.now() + Math.random() * 1000;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+      var r = (d + Math.random() * 16) % 16 | 0;
+      d = Math.floor(d / 16);
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // Heurística deliberadamente simple: si no hay conexión, o el error tiene toda la pinta de
+  // ser de red (en vez de un error real de Postgres, que trae su propio código de error de 5
+  // caracteres), se trata como "sin conexión" y se pasa al modo local — así una wifi floja o un
+  // portal cautivo también caen aquí, no solo el avión en modo avión de verdad.
+  function looksLikeNetworkError(err){
+    if(!navigator.onLine) return true;
+    if(!err) return true;
+    if(err.name === 'TypeError') return true;
+    var msg = String((err && err.message) || '').toLowerCase();
+    if(msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) return true;
+    return false;
+  }
+
+  function queueOfflineOp(entry){
+    entry.qid = genUuid();
+    offlineQueue.push(entry);
+    persistOfflineQueue();
+    updateSyncStatusUI();
+  }
+
+  function performRemoteOp(entry){
+    var q;
+    if(entry.op === 'upsert'){
+      q = supabaseClient.from(entry.table).upsert(entry.row, { onConflict: entry.idField });
+    } else if(entry.op === 'insert'){
+      q = supabaseClient.from(entry.table).insert(entry.row);
+    } else if(entry.op === 'update'){
+      q = supabaseClient.from(entry.table).update(entry.patch).eq(entry.idField, entry.idValue);
+      Object.keys(entry.filter || {}).forEach(function(k){ q = q.eq(k, entry.filter[k]); });
+    } else if(entry.op === 'delete'){
+      q = supabaseClient.from(entry.table).delete().eq(entry.idField, entry.idValue);
+      Object.keys(entry.filter || {}).forEach(function(k){ q = q.eq(k, entry.filter[k]); });
+    } else {
+      return Promise.resolve();
+    }
+    return q.then(function(res){ if(res.error) throw res.error; });
+  }
+
+  var offlineFlushInProgress = false;
+  // Reproduce la cola en el mismo orden en que se creó. Cada entrada se intenta por su cuenta:
+  // si una falla (p.ej. porque de verdad hay un problema con ese cambio en concreto, no solo de
+  // red) se deja para el siguiente intento pero NO bloquea a las demás — así un problema
+  // aislado no deja bloqueados el resto de cambios pendientes de otras jugadoras o rivales.
+  function flushOfflineQueue(){
+    if(offlineFlushInProgress || !navigator.onLine || !offlineQueue.length || !supabaseClient) return;
+    offlineFlushInProgress = true;
+    updateSyncStatusUI();
+    var pending = offlineQueue.slice();
+    var succeededQids = [];
+    var chain = Promise.resolve();
+    pending.forEach(function(entry){
+      chain = chain.then(function(){
+        return performRemoteOp(entry).then(function(){
+          succeededQids.push(entry.qid);
+        }).catch(function(err){
+          console.error('offline: no se pudo sincronizar, se reintentará más tarde', entry, err);
+        });
+      });
+    });
+    chain.then(function(){
+      offlineQueue = offlineQueue.filter(function(e){ return succeededQids.indexOf(e.qid) === -1; });
+      persistOfflineQueue();
+      offlineFlushInProgress = false;
+      updateSyncStatusUI();
+      if(succeededQids.length){
+        // Tras sincronizar, se refresca todo lo que esté en pantalla ahora mismo para converger
+        // con la verdad del servidor (por si, mientras tanto, alguien más también cambió algo).
+        var tables = {};
+        realtimeListeners.forEach(function(l){ tables[l.table] = true; });
+        Object.keys(tables).forEach(function(t){ notifyTableListeners(t); });
+      }
+    });
+  }
+
+  function updateSyncStatusUI(){
+    var el = document.getElementById('syncStatus');
+    if(!el) return;
+    var pending = offlineQueue.length;
+    if(!navigator.onLine){
+      el.hidden = false;
+      el.className = 'sync-status offline';
+      el.textContent = pending
+        ? ('Sin conexión — ' + pending + (pending === 1 ? ' cambio sin sincronizar' : ' cambios sin sincronizar'))
+        : 'Sin conexión — puedes seguir trabajando, se sincronizará al recuperarla';
+      return;
+    }
+    if(pending){
+      el.hidden = false;
+      el.className = 'sync-status pending';
+      el.textContent = 'Sincronizando ' + pending + (pending === 1 ? ' cambio…' : ' cambios…');
+      return;
+    }
+    el.hidden = true;
+  }
+
+  window.addEventListener('online', function(){ updateSyncStatusUI(); flushOfflineQueue(); });
+  window.addEventListener('offline', function(){ updateSyncStatusUI(); });
+  // Red de seguridad además del evento 'online': por si el navegador no lo dispara de forma
+  // fiable (p. ej. una wifi que deja "navegar" pero con Supabase inalcanzable un rato).
+  setInterval(function(){ if(navigator.onLine) flushOfflineQueue(); }, 20000);
+
   function parsePath(path){ return String(path || '').split('/').filter(Boolean); }
 
   function docRef(table, idField, idValue, extraFilter, byParentKey){
+    function toSnap(row){
+      return {
+        exists: !!row,
+        id: row ? (byParentKey ? row[idField] : row.id) : idValue,
+        data: function(){ return row ? decodeRow(row) : undefined; }
+      };
+    }
     var ref = {
       id: idValue,
       path: table + '/' + idValue,
       get: function(){
+        if(!navigator.onLine){
+          var cached = findDocCacheEntry(table, idField, idValue, extraFilter);
+          return Promise.resolve(toSnap(cached ? cached.row : null));
+        }
         var q = supabaseClient.from(table).select('*').eq(idField, idValue);
         Object.keys(extraFilter || {}).forEach(function(k){ q = q.eq(k, extraFilter[k]); });
         return q.maybeSingle().then(function(res){
           if(res.error) throw res.error;
-          var row = res.data;
-          return {
-            exists: !!row,
-            id: row ? (byParentKey ? row[idField] : row.id) : idValue,
-            data: function(){ return row ? decodeRow(row) : undefined; }
-          };
+          upsertDocCache(table, idField, idValue, extraFilter, res.data || null);
+          return toSnap(res.data);
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          var cached2 = findDocCacheEntry(table, idField, idValue, extraFilter);
+          return toSnap(cached2 ? cached2.row : null);
         });
       },
       onSnapshot: function(onNext, onError){
@@ -1183,16 +1502,50 @@
       set: function(data){
         var row = encodeRow(Object.assign({}, extraFilter, data));
         row[idField] = idValue;
-        return supabaseClient.from(table).upsert(row, { onConflict: idField }).then(function(res){ if(res.error) throw res.error; });
+        function goOffline(){
+          applyMutationToCache(table, idField, idValue, 'upsert', row, extraFilter);
+          queueOfflineOp({ table: table, op: 'upsert', idField: idField, row: row });
+          notifyTableListeners(table);
+        }
+        if(!navigator.onLine){ goOffline(); return Promise.resolve(); }
+        return supabaseClient.from(table).upsert(row, { onConflict: idField }).then(function(res){
+          if(res.error) throw res.error;
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          goOffline();
+        });
       },
       update: function(data){
-        var row = encodeRow(data);
-        var q = supabaseClient.from(table).update(row).eq(idField, idValue);
+        var patch = encodeRow(data);
+        function goOffline(){
+          var merged = mergeCachedRow(table, idField, idValue, extraFilter, patch);
+          applyMutationToCache(table, idField, idValue, 'update', merged, extraFilter);
+          queueOfflineOp({ table: table, op: 'update', idField: idField, idValue: idValue, filter: extraFilter, patch: patch });
+          notifyTableListeners(table);
+        }
+        if(!navigator.onLine){ goOffline(); return Promise.resolve(); }
+        var q = supabaseClient.from(table).update(patch).eq(idField, idValue);
         Object.keys(extraFilter || {}).forEach(function(k){ q = q.eq(k, extraFilter[k]); });
-        return q.then(function(res){ if(res.error) throw res.error; });
+        return q.then(function(res){
+          if(res.error) throw res.error;
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          goOffline();
+        });
       },
       delete: function(){
-        return supabaseClient.from(table).delete().eq(idField, idValue).then(function(res){ if(res.error) throw res.error; });
+        function goOffline(){
+          applyMutationToCache(table, idField, idValue, 'delete', null, extraFilter);
+          queueOfflineOp({ table: table, op: 'delete', idField: idField, idValue: idValue, filter: extraFilter });
+          notifyTableListeners(table);
+        }
+        if(!navigator.onLine){ goOffline(); return Promise.resolve(); }
+        return supabaseClient.from(table).delete().eq(idField, idValue).then(function(res){
+          if(res.error) throw res.error;
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          goOffline();
+        });
       },
       collection: function(name){ return makeCollectionRefFromSegments(ref.path.split('/').concat([name])); }
     };
@@ -1208,20 +1561,43 @@
         return docRef(table, 'id', id, extra);
       },
       add: function(data){
+        // El id se genera aquí SIEMPRE (haya o no conexión) para que sea el mismo tanto si la
+        // creación llega a Supabase al momento como si se queda en la cola sin conexión — así
+        // un elemento nuevo se puede seguir editando ahí mismo sin esperar a sincronizar.
         var row = encodeRow(Object.assign({}, baseFilter, data));
+        if(!row.id) row.id = genUuid();
+        function goOffline(){
+          applyMutationToCache(table, 'id', row.id, 'insert', row, baseFilter);
+          queueOfflineOp({ table: table, op: 'insert', idField: 'id', row: row });
+          notifyTableListeners(table);
+          return { id: row.id };
+        }
+        if(!navigator.onLine) return Promise.resolve(goOffline());
         return supabaseClient.from(table).insert(row).select().single().then(function(res){
           if(res.error) throw res.error;
           return { id: res.data.id };
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          return goOffline();
         });
       },
       orderBy: function(field, dir){ orderField = field; orderDir = dir || 'asc'; return ref; },
       get: function(){
+        if(!navigator.onLine){
+          var cached = ensureCollCacheEntry(table, baseFilter, orderField, orderDir);
+          return Promise.resolve({ docs: cached.rows.map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) });
+        }
         var q = supabaseClient.from(table).select('*');
         Object.keys(baseFilter || {}).forEach(function(k){ q = q.eq(k, baseFilter[k]); });
         if(orderField) q = q.order(toSqlField(orderField), { ascending: orderDir !== 'desc' });
         return q.then(function(res){
           if(res.error) throw res.error;
+          upsertCollCache(table, baseFilter, orderField, orderDir, res.data || []);
           return { docs: (res.data || []).map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) };
+        }).catch(function(err){
+          if(!looksLikeNetworkError(err)) throw err;
+          var cached2 = ensureCollCacheEntry(table, baseFilter, orderField, orderDir);
+          return { docs: cached2.rows.map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) };
         });
       },
       onSnapshot: function(onNext, onError){
@@ -1988,6 +2364,8 @@
   }
 
   function bindStaticUI(){
+    $('#syncStatus').addEventListener('click', function(){ flushOfflineQueue(); });
+    updateSyncStatusUI();
     $all('.scout-mode-switch button').forEach(function(btn){
       btn.addEventListener('click', function(){ switchScoutMode(btn.getAttribute('data-scoutmode')); });
     });
@@ -3728,6 +4106,14 @@
     if(!isPdf){ showErr('Solo se admiten archivos PDF.'); input.value = ''; return; }
     if(file.size > MAX_STATS_PDF_BYTES){
       showErr('El PDF pesa demasiado (max. 12 MB). Prueba a exportarlo mas ligero.');
+      input.value = '';
+      return;
+    }
+    // A diferencia de los campos de texto, subir un PDF no se puede dejar en cola sin conexión
+    // (el archivo va directo a Supabase Storage, no pasa por docRef/collRef) — mejor avisar
+    // claro aquí que dejar que falle más abajo con un error genérico.
+    if(!navigator.onLine){
+      showErr('Sin conexión no se puede subir el PDF — inténtalo cuando recuperes la señal.');
       input.value = '';
       return;
     }
