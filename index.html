@@ -21,8 +21,8 @@
 <!-- Lee los archivos .xlsx exportados desde InStat para importar estadísticas sin escribirlas a mano. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Loaded statically (not injected at runtime) so it's guaranteed available the moment an
-     export needs it. Used to append an uploaded advanced-stats PDF's own pages onto the end of
-     a Scout Colectivo export (see maybeAppendAdvancedStatsPdf). -->
+     export needs it. Used to append an uploaded PDF's own pages (sistemas de juego /
+     estadística avanzada) onto the end of a Scout Colectivo export (see appendUploadedPdfSections). -->
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <!-- Fallback for that same attach step, only exercised if pdf-lib's page-copying ever fails
      on a given PDF: rasterizes its pages to images instead so something still gets attached. -->
@@ -38,7 +38,7 @@
   :root{
     --bg:#e9edf0; --surface:#ffffff; --surface-2:#f3f5f7; --border:#d8dde2;
     --text:#171a1e; --text-dim:#707983; --accent:#f47721; --accent-ink:#ffffff;
-    --good:#3f8f5c; --warn:#c98a13; --danger:#d9534f;
+    --good:#3f8f5c; --warn:#f5a623; --danger:#d9534f;
     --good-bg:#e6f4ea; --warn-bg:#fbf1dc; --danger-bg:#fbebea;
     --shadow: 0 1px 2px rgba(23,26,30,.06), 0 8px 24px -12px rgba(23,26,30,.18);
   }
@@ -93,6 +93,8 @@
   .rival-item .dot{ width:7px;height:7px;border-radius:50%; background:var(--border); flex:none; }
   .rival-item.active .dot{ background:var(--accent); }
   .rival-item .ri-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rival-item .ri-name .ri-first{ color:var(--text-dim); font-weight:400; }
+  .rival-item .ri-name .ri-surname{ color:var(--text); font-weight:700; }
   .rival-item .ri-del{ opacity:0; border:none; background:transparent; color:var(--text-dim); font-size:.75rem; cursor:pointer; padding:.1rem .3rem; border-radius:5px; flex:none; }
   .rival-item:hover .ri-del{ opacity:1; }
   .rival-item .ri-del.confirm{ opacity:1; color:var(--danger); font-weight:700; }
@@ -185,7 +187,7 @@
   .instat-import-head{ display:grid; grid-template-columns:auto 1fr 1.3fr; gap:.5rem; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); padding:0 .5rem; }
   .instat-comp-row{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
   .instat-comp-row label{ font-size:.78rem; font-weight:600; }
-  .instat-comp-row input{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .55rem; font-size:.82rem; min-width:220px; }
+  .instat-comp-row input, .instat-comp-row select{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .55rem; font-size:.82rem; min-width:220px; }
   .instat-file-row{ display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
   #febPasteZone{ min-height:4.5rem; max-height:220px; overflow:auto; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; padding:.6rem .7rem; font-size:.78rem; }
   #febPasteZone:empty:before{ content:attr(data-placeholder); color:var(--text-dim); }
@@ -607,7 +609,7 @@
         </p>
         <div class="instat-comp-row">
           <label for="instatImportCompetition">Competición para estos datos</label>
-          <input type="text" id="instatImportCompetition" list="competitionOptions" placeholder="Ej. Liga Femenina">
+          <select id="instatImportCompetition"></select>
         </div>
         <div class="instat-file-row">
           <input type="file" id="instatImportFile" accept=".xlsx,.xls">
@@ -694,10 +696,11 @@
 
         <div class="essence-sub">
           <h3>Sistemas de juego</h3>
-          <span class="empty-hint" style="padding:0 0 .5rem;">Sistemas propios generados y dibujados con Fastdraw.</span>
+          <span class="empty-hint" style="padding:0 0 .5rem;">Sube aquí el PDF con los sistemas propios (por ejemplo, exportado desde Fastdraw).</span>
         </div>
-        <div class="systems-list" id="offSystemsList"></div>
-        <button type="button" class="link-btn src-add-row" id="btnAddOffSystem">+ Añadir sistema</button>
+        <div class="advanced-stats-panel">
+          <div id="offSystemsPdfFileBox"></div>
+        </div>
       </section>
 
       <section class="essence-block">
@@ -916,17 +919,19 @@
     mode: 'prep',
     permSub: [], rivalSub: [],
     expanded: {}, playerStats: {}, statsUnsub: {},
-    addPickerOpen: false,
+    addPickerOpen: false, addPickerSeasonIds: null, addPickerSeasonLoading: false,
     febImportOpen: false, febImportLoading: false, febImportError: '', febImportPlayers: null,
     instatImportOpen: false, instatImportLoading: false, instatImportError: '', instatImportRows: null, instatImportConfirming: false,
     fibaImportOpen: false, fibaImportError: '', fibaImportPlayers: null,
     collapsedSeasons: {}, collapsedComps: {}, collapsedLetters: {},
     reportLang: 'es', competitionLogos: {}, exportCompetition: '',
     offSourceOptions: [], defSourceOptions: [],
-    offSources: [], defSources: [], offSystems: [], attackPlayers: [],
+    offSources: [], defSources: [], attackPlayers: [],
     offEssenceItems: [], defEssenceItems: [],
     advancedStatsMeta: null, advancedStatsFileData: null, advancedStatsFileDataFor: null, advancedStatsLoading: false,
-    advancedStatsUploading: false
+    advancedStatsUploading: false,
+    offSystemsPdfMeta: null, offSystemsPdfFileData: null, offSystemsPdfFileDataFor: null, offSystemsPdfLoading: false,
+    offSystemsPdfUploading: false
   };
 
   function $(sel){ return document.querySelector(sel); }
@@ -944,6 +949,19 @@
   }
   function fullName(p){
     return ((p.firstName||'') + ' ' + (p.lastName||'')).replace(/\s+/g,' ').trim();
+  }
+  // El repositorio de jugadoras se agrupa y ordena por APELLIDOS (subscribeAllPlayers usa
+  // orderBy('lastName')), pero el texto se lee "Nombre Apellidos" — con el nombre de pila
+  // más apagado y el apellido en negrita queda claro de un vistazo por qué cada jugadora
+  // está en ese grupo de letra y en ese orden, en vez de parecer alfabetizado por el nombre.
+  function playerListNameHtml(p){
+    var first = (p.firstName || '').trim();
+    var last = (p.lastName || '').trim();
+    if(!first && !last) return 'Sin nombre';
+    var out = '';
+    if(first) out += '<span class="ri-first">' + esc(first) + '</span> ';
+    if(last) out += '<span class="ri-surname">' + esc(last) + '</span>';
+    return out.trim();
   }
   function initialsFor(p){
     var a = (p.firstName||'').trim().charAt(0);
@@ -1086,13 +1104,31 @@
     roster:             { table: 'roster', parentKey: 'rival_id' },
     offSources:         { table: 'off_sources', parentKey: 'rival_id' },
     defSources:         { table: 'def_sources', parentKey: 'rival_id' },
-    offSystems:         { table: 'off_systems', parentKey: 'rival_id' },
     defPlayersToAttack: { table: 'attack_players', parentKey: 'rival_id' },
     offEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'off' } },
     defEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'def' } },
     stats:              { table: 'player_stats', parentKey: 'player_id' }
   };
   var ROOT_TABLES = { rivals: 'rivals', players: 'players', settings: 'app_settings' };
+
+  // PDF que se sube UNA vez por rival (un único documento "meta", sin lista de items) — el
+  // patrón que ya usaba "Estadística avanzada" y que ahora usa también "Sistemas de juego".
+  // table/pathSuffix los usa la capa de datos y el storage (más abajo); el resto de campos los
+  // usan las funciones de UI que pintan la caja de subir/ver/quitar el PDF.
+  var UPLOADED_PDF_KINDS = {
+    advancedStats: {
+      table: 'advanced_stats', pathSuffix: '', boxId: 'advancedStatsFileBox',
+      metaField: 'advancedStatsMeta', fileDataField: 'advancedStatsFileData', fileDataForField: 'advancedStatsFileDataFor',
+      loadingField: 'advancedStatsLoading', uploadingField: 'advancedStatsUploading',
+      placeholder: 'Sube aqui el PDF exportado de StatsLive tras el partido.'
+    },
+    offSystemsPdf: {
+      table: 'off_systems_pdf', pathSuffix: '_systems', boxId: 'offSystemsPdfFileBox',
+      metaField: 'offSystemsPdfMeta', fileDataField: 'offSystemsPdfFileData', fileDataForField: 'offSystemsPdfFileDataFor',
+      loadingField: 'offSystemsPdfLoading', uploadingField: 'offSystemsPdfUploading',
+      placeholder: 'Sube aquí el PDF con los sistemas propios (por ejemplo, exportado desde Fastdraw).'
+    }
+  };
 
   // Todos los cambios pasan por un unico canal de Realtime; cada onSnapshot
   // activo se apunta aqui y se le vuelve a llamar cuando le toca.
@@ -1203,8 +1239,8 @@
 
   function makeDocRefFromSegments(segs){
     if(segs.length === 2 && ROOT_TABLES[segs[0]]) return docRef(ROOT_TABLES[segs[0]], 'id', segs[1], {});
-    if(segs.length === 4 && segs[0] === 'rivals' && segs[2] === 'advancedStats' && segs[3] === 'meta'){
-      return docRef('advanced_stats', 'rival_id', segs[1], {}, true);
+    if(segs.length === 4 && segs[0] === 'rivals' && UPLOADED_PDF_KINDS[segs[2]] && segs[3] === 'meta'){
+      return docRef(UPLOADED_PDF_KINDS[segs[2]].table, 'rival_id', segs[1], {}, true);
     }
     if(segs.length === 4){
       var sub = SUBCOLLECTIONS[segs[2]];
@@ -1219,11 +1255,12 @@
 
   function makeCollectionRefFromSegments(segs){
     if(segs.length === 1 && ROOT_TABLES[segs[0]]) return collRef(ROOT_TABLES[segs[0]], null, null, {});
-    if(segs.length === 3 && segs[0] === 'rivals' && segs[2] === 'advancedStats'){
+    if(segs.length === 3 && segs[0] === 'rivals' && UPLOADED_PDF_KINDS[segs[2]]){
+      var kindDef = UPLOADED_PDF_KINDS[segs[2]];
       var rivalId = segs[1];
       return { doc: function(subId){
-        if(subId !== 'meta') throw new Error('Solo se admite advancedStats/meta');
-        return docRef('advanced_stats', 'rival_id', rivalId, {}, true);
+        if(subId !== 'meta') throw new Error('Solo se admite ' + segs[2] + '/meta');
+        return docRef(kindDef.table, 'rival_id', rivalId, {}, true);
       }};
     }
     if(segs.length === 3){
@@ -1484,9 +1521,10 @@
     state.section = sec;
     clearActiveSubs();
     state.rivalId = null; state.rival = null; state.roster = [];
-    state.offSources = []; state.defSources = []; state.offSystems = []; state.attackPlayers = [];
+    state.offSources = []; state.defSources = []; state.attackPlayers = [];
     state.offEssenceItems = []; state.defEssenceItems = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
+    state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = null;
     closeAddPicker();
     $('#btnNewRival').hidden = sec !== 'rivals';
@@ -1732,6 +1770,16 @@
     return statsArr[0];
   }
 
+  // Igual que pickStatsForExport pero devuelve un array de 0 o 1 elementos — para los
+  // informes (PDF de staff, PDF/PPTX del Scout Colectivo) que estaban dibujando TODOS los
+  // bloques de estadísticas de un rival con varias competiciones en vez de solo el de la
+  // competición marcada para exportar. Las portadas y el informe simplificado ya usaban
+  // pickStatsForExport correctamente; esto lleva ese mismo criterio a los demás informes.
+  function singleStatBlockArray(statsArr, competition){
+    var b = pickStatsForExport(statsArr, competition);
+    return b ? [b] : [];
+  }
+
   function selectRival(id){
     if(!db) return;
     state.section = 'rivals';
@@ -1781,11 +1829,6 @@
       renderSrcTable('def');
     }, function(err){ console.error('defSources onSnapshot', err); });
 
-    var unsubOffSystems = rivalRef.collection('offSystems').orderBy('order', 'asc').onSnapshot(function(snap){
-      state.offSystems = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
-      renderOffSystems();
-    }, function(err){ console.error('offSystems onSnapshot', err); });
-
     var unsubAttackPlayers = rivalRef.collection('defPlayersToAttack').orderBy('order', 'asc').onSnapshot(function(snap){
       state.attackPlayers = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
       renderAttackLists();
@@ -1801,28 +1844,15 @@
       renderEssenceItems('def');
     }, function(err){ console.error('defEssenceItems onSnapshot', err); });
 
-    // Only the small "meta" doc (name/size/chunkCount) is kept live-synced, so every teammate
-    // always sees at a glance whether a report is uploaded without downloading it. The actual
-    // PDF bytes live split across many small chunk docs (each under the db capability's 256 KiB
-    // per-document cap — one PDF-sized doc would just fail to save), fetched once on demand and
-    // reassembled (loadAdvancedStatsFile) when someone actually wants to view it — that's what
-    // lets the size limit stay generous (12MB) without slowing down opening the rival for
-    // everyone else.
-    state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
-    var unsubAdvancedStatsMeta = rivalRef.collection('advancedStats').doc('meta').onSnapshot(function(snap){
-      var newMeta = snap.exists ? snap.data() : null;
-      state.advancedStatsMeta = newMeta;
-      // Keep a cached file only when it matches the version marker we just uploaded ourselves
-      // (see handleAdvancedStatsPdfUpload) — anything else (someone else's newer upload, a
-      // deletion, or the first time this session sees an older upload) must be re-fetched.
-      if(!newMeta || newMeta.updatedAt !== state.advancedStatsFileDataFor){
-        state.advancedStatsFileData = null;
-        state.advancedStatsFileDataFor = null;
-      }
-      renderAdvancedStatsFile();
-    }, function(err){ console.error('advancedStatsMeta onSnapshot', err); });
+    // Solo el pequeño documento "meta" (nombre/tamaño/ruta) se mantiene sincronizado en vivo,
+    // así cualquiera del cuerpo técnico ve al momento si hay un informe subido sin tener que
+    // descargarlo. El PDF en sí vive en Supabase Storage (bucket "reports") y se pide una vez,
+    // bajo demanda, cuando alguien quiere verlo (loadUploadedPdfFile). Sistemas de juego y
+    // Estadística avanzada comparten exactamente este mismo patrón (subscribeUploadedPdfMeta).
+    var unsubOffSystemsPdfMeta = subscribeUploadedPdfMeta(rivalRef, 'offSystemsPdf');
+    var unsubAdvancedStatsMeta = subscribeUploadedPdfMeta(rivalRef, 'advancedStats');
 
-    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubOffSystems, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubAdvancedStatsMeta);
+    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta);
   }
 
   // ---------------- Rival logo upload ----------------
@@ -1890,7 +1920,7 @@
       if(state.collapsedLetters[letter]) return;
       var active = p.id === state.selectedPlayerId ? ' active' : '';
       html += '<div class="rival-item' + active + '" data-id="' + esc(p.id) + '">' +
-        '<span class="dot"></span><span class="ri-name">' + esc(fullName(p) || 'Sin nombre') + '</span>' +
+        '<span class="dot"></span><span class="ri-name">' + playerListNameHtml(p) + '</span>' +
         '<button class="ri-del" type="button" data-del="' + esc(p.id) + '" title="Eliminar jugadora">✕</button></div>';
     });
     list.innerHTML = html;
@@ -1944,9 +1974,10 @@
     state.section = 'players';
     clearActiveSubs();
     state.rivalId = null; state.rival = null; state.roster = [];
-    state.offSources = []; state.defSources = []; state.offSystems = []; state.attackPlayers = [];
+    state.offSources = []; state.defSources = []; state.attackPlayers = [];
     state.offEssenceItems = []; state.defEssenceItems = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
+    state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = id;
     $('#emptyState').hidden = true;
     $('#rivalTopbar').hidden = true; $('#prepView').hidden = true; $('#gameView').hidden = true;
@@ -2030,7 +2061,6 @@
     });
     $('#btnAddOffSource').addEventListener('click', function(){ addSrcRow('off'); });
     $('#btnAddDefSource').addEventListener('click', function(){ addSrcRow('def'); });
-    $('#btnAddOffSystem').addEventListener('click', addOffSystem);
     $all('[data-toggle-options]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var key = btn.getAttribute('data-toggle-options');
@@ -2092,23 +2122,61 @@
     state.addPickerOpen = !state.addPickerOpen;
     $('#addPicker').classList.toggle('open', state.addPickerOpen);
     $('#btnTogglePicker').textContent = state.addPickerOpen ? 'Cerrar' : '+ Añadir jugadora';
-    if(state.addPickerOpen){ $('#addPickerSearch').value = ''; renderAddPicker(); $('#addPickerSearch').focus(); }
+    if(state.addPickerOpen){
+      $('#addPickerSearch').value = '';
+      refreshAddPickerSeasonIds();
+      $('#addPickerSearch').focus();
+    }
   }
   function closeAddPicker(){
     state.addPickerOpen = false;
     $('#addPicker').classList.remove('open');
     $('#btnTogglePicker').textContent = '+ Añadir jugadora';
   }
+  // Una jugadora real solo juega en un equipo por temporada: si ya está en la plantilla de
+  // OTRO rival de esta misma temporada, no tiene sentido ofrecerla aquí para añadirla también
+  // a este. Se recalcula cada vez que se abre el selector (no se mantiene suscrito en vivo,
+  // ya que es una comprobación puntual en el momento de añadir, no una vista permanente).
+  function refreshAddPickerSeasonIds(){
+    if(!state.rival){ state.addPickerSeasonIds = {}; state.addPickerSeasonLoading = false; renderAddPicker(); return; }
+    state.addPickerSeasonLoading = true;
+    renderAddPicker();
+    var season = state.rival.season || '';
+    var sameSeasonRivals = state.rivals.filter(function(r){ return (r.season || '') === season; });
+    Promise.all(sameSeasonRivals.map(function(r){
+      return db.doc('rivals/' + r.id).collection('roster').get().then(function(snap){
+        return snap.docs.map(function(d){ return d.data().playerId; });
+      }).catch(function(err){ console.error('roster season check', r.id, err); return []; });
+    })).then(function(lists){
+      var set = {};
+      lists.forEach(function(ids){ ids.forEach(function(id){ if(id) set[id] = true; }); });
+      state.addPickerSeasonIds = set;
+    }).catch(function(err){
+      // Ante un fallo, mejor no bloquear el flujo de añadir jugadoras: se muestran todas
+      // (comportamiento anterior) en vez de dejar el selector vacío por un error de red.
+      console.error('refreshAddPickerSeasonIds', err);
+      state.addPickerSeasonIds = {};
+    }).then(function(){
+      state.addPickerSeasonLoading = false;
+      renderAddPicker();
+    });
+  }
   function renderAddPicker(){
     var q = ($('#addPickerSearch').value || '').trim().toLowerCase();
+    var el = $('#addPickerResults');
+    if(state.addPickerSeasonLoading){
+      el.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">Comprobando qué jugadoras ya están fichadas por otro equipo esta temporada…</p>';
+      return;
+    }
     var linkedIds = state.roster.map(function(r){ return r.playerId; });
+    var seasonIds = state.addPickerSeasonIds || {};
     var results = state.allPlayers.filter(function(p){
       if(linkedIds.indexOf(p.id) !== -1) return false;
+      if(seasonIds[p.id]) return false;
       return !q || fullName(p).toLowerCase().indexOf(q) !== -1;
     }).slice(0, 25);
-    var el = $('#addPickerResults');
     if(!results.length){
-      el.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">' + (state.allPlayers.length ? 'Sin jugadoras disponibles con ese nombre.' : 'Todavía no hay jugadoras creadas.') + '</p>';
+      el.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">' + (state.allPlayers.length ? 'Sin jugadoras disponibles con ese nombre (o ya están todas fichadas por algún equipo esta temporada).' : 'Todavía no hay jugadoras creadas.') + '</p>';
       return;
     }
     el.innerHTML = results.map(function(p){
@@ -2446,8 +2514,16 @@
       $('#instatImportResults').innerHTML = '';
       $('#btnInstatImportConfirm').hidden = true;
       $('#instatImportFile').value = '';
-      var comp = rivalCompetitions(state.rival)[0] || '';
-      $('#instatImportCompetition').value = comp;
+      // Desplegable con las mismas competiciones que el resto de la app (las de por
+      // defecto + las que ya tiene algún rival + las que ya tienen escudo asignado),
+      // igual que el selector de "logos de competición" — así no hay que escribirla
+      // a mano ni arriesgarse a una errata que rompa el emparejamiento por competición.
+      var compSel = $('#instatImportCompetition');
+      var compOptions = competitionOptionsList();
+      compSel.innerHTML = compOptions.map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
+      var comp = rivalCompetitions(state.rival)[0] || compOptions[0] || '';
+      if(comp && compOptions.indexOf(comp) === -1) compSel.innerHTML += '<option value="' + esc(comp) + '">' + esc(comp) + '</option>';
+      compSel.value = comp;
     }
   }
   function normalizeNameForMatch(s){
@@ -2994,6 +3070,14 @@
     var focus = captureFocus(container);
     container.innerHTML = '<div class="profile-wrap">' + playerCardHtml(p, {mode:'profile'}) + '</div>';
     wirePlayerCard(p.id, 'profile', null);
+    // Si ya teníamos sus bloques de estadísticas en caché (de una suscripción anterior),
+    // repíntalos ya mismo en vez de dejar el "Cargando…" fijo. Sin esto, cualquier cosa que
+    // reconstruya esta vista (por ejemplo guardar cualquier campo de la propia jugadora, que
+    // dispara un refresco de la lista completa de jugadoras) sustituía la ficha entera por una
+    // nueva con el marcador de carga puesto, y como la suscripción a player_stats ya había
+    // disparado una vez no volvía a hacerlo — así es como las estadísticas ya importadas
+    // "desaparecían" al mirar el perfil completo.
+    if(state.playerStats[p.id]) renderStatBlocks(p.id);
     restoreFocus(container, focus);
   }
 
@@ -3518,258 +3602,52 @@
     ref.collection(kind + 'Sources').add({source: '', notes: '', systems: '', order: Date.now()}).catch(function(err){ console.error('add src row', err); });
   }
 
-  // ---------------- Scout Colectivo: sistemas de juego (Fastdraw) ----------------
-  function processSystemImageFile(file, callback){
-    var reader = new FileReader();
-    reader.onload = function(e){
-      var img = new Image();
-      img.onload = function(){
-        try{
-          var maxDim = 900;
-          var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          var w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
-          var canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          var ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, w, h);
-          ctx.drawImage(img, 0, 0, w, h);
-          // PNG first so a transparent diagram export stays transparent; only fall back to
-          // JPEG (with a white backing) when the file is too big to store.
-          var dataUrl = canvas.toDataURL('image/png');
-          if(dataUrl.length > MAX_PHOTO_CHARS){
-            ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, w, h);
-            ctx.globalCompositeOperation = 'source-over';
-            var quality = 0.85;
-            dataUrl = canvas.toDataURL('image/jpeg', quality);
-            while(dataUrl.length > MAX_PHOTO_CHARS && quality > 0.3){ quality -= 0.12; dataUrl = canvas.toDataURL('image/jpeg', quality); }
-          }
-          callback(dataUrl.length > MAX_PHOTO_CHARS ? null : dataUrl);
-        }catch(err){ console.error('system image processing', err); callback(null); }
-      };
-      img.onerror = function(){ callback(null); };
-      img.src = e.target.result;
-    };
-    reader.onerror = function(){ callback(null); };
-    reader.readAsDataURL(file);
-  }
-
-  function renderOffSystems(){
-    var list = $('#offSystemsList');
-    if(!list) return;
-    // Sin sistemas todavía se muestra igualmente una tarjeta vacía y editable (con
-    // data-sys-id=""), en vez del aviso de "todavía no hay sistemas" — así el apartado no
-    // parece que falte. Esa tarjeta no existe de verdad en la base de datos hasta que se
-    // escribe algo en ella (nombre, notas o una imagen).
-    var displaySystems = state.offSystems.length ? state.offSystems : [{ id: '', name: '', notes: '', image: '' }];
-    list.innerHTML = displaySystems.map(function(s){
-      var imgHtml = s.image
-        ? ('<img src="' + s.image + '" alt="">' + '<button type="button" class="sys-img-remove" data-sys-img-remove title="Quitar imagen">✕</button>')
-        : ('<span class="sys-img-hint">Sube una captura del sistema (Fastdraw)</span><input type="file" accept="image/*" data-sys-img>');
-      return '<div class="system-card" data-sys-id="' + esc(s.id) + '">' +
-        '<div class="system-card-head">' +
-          '<input type="text" data-sys-field="name" value="' + esc(s.name || '') + '" placeholder="Nombre del sistema">' +
-          '<button type="button" class="btn-del" data-sys-del>Eliminar</button>' +
-        '</div>' +
-        '<div class="system-card-body">' +
-          '<textarea data-sys-field="notes" placeholder="Notas del sistema…">' + esc(s.notes || '') + '</textarea>' +
-          '<div class="system-image-drop">' + imgHtml + '</div>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-
-    // Para una tarjeta fantasma (id vacío), cualquiera de estas acciones la crea de verdad
-    // primero, con lo que ya hubiera en el resto de campos de esa misma tarjeta.
-    function createFromCard(card, extra){
-      var data = { name: '', notes: '', image: '', order: Date.now() };
-      card.querySelectorAll('[data-sys-field]').forEach(function(f){ data[f.getAttribute('data-sys-field')] = f.value; });
-      Object.assign(data, extra);
-      var ref = currentRivalRef();
-      if(!ref) return;
-      ref.collection('offSystems').add(data).catch(function(err){ console.error('add system', err); });
-    }
-
-    list.querySelectorAll('[data-sys-field]').forEach(function(el){
-      el.addEventListener('change', function(){
-        var card = el.closest('[data-sys-id]');
-        var id = card.getAttribute('data-sys-id');
-        if(!id){ createFromCard(card); return; }
-        var field = el.getAttribute('data-sys-field');
-        var ref = currentRivalRef();
-        if(!ref) return;
-        var patch = {}; patch[field] = el.value;
-        ref.collection('offSystems').doc(id).update(patch).catch(function(err){ console.error('save system field', err); });
-      });
-    });
-    list.querySelectorAll('[data-sys-del]').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var id = btn.closest('[data-sys-id]').getAttribute('data-sys-id');
-        if(!id) return; // tarjeta fantasma: todavía no hay nada que borrar
-        if(!btn.classList.contains('confirm')){
-          btn.classList.add('confirm'); btn.textContent = '¿Seguro?';
-          setTimeout(function(){ btn.classList.remove('confirm'); btn.textContent = 'Eliminar'; }, 3000);
-          return;
-        }
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection('offSystems').doc(id).delete().catch(function(err){ console.error('delete system', err); });
-      });
-    });
-    list.querySelectorAll('[data-sys-img]').forEach(function(input){
-      input.addEventListener('change', function(){
-        var file = input.files && input.files[0];
-        var card = input.closest('[data-sys-id]');
-        var id = card.getAttribute('data-sys-id');
-        if(!file) return;
-        processSystemImageFile(file, function(dataUrl){
-          if(!dataUrl) return;
-          if(!id){ createFromCard(card, { image: dataUrl }); return; }
-          var ref = currentRivalRef();
-          if(!ref) return;
-          ref.collection('offSystems').doc(id).update({image: dataUrl}).catch(function(err){ console.error('save system image', err); });
-        });
-      });
-    });
-    list.querySelectorAll('[data-sys-img-remove]').forEach(function(btn){
-      btn.addEventListener('click', function(e){
-        e.preventDefault();
-        var id = btn.closest('[data-sys-id]').getAttribute('data-sys-id');
-        if(!id) return;
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection('offSystems').doc(id).update({image: ''}).catch(function(err){ console.error('remove system image', err); });
-      });
-    });
-  }
-
-  function addOffSystem(){
-    var ref = currentRivalRef();
-    if(!ref) return;
-    ref.collection('offSystems').add({name: '', notes: '', image: '', order: Date.now()}).catch(function(err){ console.error('add system', err); });
-  }
-
-  // ---------------- Scout Colectivo: jugadoras a atacar (calidad defensiva / desgaste) ----------------
-  function renderAttackLists(){
-    var qList = $('#attackQualityList'), wList = $('#attackWearList');
-    if(!qList || !wList) return;
-    var hint = $('#attackNoRosterHint');
-    if(hint) hint.hidden = state.roster.length > 0;
-
-    var joined = state.attackPlayers.map(function(a){
-      var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-      return p ? { id: a.id, player: p, category: a.category } : null;
-    }).filter(Boolean);
-
-    function rowHtml(item){
-      var p = item.player;
-      var avatarInner = p.photo ? ('<img src="' + p.photo + '" alt="">') : esc(initialsFor(p));
-      return '<div class="attack-player-row" data-attack-id="' + esc(item.id) + '">' +
-        '<div class="cpr-avatar">' + avatarInner + '</div>' +
-        '<div class="cpr-name">' + esc(fullName(p) || 'Sin nombre') + '</div>' +
-        '<button type="button" class="btn-del" data-attack-del title="Quitar">✕</button>' +
-      '</div>';
-    }
-
-    var quality = joined.filter(function(i){ return i.category === 'calidad'; });
-    var wear = joined.filter(function(i){ return i.category === 'desgaste'; });
-    qList.innerHTML = quality.length ? quality.map(rowHtml).join('') : '<p class="empty-hint" style="padding:.2rem 0;">Ninguna todavía.</p>';
-    wList.innerHTML = wear.length ? wear.map(rowHtml).join('') : '<p class="empty-hint" style="padding:.2rem 0;">Ninguna todavía.</p>';
-
-    $all('#collectiveView [data-attack-del]').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var id = btn.closest('[data-attack-id]').getAttribute('data-attack-id');
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection('defPlayersToAttack').doc(id).delete().catch(function(err){ console.error('delete attack player', err); });
-      });
-    });
-
-    // Rebuild the "add" dropdowns with roster players not already classified in either column.
-    var joinedIds = joined.map(function(i){ return i.player.id; });
-    var rosterOptions = state.roster.map(function(r){
-      var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
-      return p ? {id: p.id, name: fullName(p) || 'Sin nombre'} : null;
-    }).filter(Boolean).filter(function(p){ return joinedIds.indexOf(p.id) === -1; });
-
-    $all('[data-attack-add]').forEach(function(sel){
-      sel.innerHTML = '<option value="">+ Añadir jugadora…</option>' + rosterOptions.map(function(p){
-        return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>';
-      }).join('');
-      sel.value = '';
-    });
-  }
-
-  function addAttackPlayer(playerId, category){
-    var ref = currentRivalRef();
-    if(!ref || !playerId) return;
-    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
-  }
-
-  // ---------------- Scout Colectivo: cuadro inicial de esencia ofensiva/defensiva (lista visual) ----------------
-  function renderEssenceItems(kind){
-    var list = $('#' + kind + 'EssenceItems');
-    if(!list) return;
-    var items = kind === 'off' ? state.offEssenceItems : state.defEssenceItems;
-    var collName = kind + 'EssenceItems';
-
-    if(!items.length){
-      list.innerHTML = '';
-      return;
-    }
-
-    list.innerHTML = items.map(function(it){
-      return '<div class="essence-item-row ' + kind + '" data-item-id="' + esc(it.id) + '">' +
-        '<span class="item-bullet"></span>' +
-        '<input type="text" data-item-field="text" value="' + esc(it.text || '') + '">' +
-        '<button type="button" class="btn-del" data-item-del title="Quitar">✕</button>' +
-      '</div>';
-    }).join('');
-
-    list.querySelectorAll('[data-item-field]').forEach(function(el){
-      el.addEventListener('change', function(){
-        var id = el.closest('[data-item-id]').getAttribute('data-item-id');
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection(collName).doc(id).update({text: el.value}).catch(function(err){ console.error('save essence item', err); });
-      });
-    });
-    list.querySelectorAll('[data-item-del]').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var id = btn.closest('[data-item-id]').getAttribute('data-item-id');
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete essence item', err); });
-      });
-    });
-  }
-
-  function addEssenceItem(kind, text){
-    var ref = currentRivalRef();
-    if(!ref || !text) return;
-    ref.collection(kind + 'EssenceItems').add({text: text, order: Date.now()}).catch(function(err){ console.error('add essence item', err); });
-  }
-
-  // ---------------- Estadística avanzada: PDF exportado de StatsLive ----------------
+  // ---------------- Sistemas de juego / Estadística avanzada: un PDF por rival ----------------
+  // Los dos apartados comparten exactamente el mismo patrón: un único PDF por rival, guardado
+  // como UN solo archivo en el bucket "reports" de Supabase Storage (bucket privado — solo el
+  // staff logueado puede leer/escribir, ver el esquema SQL). "Sistemas de juego" usaba antes
+  // tarjetas sueltas (nombre + notas + una imagen subida a mano por sistema, dibujado con
+  // Fastdraw); ahora es, a petición de Marta, exactamente lo mismo que "Estadística avanzada":
+  // un único PDF que sustituye a todo lo anterior. La tabla vieja (off_systems) y sus datos NO
+  // se borran — la app simplemente deja de leerla y escribirla — por si hiciera falta consultar
+  // algo de lo que ya hubiera cargado con el formato antiguo.
   function formatFileSize(bytes){
     if(!bytes && bytes !== 0) return '';
     if(bytes < 1024*1024) return Math.max(1, Math.round(bytes/1024)) + ' KB';
     return (bytes / (1024*1024)).toFixed(1).replace('.', ',') + ' MB';
   }
 
-  // El PDF se guarda como UN solo archivo en el bucket "reports" de Supabase
-  // Storage (bucket privado — solo el staff logueado puede leer/escribir, ver
-  // el esquema SQL). Ya no hace falta trocearlo: Storage admite archivos
-  // grandes sin el limite de 256 KiB por documento que tenia la base de datos
-  // de Claude, asi que esto sustituye por completo al sistema de "chunks".
-  function advancedStatsStoragePath(rivalId){ return rivalId + '.pdf'; }
+  function uploadedPdfStoragePath(kindDef, rivalId){ return rivalId + kindDef.pathSuffix + '.pdf'; }
 
-  function renderAdvancedStatsFile(){
-    var box = $('#advancedStatsFileBox');
+  // Solo el pequeño documento "meta" (nombre/tamaño/ruta) se mantiene sincronizado en vivo, así
+  // cualquiera del cuerpo técnico ve al momento si hay un informe subido sin descargarlo. El PDF
+  // en sí se pide una vez, bajo demanda, cuando alguien quiere verlo (loadUploadedPdfFile).
+  function subscribeUploadedPdfMeta(rivalRef, kind){
+    var kindDef = UPLOADED_PDF_KINDS[kind];
+    state[kindDef.fileDataField] = null; state[kindDef.fileDataForField] = null;
+    state[kindDef.loadingField] = false; state[kindDef.uploadingField] = false;
+    return rivalRef.collection(kind).doc('meta').onSnapshot(function(snap){
+      var newMeta = snap.exists ? snap.data() : null;
+      state[kindDef.metaField] = newMeta;
+      // Solo se conserva el archivo en caché cuando coincide con el marcador de versión que
+      // acabamos de subir nosotros mismos (ver handleUploadedPdfUpload) — cualquier otra cosa
+      // (una subida más reciente de otra persona, un borrado, o la primera vez que esta sesión
+      // ve una subida anterior) hay que volver a pedirla.
+      if(!newMeta || newMeta.updatedAt !== state[kindDef.fileDataForField]){
+        state[kindDef.fileDataField] = null;
+        state[kindDef.fileDataForField] = null;
+      }
+      renderUploadedPdfBox(kind);
+    }, function(err){ console.error(kind + ' meta onSnapshot', err); });
+  }
+
+  function renderUploadedPdfBox(kind){
+    var kindDef = UPLOADED_PDF_KINDS[kind];
+    var box = $('#' + kindDef.boxId);
     if(!box) return;
-    var meta = state.advancedStatsMeta;
+    var meta = state[kindDef.metaField];
 
-    if(state.advancedStatsUploading){
+    if(state[kindDef.uploadingField]){
       box.innerHTML =
         '<div class="advanced-stats-file"><span class="file-icon">\uD83D\uDCC4</span><span class="file-name">Subiendo informe…</span></div>';
       return;
@@ -3779,20 +3657,20 @@
       box.innerHTML =
         '<label class="advanced-stats-placeholder advanced-stats-upload">' +
           '<strong>Sin informe todavia</strong>' +
-          'Sube aqui el PDF exportado de StatsLive tras el partido.' +
+          esc(kindDef.placeholder) +
           '<span class="link-btn" style="display:inline-block;margin-top:.6rem;">Subir PDF</span>' +
-          '<input type="file" accept="application/pdf" data-stats-pdf-input>' +
+          '<input type="file" accept="application/pdf" data-uploaded-pdf-input="' + kind + '">' +
         '</label>' +
-        '<span class="export-error" data-stats-pdf-error></span>';
-      var input = box.querySelector('[data-stats-pdf-input]');
-      if(input) input.addEventListener('change', function(){ handleAdvancedStatsPdfUpload(input); });
+        '<span class="export-error" data-uploaded-pdf-error="' + kind + '"></span>';
+      var input = box.querySelector('[data-uploaded-pdf-input]');
+      if(input) input.addEventListener('change', function(){ handleUploadedPdfUpload(kind, input); });
       return;
     }
 
     var sizeLabel = formatFileSize(meta.fileSize);
     var nameLabel = esc(meta.fileName || 'informe.pdf') + (sizeLabel ? ' \u00B7 ' + sizeLabel : '');
-    var linkHtml = state.advancedStatsFileData
-      ? '<a class="link-btn" href="' + state.advancedStatsFileData + '" target="_blank" rel="noopener noreferrer">Ver / descargar</a>'
+    var linkHtml = state[kindDef.fileDataField]
+      ? '<a class="link-btn" href="' + state[kindDef.fileDataField] + '" target="_blank" rel="noopener noreferrer">Ver / descargar</a>'
       : '<span class="link-btn" style="opacity:.6;">Preparando enlace…</span>';
 
     box.innerHTML =
@@ -3800,47 +3678,48 @@
         '<span class="file-icon">\uD83D\uDCC4</span>' +
         '<span class="file-name">' + nameLabel + '</span>' +
         linkHtml +
-        '<button type="button" class="link-btn" data-remove-stats-pdf>Quitar</button>' +
+        '<button type="button" class="link-btn" data-remove-uploaded-pdf="' + kind + '">Quitar</button>' +
       '</div>' +
-      '<span class="export-error" data-stats-pdf-error></span>';
+      '<span class="export-error" data-uploaded-pdf-error="' + kind + '"></span>';
 
-    if(!state.advancedStatsFileData) loadAdvancedStatsFile();
+    if(!state[kindDef.fileDataField]) loadUploadedPdfFile(kind);
 
-    var rm = box.querySelector('[data-remove-stats-pdf]');
+    var rm = box.querySelector('[data-remove-uploaded-pdf]');
     if(rm) rm.addEventListener('click', function(){
       var ref = currentRivalRef();
       if(!ref) return;
-      state.advancedStatsFileData = null;
+      state[kindDef.fileDataField] = null;
       supabaseClient.storage.from('reports').remove([meta.filePath]).catch(function(err){ console.error('remove report', err); });
-      ref.collection('advancedStats').doc('meta').delete().catch(function(err){ console.error('delete stats meta', err); });
+      ref.collection(kind).doc('meta').delete().catch(function(err){ console.error('delete ' + kind + ' meta', err); });
     });
   }
 
-  // Pide una URL firmada (el bucket es privado) para ver/descargar el PDF.
-  // Es una unica llamada rapida a Storage — ya no hace falta el paso manual
-  // de "Cargar informe" que tenia la version con trocitos.
-  function loadAdvancedStatsFile(){
-    var meta = state.advancedStatsMeta;
-    if(!meta || !meta.filePath || state.advancedStatsLoading) return;
+  // Pide una URL firmada (el bucket es privado) para ver/descargar el PDF — una única llamada
+  // rápida a Storage.
+  function loadUploadedPdfFile(kind){
+    var kindDef = UPLOADED_PDF_KINDS[kind];
+    var meta = state[kindDef.metaField];
+    if(!meta || !meta.filePath || state[kindDef.loadingField]) return;
     var rivalIdAtStart = state.rivalId;
-    state.advancedStatsLoading = true;
+    state[kindDef.loadingField] = true;
     supabaseClient.storage.from('reports').createSignedUrl(meta.filePath, 3600).then(function(res){
-      state.advancedStatsLoading = false;
+      state[kindDef.loadingField] = false;
       if(state.rivalId !== rivalIdAtStart) return;
       if(res.error) throw res.error;
-      state.advancedStatsFileData = res.data.signedUrl;
-      renderAdvancedStatsFile();
+      state[kindDef.fileDataField] = res.data.signedUrl;
+      renderUploadedPdfBox(kind);
     }).catch(function(err){
-      console.error('load stats pdf', err);
-      state.advancedStatsLoading = false;
-      var errorEl = document.querySelector('[data-stats-pdf-error]');
+      console.error('load ' + kind + ' pdf', err);
+      state[kindDef.loadingField] = false;
+      var errorEl = document.querySelector('[data-uploaded-pdf-error="' + kind + '"]');
       if(errorEl){ errorEl.textContent = 'No se pudo cargar el informe.'; errorEl.style.display = 'block'; }
     });
   }
 
-  function handleAdvancedStatsPdfUpload(input){
+  function handleUploadedPdfUpload(kind, input){
+    var kindDef = UPLOADED_PDF_KINDS[kind];
     var file = input.files && input.files[0];
-    var errorEl = document.querySelector('[data-stats-pdf-error]');
+    var errorEl = document.querySelector('[data-uploaded-pdf-error="' + kind + '"]');
     function showErr(msg){ if(errorEl){ errorEl.textContent = msg; errorEl.style.display = 'block'; } }
     if(errorEl){ errorEl.style.display = 'none'; errorEl.textContent = ''; }
     if(!file || !state.rivalId) return;
@@ -3855,26 +3734,27 @@
 
     var ref = currentRivalRef();
     if(!ref) return;
-    var path = advancedStatsStoragePath(state.rivalId);
+    var path = uploadedPdfStoragePath(kindDef, state.rivalId);
     var name = file.name || 'informe.pdf';
 
-    state.advancedStatsUploading = true;
-    renderAdvancedStatsFile();
+    state[kindDef.uploadingField] = true;
+    renderUploadedPdfBox(kind);
 
     supabaseClient.storage.from('reports').upload(path, file, { upsert: true, contentType: 'application/pdf' }).then(function(res){
       if(res.error) throw res.error;
-      return ref.collection('advancedStats').doc('meta').set({ fileName: name, fileSize: file.size, filePath: path, updatedAt: nowIso() });
+      return ref.collection(kind).doc('meta').set({ fileName: name, fileSize: file.size, filePath: path, updatedAt: nowIso() });
     }).then(function(){
-      state.advancedStatsUploading = false;
-      state.advancedStatsFileData = null;
-      renderAdvancedStatsFile();
+      state[kindDef.uploadingField] = false;
+      state[kindDef.fileDataField] = null;
+      renderUploadedPdfBox(kind);
     }).catch(function(err){
-      console.error('save stats pdf', err);
-      state.advancedStatsUploading = false;
-      renderAdvancedStatsFile();
+      console.error('save ' + kind + ' pdf', err);
+      state[kindDef.uploadingField] = false;
+      renderUploadedPdfBox(kind);
       showErr('No se pudo guardar el PDF.');
     });
   }
+
 
   function gatherCollectiveRosterJoined(){
     return gatherRosterJoined().then(function(all){
@@ -3918,6 +3798,7 @@
   function buildCollectiveDoc(rival, rosterJoined, accent, lang, cfg){
     var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
     var L = tr(lang);
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
     var baseHeaderLabel = ((rival.name||'Rival') + (rival.season ? ' · ' + rival.season : '')).toUpperCase();
     var cursor = { headerLabel: baseHeaderLabel };
 
@@ -3932,7 +3813,10 @@
         drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colOffSystemsCol]);
         cursor.y += TABLE_GAP_EXTRA;
       }
-      if(cfg.offSystems) drawSystemsList(doc, cursor, accent, lang, L.offSystemsLabel, state.offSystems);
+      if(cfg.offSystems){
+        drawPlainSubLabel(doc, cursor, L.offSystemsLabel);
+        drawAdvancedStatsPlaceholder(doc, cursor, lang, state.offSystemsPdfMeta);
+      }
       drewAnySection = true;
     }
 
@@ -3966,19 +3850,19 @@
         doc.addPage();
         drawPageHeaderLabel(doc, cursor);
         rosterJoined.forEach(function(item){
-          drawPlayerBlock(doc, item.player, item.stats, item.number, accent, lang, cursor);
+          drawPlayerBlock(doc, item.player, singleStatBlockArray(item.stats, competition), item.number, accent, lang, cursor);
         });
       }
       drewAnySection = true;
     }
 
     // Drawn last on purpose: when a PDF has been uploaded, its real pages are appended right
-    // after this section (maybeAppendAdvancedStatsPdf), so keeping it as the final section
+    // after this section (appendUploadedPdfSections), so keeping it as the final section
     // means "adjunto a continuación" is always literally true.
     if(cfg.advancedStats){
       if(drewAnySection) cursor.y += SECTION_GAP_MAIN;
       drawSectionHeader(doc, cursor, accent, lang, L.advancedStatsLabel, true);
-      drawAdvancedStatsPlaceholder(doc, cursor, lang);
+      drawAdvancedStatsPlaceholder(doc, cursor, lang, state.advancedStatsMeta);
     }
 
     addFooters(doc, lang);
@@ -3993,6 +3877,7 @@
   function buildCollectivePlayersDoc(rival, rosterJoined, accent, lang, cfg){
     var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
     var L = tr(lang);
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
     var baseHeaderLabel = ((rival.name||'Rival') + (rival.season ? ' · ' + rival.season : '')).toUpperCase();
     var cursor = { headerLabel: baseHeaderLabel };
 
@@ -4008,7 +3893,10 @@
         drawVisualSourceCards(doc, cursor, accent, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colOffSystemsCol]);
         cursor.y += TABLE_GAP_EXTRA;
       }
-      if(cfg.offSystems) drawVisualSystemsCards(doc, cursor, accent, lang, L.offSystemsLabel, state.offSystems);
+      if(cfg.offSystems){
+        drawVisualSubLabel(doc, cursor, accent, lang, L.offSystemsLabel);
+        drawVisualStatsPlaceholder(doc, cursor, accent, lang, state.offSystemsPdfMeta);
+      }
       drewAnySection = true;
     }
 
@@ -4039,18 +3927,19 @@
 
       rosterJoined.forEach(function(item){
         doc.addPage();
-        drawVisualPlayerCard(doc, cursor, item, accent, lang);
+        var itemForCard = Object.assign({}, item, { stats: singleStatBlockArray(item.stats, competition) });
+        drawVisualPlayerCard(doc, cursor, itemForCard, accent, lang);
       });
       drewAnySection = true;
     }
 
     // Drawn last on purpose: when a PDF has been uploaded, its real pages are appended right
-    // after this section (maybeAppendAdvancedStatsPdf), so keeping it as the final section
+    // after this section (appendUploadedPdfSections), so keeping it as the final section
     // means "adjunto a continuación" is always literally true.
     if(cfg.advancedStats){
       if(drewAnySection) cursor.y += SECTION_GAP_MAIN;
       drawVisualSectionBanner(doc, cursor, accent, lang, L.advancedStatsLabel, sectionNum++);
-      drawVisualStatsPlaceholder(doc, cursor, accent, lang);
+      drawVisualStatsPlaceholder(doc, cursor, accent, lang, state.advancedStatsMeta);
     }
 
     addFooters(doc, lang);
@@ -4083,93 +3972,116 @@
   }
 
   // Best case: append the uploaded PDF's own pages — real vector pages, sharp at any zoom,
-  // still selectable text — onto the end of the already-built report via pdf-lib.
-  function mergeStatsPdfVector(doc, statsBytes){
+  // still selectable text — onto the end of a PDF's bytes via pdf-lib. Works purely on bytes
+  // (not a live jsPDF doc) so it can be chained: the result of one merge can be fed straight
+  // back in as the "base" for the next one, which is what lets a rival with BOTH a "Sistemas de
+  // juego" PDF and an "Estadística avanzada" PDF get both attached to the same export.
+  function mergePdfBytesVector(baseBytes, extraBytes){
     return loadPdfLib().then(function(PDFLib){
-      var baseBytes = doc.output('arraybuffer');
       return PDFLib.PDFDocument.load(baseBytes, {ignoreEncryption: true}).then(function(mainDoc){
-        return PDFLib.PDFDocument.load(statsBytes, {ignoreEncryption: true}).then(function(statsDoc){
-          return mainDoc.copyPages(statsDoc, statsDoc.getPageIndices()).then(function(copiedPages){
+        return PDFLib.PDFDocument.load(extraBytes, {ignoreEncryption: true}).then(function(extraDoc){
+          return mainDoc.copyPages(extraDoc, extraDoc.getPageIndices()).then(function(copiedPages){
             copiedPages.forEach(function(p){ mainDoc.addPage(p); });
             return mainDoc.save();
           });
         });
       });
-    }).then(function(mergedBytes){ return new Blob([mergedBytes], {type: 'application/pdf'}); });
-  }
-
-  // Fallback for when the uploaded file trips up pdf-lib's page copying (an unusual PDF
-  // structure, for instance): render each of its pages to a JPEG with pdf.js and add them as
-  // extra pages directly on the SAME jsPDF doc via addImage — heavier and not
-  // zoomable/selectable like the vector path, but guarantees the content still ends up
-  // inside the report one way or another, which is the point Marta asked for.
-  function appendStatsPdfAsImages(doc, statsBytes){
-    var pageW = 210, pageH = 297;
-    return loadPdfJs().then(function(pdfjsLib){
-      return pdfjsLib.getDocument({data: statsBytes}).promise.then(function(pdfDoc){
-        var chain = Promise.resolve();
-        for(var i = 1; i <= pdfDoc.numPages; i++){
-          (function(pageNum){
-            chain = chain.then(function(){ return pdfDoc.getPage(pageNum); }).then(function(page){
-              var viewport = page.getViewport({scale: 2});
-              var canvas = document.createElement('canvas');
-              canvas.width = viewport.width; canvas.height = viewport.height;
-              return page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise.then(function(){
-                var imgData = canvas.toDataURL('image/jpeg', 0.85);
-                var ratio = viewport.width / viewport.height;
-                var w = pageW, h = pageW / ratio;
-                if(h > pageH){ h = pageH; w = pageH * ratio; }
-                doc.addPage();
-                doc.addImage(imgData, 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
-              });
-            });
-          })(i);
-        }
-        return chain;
-      });
-    }).then(function(){ return new Blob([doc.output('arraybuffer')], {type: 'application/pdf'}); });
-  }
-
-  // When the export includes "Estadística avanzada" and a PDF has been uploaded for this
-  // rival, attaches it to the generated report — first trying the vector merge, then the
-  // image fallback if that fails. The visible banner for that section
-  // (drawAdvancedStatsPlaceholder / drawVisualStatsPlaceholder) just notes it's attached; this
-  // is what actually attaches it. Always resolves to a Blob: if both attempts fail, the report
-  // still goes out on its own rather than blocking the whole export.
-  // Resolves to {blob, attached, skipped, error} instead of a bare Blob so the caller can tell
-  // apart three cases that used to look identical (a plain report with nothing wrong): nothing
-  // was ever uploaded (skipped), the attach genuinely worked (attached), or it was attempted and
-  // failed (error carries the real reason so it can be shown instead of swallowed silently —
-  // that silence is exactly what made the previous failure invisible).
-  function maybeAppendAdvancedStatsPdf(doc, cfg){
-    function baseBlob(){ return new Blob([doc.output('arraybuffer')], {type: 'application/pdf'}); }
-    function skip(){ return {blob: baseBlob(), attached: false, skipped: true, error: null}; }
-    function fail(msg){ return {blob: baseBlob(), attached: false, skipped: false, error: msg}; }
-    function ok(blob){ return {blob: blob, attached: true, skipped: false, error: null}; }
-
-    var ref = currentRivalRef();
-    if(!cfg.advancedStats || !ref) return Promise.resolve(skip());
-    var meta = state.advancedStatsMeta;
-    // Nothing was ever uploaded for this rival — nothing to attach, not an error worth showing.
-    if(!meta || !meta.filePath) return Promise.resolve(skip());
-
-    return supabaseClient.storage.from('reports').download(meta.filePath).then(function(res){
-      if(res.error) throw res.error;
-      return res.data.arrayBuffer();
-    }).then(function(buf){
-      var statsBytes = new Uint8Array(buf);
-      return mergeStatsPdfVector(doc, statsBytes).then(ok).catch(function(err){
-        console.error('vector merge of advanced stats pdf failed, trying image fallback', err);
-        return appendStatsPdfAsImages(doc, statsBytes).then(ok).catch(function(err2){
-          console.error('image fallback for advanced stats pdf also failed', err2);
-          return fail((err2 && err2.message) || String(err2));
-        });
-      });
-    }).catch(function(err){
-      console.error('fetch advanced stats pdf for merge', err);
-      return fail((err && err.message) || String(err));
     });
   }
+
+  // Fallback for when an uploaded file trips up pdf-lib's page copying (an unusual PDF
+  // structure, for instance): render each of its pages to a JPEG with pdf.js and add them as
+  // extra pages via pdf-lib directly onto the base bytes — heavier and not zoomable/selectable
+  // like the vector path, but guarantees the content still ends up inside the report one way or
+  // another. Also bytes-in/bytes-out (via pdf-lib instead of jsPDF's addImage/addPage), for the
+  // same chaining reason as mergePdfBytesVector above — this fallback can kick in on the SECOND
+  // attachment too, once we're no longer working with the original live jsPDF doc.
+  function appendPdfAsImagesToBytes(baseBytes, extraBytes){
+    var pageW = 595.28, pageH = 841.89; // A4 en puntos (72dpi) — unidad nativa de pdf-lib
+    return Promise.all([loadPdfLib(), loadPdfJs()]).then(function(libs){
+      var PDFLib = libs[0], pdfjsLib = libs[1];
+      return PDFLib.PDFDocument.load(baseBytes, {ignoreEncryption: true}).then(function(mainDoc){
+        return pdfjsLib.getDocument({data: extraBytes}).promise.then(function(pdfDoc){
+          var chain = Promise.resolve();
+          for(var i = 1; i <= pdfDoc.numPages; i++){
+            (function(pageNum){
+              chain = chain.then(function(){ return pdfDoc.getPage(pageNum); }).then(function(page){
+                var viewport = page.getViewport({scale: 2});
+                var canvas = document.createElement('canvas');
+                canvas.width = viewport.width; canvas.height = viewport.height;
+                return page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise.then(function(){
+                  var imgData = canvas.toDataURL('image/jpeg', 0.85);
+                  return mainDoc.embedJpg(imgData).then(function(jpgImage){
+                    var ratio = viewport.width / viewport.height;
+                    var w = pageW, h = pageW / ratio;
+                    if(h > pageH){ h = pageH; w = pageH * ratio; }
+                    var pdfPage = mainDoc.addPage([pageW, pageH]);
+                    pdfPage.drawImage(jpgImage, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h });
+                  });
+                });
+              });
+            })(i);
+          }
+          return chain;
+        }).then(function(){ return mainDoc.save(); });
+      });
+    });
+  }
+
+  // Adjunta, en orden, cada PDF subido (Sistemas de juego / Estadística avanzada) al informe ya
+  // construido. Antes cada apartado se adjuntaba por separado a partir del doc de jsPDF
+  // original; ahora que puede haber DOS PDF subidos para el mismo rival y los dos activados en
+  // el mismo informe, se encadenan sobre los mismos bytes (el resultado del primero es la base
+  // del segundo) en vez de partir cada vez del jsPDF original, que solo vale como base para el
+  // primer adjunto. Siempre resuelve con un Blob: si algún adjunto falla, el informe sigue
+  // adelante igualmente en vez de bloquear toda la exportación.
+  // `entries`: [{key, meta}, ...] en el orden en que deben aparecer — solo los apartados con
+  // cfg activado, ya resueltos a su meta actual (o null si nunca se subió nada).
+  // Resuelve a {blob, results} donde results[key] es {attached, skipped, error} para poder
+  // avisar de qué adjunto en concreto falló, en vez de un aviso genérico como antes.
+  function appendUploadedPdfSections(doc, entries){
+    var results = {};
+    var baseBytes = new Uint8Array(doc.output('arraybuffer'));
+    var chain = Promise.resolve();
+    entries.forEach(function(entry){
+      chain = chain.then(function(){
+        var meta = entry.meta;
+        if(!meta || !meta.filePath){ results[entry.key] = {attached: false, skipped: true, error: null}; return; }
+        return supabaseClient.storage.from('reports').download(meta.filePath).then(function(res){
+          if(res.error) throw res.error;
+          return res.data.arrayBuffer();
+        }).then(function(buf){
+          var extraBytes = new Uint8Array(buf);
+          return mergePdfBytesVector(baseBytes, extraBytes).then(function(merged){
+            baseBytes = merged;
+            results[entry.key] = {attached: true, skipped: false, error: null};
+          }).catch(function(err){
+            console.error('vector merge failed for ' + entry.key + ', trying image fallback', err);
+            return appendPdfAsImagesToBytes(baseBytes, extraBytes).then(function(merged){
+              baseBytes = merged;
+              results[entry.key] = {attached: true, skipped: false, error: null};
+            }).catch(function(err2){
+              console.error('image fallback also failed for ' + entry.key, err2);
+              results[entry.key] = {attached: false, skipped: false, error: (err2 && err2.message) || String(err2)};
+            });
+          });
+        }).catch(function(err){
+          console.error('fetch pdf for ' + entry.key, err);
+          results[entry.key] = {attached: false, skipped: false, error: (err && err.message) || String(err)};
+        });
+      });
+    });
+    return chain.then(function(){
+      return { blob: new Blob([baseBytes], {type: 'application/pdf'}), results: results };
+    });
+  }
+
+  // Qué apartados de "un PDF por rival" puede llevar un informe del Scout Colectivo, en el
+  // orden en que deben aparecer, y la etiqueta a mostrar si falla adjuntar alguno.
+  var COLLECTIVE_PDF_ATTACHMENTS = [
+    { cfgKey: 'offSystems', kind: 'offSystemsPdf', label: 'sistemas de juego' },
+    { cfgKey: 'advancedStats', kind: 'advancedStats', label: 'estadística avanzada' }
+  ];
 
   function runCollectiveExport(btn, cfg, filenamePrefix, showMsgFn, builderFn){
     var lang = state.reportLang || 'es';
@@ -4183,7 +4095,9 @@
     gatherCollectiveRosterJoined().then(function(rosterJoined){
       var accent = hexToRgb(rival.color);
       var doc = (builderFn || buildCollectiveDoc)(rival, rosterJoined, accent, lang, cfg);
-      return maybeAppendAdvancedStatsPdf(doc, cfg);
+      var entries = COLLECTIVE_PDF_ATTACHMENTS.filter(function(a){ return cfg[a.cfgKey]; })
+        .map(function(a){ return { key: a.cfgKey, meta: state[UPLOADED_PDF_KINDS[a.kind].metaField] }; });
+      return appendUploadedPdfSections(doc, entries);
     }).then(function(result){
       attachResult = result;
       return downloadsCap.save({filename: filenamePrefix + slug(rival.name) + '.pdf', data: result.blob});
@@ -4191,8 +4105,15 @@
       btn.disabled = false; btn.textContent = original;
       // Nothing to attach (skipped) is normal — only a real attempt-and-fail is worth surfacing,
       // since that's the case that used to fail completely silently.
-      if(attachResult && !attachResult.skipped && !attachResult.attached){
-        showMsgFn('Informe generado, pero no se pudo adjuntar el PDF de estadísticas avanzadas: ' + (attachResult.error || 'error desconocido') + '.');
+      if(attachResult){
+        var failed = [];
+        COLLECTIVE_PDF_ATTACHMENTS.forEach(function(a){
+          var r = attachResult.results[a.cfgKey];
+          if(r && !r.skipped && !r.attached) failed.push(a.label + (r.error ? ' (' + r.error + ')' : ''));
+        });
+        if(failed.length){
+          showMsgFn('Informe generado, pero no se pudo adjuntar: ' + failed.join('; ') + '.');
+        }
       }
     })
       .catch(function(err){
@@ -4205,6 +4126,7 @@
         console.error('export collective pdf', err);
       });
   }
+
 
   function exportCollectivePdf(){
     runCollectiveExport($('#btnExportCollectivePdf'), ALL_PDF_SECTIONS, 'scouting_colectivo_', showCollectiveExportMsg);
@@ -4292,6 +4214,7 @@
   function exportStaffTeamPdf(){
     var lang = state.reportLang || 'es';
     runTeamExport($('#btnExportStaffPdf'), 'scouting_staff_', function(rival, rosterJoined){
+      var competition = state.exportCompetition || rivalCompetitions(rival)[0];
       var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
       var accent = hexToRgb(rival.color);
       drawTeamCoverPage(doc, rival, rosterJoined, accent, lang);
@@ -4310,7 +4233,7 @@
       // one, so as many fit per page as their own content allows (only a new page when the
       // next block genuinely doesn't fit).
       sorted.forEach(function(item){
-        drawPlayerBlock(doc, item.player, item.stats, item.number, accent, lang, cursor);
+        drawPlayerBlock(doc, item.player, singleStatBlockArray(item.stats, competition), item.number, accent, lang, cursor);
       });
       addFooters(doc, lang);
       return doc;
@@ -4337,9 +4260,10 @@
     var rival = state.rival || {name: 'Rival'};
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
     gatherRosterJoined().then(function(rosterJoined){
-      var compLogoEntry = findCompetitionLogo(rivalCompetitions(rival)[0]);
-      var pptx = buildScoutingPptx(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data);
+      var compLogoEntry = findCompetitionLogo(competition);
+      var pptx = buildScoutingPptx(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data, competition);
       return pptx.write({outputType: 'blob'});
     }).then(function(blob){
       return downloadsCap.save({filename: 'scouting_video_' + slug(rival.name) + '.pptx', data: blob});
@@ -4356,7 +4280,7 @@
       });
   }
 
-  function buildScoutingPptx(rival, rosterJoined, lang, compLogo){
+  function buildScoutingPptx(rival, rosterJoined, lang, compLogo, competition){
     lang = lang || 'es';
     var L = tr(lang);
     var pptx = new window.PptxGenJS();
@@ -4370,7 +4294,7 @@
     var FONT_BOLD = 'Neo Tech Std', FONT_LIGHT = 'Neo Tech Std Light', FONT_MEDIUM = 'Neo Tech Std Medium';
     var accentHex = hexNoHash(rival.color);
     var inkHex = '000000', noteInkHex = '0D0D0D', dimHex = '5B6270', caveatHex = '8A8A8A';
-    var goodHex = '1F8A5F', warnHex = 'A56B00', dangerHex = 'C73434';
+    var goodHex = '1F8A5F', warnHex = 'F5A623', dangerHex = 'C73434';
     function threatHex(t){ return t === 'alta' ? dangerHex : (t === 'baja' ? goodHex : warnHex); }
     function shootHex(s){ return s === 'rojo' ? dangerHex : (s === 'verde' ? goodHex : warnHex); }
 
@@ -4489,7 +4413,7 @@
       trafficLight(L.threatTotalBadge.replace(':', '').trim(), threatActive, textX, 1.58);
       trafficLight(L.threatShotBadge.replace(':', '').trim(), shootActive, textX + 2.1, 1.58);
 
-      var statsBlock = (item.stats && item.stats[0]) || null;
+      var statsBlock = pickStatsForExport(item.stats, competition);
       // Línea de marcador estilo la plantilla: "20' – 10 pts – 6 FG (3 3P/30%) – FT 87% –
       // 5 Reb (1 Off) – 2 Ast". Las etiquetas van siempre en inglés (pts/FG/3P/FT/Reb/Off/Ast),
       // igual que en la plantilla original, sea cual sea el idioma del informe.
@@ -4596,7 +4520,7 @@
 
     var accentHex = '#' + hexNoHash(rival.color);
     var inkHex = '#0B0B0D', noteInkHex = '#1A1A1D', dimHex = '#5B6270', caveatHex = '#8A8A8A';
-    var goodHex = '#1F8A5F', warnHex = '#B4790A', dangerHex = '#C73434';
+    var goodHex = '#1F8A5F', warnHex = '#F5A623', dangerHex = '#C73434';
 
     function mixWhite(hex, ratio){
       hex = hexNoHash(hex || DEFAULT_COLOR);
@@ -5161,10 +5085,10 @@
       doc.text(fullName(item.player) || L.noName, x + 2, y + 4.8); x += cols[1].w * colScale;
       doc.setTextColor.apply(doc, dim);
       doc.text(translatePosition(lang, item.player.position) || '—', x + 2, y + 4.8); x += cols[2].w * colScale;
-      var tcol = item.player.threat === 'alta' ? [199,52,52] : (item.player.threat === 'baja' ? [31,138,95] : [165,107,0]);
+      var tcol = item.player.threat === 'alta' ? [199,52,52] : (item.player.threat === 'baja' ? [31,138,95] : [245,166,35]);
       doc.setTextColor.apply(doc, tcol);
       doc.text(L.threatLevels[item.player.threat] || L.threatLevels.media, x + 2, y + 4.8); x += cols[3].w * colScale;
-      var scol = item.player.shootThreat === 'rojo' ? [199,52,52] : (item.player.shootThreat === 'verde' ? [31,138,95] : [165,107,0]);
+      var scol = item.player.shootThreat === 'rojo' ? [199,52,52] : (item.player.shootThreat === 'verde' ? [31,138,95] : [245,166,35]);
       doc.setFillColor.apply(doc, scol);
       doc.circle(x + 4, y + 3.3, 1.8, 'F');
       y += 7;
@@ -5348,63 +5272,24 @@
     cursor.y += SUBSECTION_GAP;
   }
 
-  // "Sistemas de juego": name + notes + an optional Fastdraw screenshot placed to the right,
-  // fit to its own aspect ratio so diagrams never get distorted.
-  function drawSystemsList(doc, cursor, accent, lang, title, systems){
-    var L = tr(lang);
-    var pageW = 210, margin = 16;
-    var ink = [20,23,28], dim = [91,98,112];
+  // Título de subsección con el mismo estilo tipográfico que ya usaban drawItemsList y la
+  // antigua drawSystemsList (negrita, mayúsculas, 9.5pt) — reutilizable para cualquier
+  // subapartado del informe plano de staff que solo necesite un título antes de su contenido,
+  // como la caja de "PDF adjunto a continuación" de Sistemas de juego / Estadística avanzada.
+  function drawPlainSubLabel(doc, cursor, title){
+    var margin = 16;
     ensureSpace(doc, cursor, 10);
-    doc.setTextColor.apply(doc, ink);
+    doc.setTextColor(20,23,28);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
     doc.text(title.toUpperCase(), margin, cursor.y);
     cursor.y += 6;
-
-    if(!systems.length){
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, dim);
-      doc.text(L.noNotes, margin, cursor.y);
-      cursor.y += 5 + SUBSECTION_GAP;
-      return;
-    }
-
-    var contentW = pageW - margin*2;
-    systems.forEach(function(s){
-      var imgW = 0, imgH = 0, hasImg = false;
-      if(s.image){
-        try{
-          var props = doc.getImageProperties(s.image);
-          imgW = Math.min(contentW * 0.42, 78);
-          imgH = imgW * props.height / props.width;
-          hasImg = true;
-        }catch(e){ hasImg = false; }
-      }
-      var textMaxW = hasImg ? (contentW - imgW - 6) : contentW;
-      var notes = (s.notes && s.notes.trim()) ? s.notes.trim() : L.noNotes;
-      var wrapped = doc.splitTextToSize(notes, textMaxW);
-      var textH = 9 + wrapped.length * 4.2;
-      var blockH = Math.max(textH, hasImg ? imgH + 4 : 0);
-      ensureSpace(doc, cursor, blockH + 6);
-      var top = cursor.y;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, accent);
-      doc.text((s.name && s.name.trim()) ? s.name.trim() : L.noName, margin, top + 4);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.7); doc.setTextColor.apply(doc, ink);
-      wrapped.forEach(function(line, li){ doc.text(line, margin, top + 9 + li*4.2); });
-      if(hasImg){
-        try{ doc.addImage(s.image, pdfImageFormat(s.image), margin + textMaxW + 6, top, imgW, imgH); }
-        catch(e){ console.error('addImage system', e); }
-      }
-      cursor.y = top + blockH + 4;
-      doc.setDrawColor(230,230,230);
-      doc.line(margin, cursor.y - 2, margin + contentW, cursor.y - 2);
-    });
-    cursor.y += SUBSECTION_GAP;
   }
 
   // "Jugadoras a atacar": two simple columns, calidad defensiva / desgaste.
   function drawAttackPlayersSection(doc, cursor, lang, qualityList, wearList){
     var L = tr(lang);
     var pageW = 210, margin = 16;
-    var ink = [20,23,28], dim = [91,98,112], good = [31,138,95], warn = [165,107,0];
+    var ink = [20,23,28], dim = [91,98,112], good = [31,138,95], warn = [245,166,35];
     ensureSpace(doc, cursor, 12);
     doc.setTextColor.apply(doc, ink);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
@@ -5437,22 +5322,22 @@
     cursor.y += SUBSECTION_GAP;
   }
 
-  // Layout-only box for the advanced-stats section. When a PDF has been uploaded in
-  // "Estadística avanzada" (state.advancedStatsMeta), this just notes that the real report is
-  // attached — the actual pages get appended to the export afterwards, as-is, by
-  // maybeAppendAdvancedStatsPdf. Falls back to the "Próximamente" placeholder otherwise. The
-  // section title itself is drawn by the main-section banner (drawSectionHeader), not here.
-  function drawAdvancedStatsPlaceholder(doc, cursor, lang){
+  // Layout-only box for a "one PDF per rival" section (Estadística avanzada, y ahora también
+  // Sistemas de juego). Cuando hay un PDF subido para ese apartado (meta), esto solo avisa de
+  // que el informe real va adjunto a continuación — las páginas de verdad se añaden después,
+  // tal cual, en appendUploadedPdfSections. Si no hay nada subido, cae en el aviso de
+  // "Próximamente". El título de la subsección se dibuja aparte (drawSectionHeader o
+  // drawPlainSubLabel), no aquí.
+  function drawAdvancedStatsPlaceholder(doc, cursor, lang, meta){
     var L = tr(lang);
     var pageW = 210, margin = 16;
-    var meta = state.advancedStatsMeta;
     ensureSpace(doc, cursor, 32);
     doc.setDrawColor(210,210,210);
     if(doc.setLineDashPattern) doc.setLineDashPattern([1.5, 1.5], 0);
     doc.rect(margin, cursor.y, pageW - margin*2, 28);
     if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
     doc.setTextColor(150,150,150); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    var msg = meta ? (L.advancedStatsAttached + (meta.name ? ' (' + meta.name + ')' : '')) : L.advancedStatsSoon;
+    var msg = meta ? (L.advancedStatsAttached + (meta.fileName ? ' (' + meta.fileName + ')' : '')) : L.advancedStatsSoon;
     doc.text(msg, margin + (pageW - margin*2)/2, cursor.y + 15, {align: 'center'});
     cursor.y += 28 + SUBSECTION_GAP;
   }
@@ -5502,10 +5387,10 @@
       doc.text(fullName(item.player) || L.noName, x + 2, cursor.y + 4.8); x += cols[1].w * colScale;
       doc.setTextColor.apply(doc, dim);
       doc.text(translatePosition(lang, item.player.position) || '—', x + 2, cursor.y + 4.8); x += cols[2].w * colScale;
-      var tcol = item.player.threat === 'alta' ? [199,52,52] : (item.player.threat === 'baja' ? [31,138,95] : [165,107,0]);
+      var tcol = item.player.threat === 'alta' ? [199,52,52] : (item.player.threat === 'baja' ? [31,138,95] : [245,166,35]);
       doc.setTextColor.apply(doc, tcol);
       doc.text(L.threatLevels[item.player.threat] || L.threatLevels.media, x + 2, cursor.y + 4.8); x += cols[3].w * colScale;
-      var scol = item.player.shootThreat === 'rojo' ? [199,52,52] : (item.player.shootThreat === 'verde' ? [31,138,95] : [165,107,0]);
+      var scol = item.player.shootThreat === 'rojo' ? [199,52,52] : (item.player.shootThreat === 'verde' ? [31,138,95] : [245,166,35]);
       doc.setFillColor.apply(doc, scol);
       doc.circle(x + 4, cursor.y + 3.3, 1.8, 'F');
       cursor.y += 7;
@@ -5534,7 +5419,7 @@
     var L = tr(lang);
     var pageW = 210, pageH = 297, margin = 16;
     var ink = [20,23,28], dim = [91,98,112];
-    var good = [31,138,95], warn = [165,107,0], danger = [199,52,52];
+    var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
     function threatColor(t){ return t === 'alta' ? danger : (t === 'baja' ? good : warn); }
     function shootColor(s){ return s === 'rojo' ? danger : (s === 'verde' ? good : warn); }
 
@@ -5626,7 +5511,7 @@
   // ==================================================================================
   // "PDF para jugadoras" — visual redesign. A dedicated suite of drawing functions used
   // ONLY by buildCollectivePlayersDoc, so the staff-facing look (drawSectionHeader,
-  // drawNotesBox, drawSourcesTable, drawSystemsList, drawAttackPlayersSection,
+  // drawNotesBox, drawSourcesTable, drawAttackPlayersSection,
   // drawAdvancedStatsPlaceholder, drawRosterTable, drawPlayerBlock) stays untouched.
   // Shares ensureSpace(doc,cursor,needed), SUBSECTION_GAP/SECTION_GAP_MAIN/TABLE_GAP_EXTRA
   // and drawPageHeaderLabel with the staff report for identical pagination/rhythm.
@@ -5817,61 +5702,12 @@
     cursor.y += SUBSECTION_GAP;
   }
 
-  // "Sistemas de juego" as bordered cards with a colored left stripe and a bigger diagram,
-  // instead of the staff report's plain list with hairline separators.
-  function drawVisualSystemsCards(doc, cursor, accent, lang, title, systems){
-    var L = tr(lang);
-    var pageW = 210, margin = 16;
-    var totalW = pageW - margin*2;
-    var ink = [20,23,28], dim = [91,98,112];
-    drawVisualSubLabel(doc, cursor, accent, lang, title);
-    if(!systems.length){
-      ensureSpace(doc, cursor, 8);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, dim);
-      doc.text(L.noNotes, margin, cursor.y);
-      cursor.y += 5 + SUBSECTION_GAP;
-      return;
-    }
-    systems.forEach(function(s){
-      var imgW = 0, imgH = 0, hasImg = false;
-      if(s.image){
-        try{
-          var props = doc.getImageProperties(s.image);
-          imgW = Math.min(totalW * 0.4, 74);
-          imgH = imgW * props.height / props.width;
-          hasImg = true;
-        }catch(e){ hasImg = false; }
-      }
-      var textMaxW = hasImg ? (totalW - imgW - 20) : (totalW - 14);
-      var notes = (s.notes && s.notes.trim()) ? s.notes.trim() : L.noNotes;
-      var wrapped = doc.splitTextToSize(notes, textMaxW);
-      var contentH = Math.max(9 + wrapped.length*4.3, hasImg ? imgH : 0) + 6;
-      ensureSpace(doc, cursor, contentH + 3);
-      var top = cursor.y;
-      doc.setDrawColor.apply(doc, tintColor(accent, 0.55));
-      doc.setFillColor(252,252,253);
-      doc.roundedRect(margin, top, totalW, contentH, 2.4, 2.4, 'FD');
-      doc.setFillColor.apply(doc, accent);
-      doc.roundedRect(margin, top, 3.2, contentH, 1.6, 1.6, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, shadeColor(accent, 0.3));
-      doc.text((s.name && s.name.trim()) ? s.name.trim() : L.noName, margin + 9, top + 7);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.7); doc.setTextColor.apply(doc, ink);
-      wrapped.forEach(function(line, li){ doc.text(line, margin + 9, top + 13.5 + li*4.3); });
-      if(hasImg){
-        try{ doc.addImage(s.image, pdfImageFormat(s.image), margin + totalW - imgW - 6, top + (contentH-imgH)/2, imgW, imgH); }
-        catch(e){ console.error('addImage system visual', e); }
-      }
-      cursor.y = top + contentH + 3;
-    });
-    cursor.y += SUBSECTION_GAP;
-  }
-
   // "Jugadoras a atacar" as colored chip badges flowing in two columns (calidad/desgaste),
   // instead of the staff report's plain bullet text columns.
   function drawVisualAttackBadges(doc, cursor, lang, qualityList, wearList){
     var L = tr(lang);
     var pageW = 210, margin = 16;
-    var good = [31,138,95], warn = [165,107,0];
+    var good = [31,138,95], warn = [245,166,35];
     drawVisualSubLabel(doc, cursor, good, lang, L.attackPlayersLabel);
     var colGap = 8;
     var colW = (pageW - margin*2 - colGap) / 2;
@@ -5923,15 +5759,15 @@
     cursor.y += SUBSECTION_GAP;
   }
 
-  // Tinted, dashed-border placeholder box for the advanced-stats section, with a small
-  // decorative accent circle instead of plain dashed rectangle + gray caption. When a PDF has
-  // been uploaded, this notes it's attached — the real pages get appended to the export
-  // afterwards, as-is, by maybeAppendAdvancedStatsPdf.
-  function drawVisualStatsPlaceholder(doc, cursor, accent, lang){
+  // Tinted, dashed-border placeholder box for a "one PDF per rival" section (Estadística
+  // avanzada, y ahora también Sistemas de juego), with a small decorative accent circle instead
+  // of plain dashed rectangle + gray caption. When a PDF has been uploaded (meta), this notes
+  // it's attached — the real pages get appended to the export afterwards, as-is, by
+  // appendUploadedPdfSections.
+  function drawVisualStatsPlaceholder(doc, cursor, accent, lang, meta){
     var L = tr(lang);
     var pageW = 210, margin = 16;
     var totalW = pageW - margin*2;
-    var meta = state.advancedStatsMeta;
     ensureSpace(doc, cursor, 34);
     var top = cursor.y;
     doc.setFillColor.apply(doc, tintColor(accent, 0.9));
@@ -5943,7 +5779,7 @@
     doc.text(meta ? 'OK' : '~', margin + totalW/2, top + (meta ? 13.6 : 14.3), {align: 'center'});
     doc.setTextColor.apply(doc, shadeColor(accent, 0.35));
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-    var msg = meta ? (L.advancedStatsAttached + (meta.name ? ' (' + meta.name + ')' : '')) : L.advancedStatsSoon;
+    var msg = meta ? (L.advancedStatsAttached + (meta.fileName ? ' (' + meta.fileName + ')' : '')) : L.advancedStatsSoon;
     doc.text(msg.toUpperCase(), margin + totalW/2, top + 24, {align: 'center'});
     cursor.y = top + 30 + SUBSECTION_GAP;
   }
@@ -5953,7 +5789,7 @@
   function drawVisualRosterGrid(doc, cursor, rosterJoined, accent, lang){
     var L = tr(lang);
     var pageW = 210, pageH = 297, margin = 16;
-    var good = [31,138,95], warn = [165,107,0], danger = [199,52,52];
+    var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
     drawVisualSubLabel(doc, cursor, accent, lang, L.roster);
     if(!rosterJoined.length){
       ensureSpace(doc, cursor, 8);
@@ -6007,7 +5843,7 @@
   function drawVisualPlayerCard(doc, cursor, item, accent, lang){
     var L = tr(lang);
     var pageW = 210, pageH = 297, margin = 16;
-    var good = [31,138,95], warn = [165,107,0], danger = [199,52,52];
+    var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
     function threatColor(t){ return t === 'alta' ? danger : (t === 'baja' ? good : warn); }
     function shootColor(s){ return s === 'rojo' ? danger : (s === 'verde' ? good : warn); }
     var p = item.player, number = item.number, statsBlocks = item.stats;
@@ -6112,7 +5948,7 @@
     var accent = hexToRgb(rival.color);
     var headerInk = contrastInk(accent);
     var textInk = [20,23,28], textDim = [91,98,112];
-    var good = [31,138,95], warn = [165,107,0], danger = [199,52,52];
+    var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
 
     doc.setFillColor.apply(doc, accent);
     doc.rect(0, 0, pageW, 28, 'F');
