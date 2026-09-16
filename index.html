@@ -1074,13 +1074,25 @@ if('serviceWorker' in navigator){
     var el = document.activeElement;
     if(!el || !root.contains(el)) return null;
     var card = el.closest('[' + idAttr + ']');
+    var tag = el.tagName;
+    var type = (el.type || '').toLowerCase();
+    // Los campos de texto/número/área/select guardan al hacer blur ('change'), no al teclear —
+    // así que lo que se lleva escrito a media palabra NUNCA está todavía en `state` cuando llega
+    // un repintado disparado por OTRO motivo (p. ej. guardar un campo distinto de la MISMA
+    // ficha, como el semáforo o la posición, que sí guardan al momento). Sin conservar también
+    // este valor "en vivo" (no solo el foco), ese repintado revertía lo que se estaba escribiendo
+    // al último valor guardado, aunque el foco se recuperase bien — daba la sensación de que
+    // "no dejaba escribir". No se captura en checkboxes/radios/file: ahí lo que importa es
+    // .checked, no .value, y no tiene este problema porque no se "teclea" letra a letra.
+    var hasLiveValue = tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && type !== 'checkbox' && type !== 'radio' && type !== 'file');
     return {
       idAttr: idAttr, fieldAttr: fieldAttr,
       id: card ? card.getAttribute(idAttr) : null,
       field: el.getAttribute(fieldAttr),
       roster: el.hasAttribute('data-roster-number'),
       selStart: (typeof el.selectionStart === 'number') ? el.selectionStart : null,
-      selEnd: (typeof el.selectionEnd === 'number') ? el.selectionEnd : null
+      selEnd: (typeof el.selectionEnd === 'number') ? el.selectionEnd : null,
+      liveValue: hasLiveValue ? el.value : null
     };
   }
   function restoreFocus(root, info){
@@ -1089,6 +1101,7 @@ if('serviceWorker' in navigator){
     if(!card) return;
     var sel = info.roster ? card.querySelector('[data-roster-number]') : (info.field ? card.querySelector('[' + info.fieldAttr + '="' + info.field + '"]') : null);
     if(!sel) return;
+    if(info.liveValue !== null && 'value' in sel) sel.value = info.liveValue;
     sel.focus();
     if(info.selStart !== null && typeof sel.setSelectionRange === 'function'){
       try{ sel.setSelectionRange(info.selStart, info.selEnd); }catch(e){}
