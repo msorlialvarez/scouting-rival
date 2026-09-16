@@ -1061,18 +1061,38 @@ if('serviceWorker' in navigator){
     return blocks.filter(function(b){ return comps.indexOf((b.competition||'').trim().toLowerCase()) !== -1; });
   }
 
-  function captureFocus(root){
+  // Generalizadas para poder usarse con cualquier convención de atributos (por defecto
+  // data-id/data-field, que es lo que ya usaban las fichas de jugadora) — así el mismo par de
+  // funciones sirve también para las notas de fuentes del Scout Colectivo (data-src-id/
+  // data-src-field), los bloques de estadísticas (data-stat-block-id/data-stat-field), etc.
+  // sin tener que renombrar los atributos que ya usa cada uno para sus propios manejadores de
+  // eventos. Sin esto, cualquier onSnapshot que reconstruye un contenedor (ahora que el tiempo
+  // real de verdad emite avisos — ver patch5) se cargaba el foco del campo en el que se estaba
+  // escribiendo, y había que volver a hacer clic para poder seguir escribiendo.
+  function captureFocus(root, idAttr, fieldAttr){
+    idAttr = idAttr || 'data-id'; fieldAttr = fieldAttr || 'data-field';
     var el = document.activeElement;
     if(!el || !root.contains(el)) return null;
-    var card = el.closest('[data-id]');
-    return { id: card ? card.getAttribute('data-id') : null, field: el.getAttribute('data-field'), roster: el.hasAttribute('data-roster-number') };
+    var card = el.closest('[' + idAttr + ']');
+    return {
+      idAttr: idAttr, fieldAttr: fieldAttr,
+      id: card ? card.getAttribute(idAttr) : null,
+      field: el.getAttribute(fieldAttr),
+      roster: el.hasAttribute('data-roster-number'),
+      selStart: (typeof el.selectionStart === 'number') ? el.selectionStart : null,
+      selEnd: (typeof el.selectionEnd === 'number') ? el.selectionEnd : null
+    };
   }
   function restoreFocus(root, info){
-    if(!info || !info.id) return;
-    var card = root.querySelector('[data-id="' + info.id + '"]');
+    if(!info || info.id === null) return;
+    var card = root.querySelector('[' + info.idAttr + '="' + info.id + '"]');
     if(!card) return;
-    var sel = info.roster ? card.querySelector('[data-roster-number]') : (info.field ? card.querySelector('[data-field="' + info.field + '"]') : null);
-    if(sel) sel.focus();
+    var sel = info.roster ? card.querySelector('[data-roster-number]') : (info.field ? card.querySelector('[' + info.fieldAttr + '="' + info.field + '"]') : null);
+    if(!sel) return;
+    sel.focus();
+    if(info.selStart !== null && typeof sel.setSelectionRange === 'function'){
+      try{ sel.setSelectionRange(info.selStart, info.selEnd); }catch(e){}
+    }
   }
 
   // ============================================================
@@ -3747,6 +3767,7 @@ if('serviceWorker' in navigator){
       container.innerHTML = '<p class="empty-hint" style="padding:.2rem 0;">' + msg + '</p>';
       return;
     }
+    var focus = captureFocus(container, 'data-stat-block-id', 'data-stat-field');
     container.innerHTML = blocks.map(function(b){
       var fields = STAT_FIELDS.map(function(s){
         var v = b[s.key];
@@ -3782,6 +3803,7 @@ if('serviceWorker' in navigator){
         statsColl.doc(btn.getAttribute('data-del-stat')).delete().catch(function(err){ console.error('delete stat block', err); });
       });
     });
+    restoreFocus(container, focus);
   }
 
   // ---------------- Game (quick) view ----------------
@@ -3879,6 +3901,16 @@ if('serviceWorker' in navigator){
     if(!mgr) return;
     var options = (state[key] && state[key].length) ? state[key] : OPTION_DEFAULTS[key];
 
+    // El input de "nueva opción" se reconstruye entero cada vez (va pegado a los chips en el
+    // mismo innerHTML), así que aquí no basta con devolver el foco: si no se guarda también lo
+    // que ya llevaba escrito, se perdería el texto entero en cuanto llegase cualquier otro
+    // cambio de ajustes (p. ej. subir un logo de competición) mientras se estaba escribiendo.
+    var prevInput = mgr.querySelector('[data-new-option]');
+    var wasFocused = !!(prevInput && document.activeElement === prevInput);
+    var pendingVal = wasFocused ? prevInput.value : '';
+    var pendingSelStart = wasFocused ? prevInput.selectionStart : null;
+    var pendingSelEnd = wasFocused ? prevInput.selectionEnd : null;
+
     function persist(newList){
       var patch = {}; patch[key] = newList; patch.updatedAt = nowIso();
       settingsRef().update(patch).catch(function(err){ console.error('save options', key, err); });
@@ -3897,6 +3929,13 @@ if('serviceWorker' in navigator){
       });
     });
     var input = mgr.querySelector('[data-new-option]');
+    if(wasFocused){
+      input.value = pendingVal;
+      input.focus();
+      if(typeof input.setSelectionRange === 'function'){
+        try{ input.setSelectionRange(pendingSelStart, pendingSelEnd); }catch(e){}
+      }
+    }
     function doAdd(){
       var val = (input.value || '').trim();
       if(!val || options.indexOf(val) !== -1){ input.value = ''; return; }
@@ -3930,6 +3969,7 @@ if('serviceWorker' in navigator){
       }).join('');
     }
 
+    var focus = captureFocus(container, 'data-src-id', 'data-src-field');
     container.innerHTML = displayRows.map(function(r){
       return '<div class="src-row" data-src-id="' + esc(r.id) + '">' +
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
@@ -3972,12 +4012,115 @@ if('serviceWorker' in navigator){
         ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete src row', err); });
       });
     });
+    restoreFocus(container, focus);
   }
 
   function addSrcRow(kind){
     var ref = currentRivalRef();
     if(!ref) return;
     ref.collection(kind + 'Sources').add({source: '', notes: '', systems: '', order: Date.now()}).catch(function(err){ console.error('add src row', err); });
+  }
+
+  function renderAttackLists(){
+    var qList = $('#attackQualityList'), wList = $('#attackWearList');
+    if(!qList || !wList) return;
+    var hint = $('#attackNoRosterHint');
+    if(hint) hint.hidden = state.roster.length > 0;
+
+    var joined = state.attackPlayers.map(function(a){
+      var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
+      return p ? { id: a.id, player: p, category: a.category } : null;
+    }).filter(Boolean);
+
+    function rowHtml(item){
+      var p = item.player;
+      var avatarInner = p.photo ? ('<img src="' + p.photo + '" alt="">') : esc(initialsFor(p));
+      return '<div class="attack-player-row" data-attack-id="' + esc(item.id) + '">' +
+        '<div class="cpr-avatar">' + avatarInner + '</div>' +
+        '<div class="cpr-name">' + esc(fullName(p) || 'Sin nombre') + '</div>' +
+        '<button type="button" class="btn-del" data-attack-del title="Quitar">✕</button>' +
+      '</div>';
+    }
+
+    var quality = joined.filter(function(i){ return i.category === 'calidad'; });
+    var wear = joined.filter(function(i){ return i.category === 'desgaste'; });
+    qList.innerHTML = quality.length ? quality.map(rowHtml).join('') : '<p class="empty-hint" style="padding:.2rem 0;">Ninguna todavía.</p>';
+    wList.innerHTML = wear.length ? wear.map(rowHtml).join('') : '<p class="empty-hint" style="padding:.2rem 0;">Ninguna todavía.</p>';
+
+    $all('#collectiveView [data-attack-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.closest('[data-attack-id]').getAttribute('data-attack-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('defPlayersToAttack').doc(id).delete().catch(function(err){ console.error('delete attack player', err); });
+      });
+    });
+
+    // Rebuild the "add" dropdowns with roster players not already classified in either column.
+    var joinedIds = joined.map(function(i){ return i.player.id; });
+    var rosterOptions = state.roster.map(function(r){
+      var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
+      return p ? {id: p.id, name: fullName(p) || 'Sin nombre'} : null;
+    }).filter(Boolean).filter(function(p){ return joinedIds.indexOf(p.id) === -1; });
+
+    $all('[data-attack-add]').forEach(function(sel){
+      sel.innerHTML = '<option value="">+ Añadir jugadora…</option>' + rosterOptions.map(function(p){
+        return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>';
+      }).join('');
+      sel.value = '';
+    });
+  }
+
+  function addAttackPlayer(playerId, category){
+    var ref = currentRivalRef();
+    if(!ref || !playerId) return;
+    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
+  }
+
+  // ---------------- Scout Colectivo: cuadro inicial de esencia ofensiva/defensiva (lista visual) ----------------
+  function renderEssenceItems(kind){
+    var list = $('#' + kind + 'EssenceItems');
+    if(!list) return;
+    var items = kind === 'off' ? state.offEssenceItems : state.defEssenceItems;
+    var collName = kind + 'EssenceItems';
+
+    if(!items.length){
+      list.innerHTML = '';
+      return;
+    }
+
+    var focus = captureFocus(list);
+    list.innerHTML = items.map(function(it){
+      return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
+        '<span class="item-bullet"></span>' +
+        '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        '<button type="button" class="btn-del" data-item-del title="Quitar">✕</button>' +
+      '</div>';
+    }).join('');
+
+    list.querySelectorAll('[data-field]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var id = el.closest('[data-id]').getAttribute('data-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection(collName).doc(id).update({text: el.value}).catch(function(err){ console.error('save essence item', err); });
+      });
+    });
+    list.querySelectorAll('[data-item-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.closest('[data-id]').getAttribute('data-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete essence item', err); });
+      });
+    });
+    restoreFocus(list, focus);
+  }
+
+  function addEssenceItem(kind, text){
+    var ref = currentRivalRef();
+    if(!ref || !text) return;
+    ref.collection(kind + 'EssenceItems').add({text: text, order: Date.now()}).catch(function(err){ console.error('add essence item', err); });
   }
 
   // ---------------- Sistemas de juego / Estadística avanzada: un PDF por rival ----------------
