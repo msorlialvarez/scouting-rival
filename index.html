@@ -251,11 +251,20 @@ if('serviceWorker' in navigator){
   .essence-items-add{ display:flex; gap:.5rem; }
   .essence-items-add input[type="text"]{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .55rem; font-size:.85rem; color:var(--text); }
 
+  /* Botones de reordenar (▲▼), usados en esencia ofensiva/defensiva y en fuentes de
+     generación/cómo atacarlas — reordenan intercambiando el campo "order" con la fila vecina. */
+  .item-reorder{ display:flex; flex-direction:column; gap:.15rem; flex:none; }
+  .btn-reorder{ border:1px solid var(--border); background:var(--surface-2); color:var(--text-dim); font-size:.58rem; line-height:1; cursor:pointer; padding:.15rem .35rem; border-radius:5px; }
+  .btn-reorder:hover{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-reorder:disabled{ opacity:.3; cursor:default; }
+  .btn-reorder:disabled:hover{ background:var(--surface-2); color:var(--text-dim); border-color:var(--border); }
+
   .src-table{ display:flex; flex-direction:column; gap:.5rem; }
-  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 2.2rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
-  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 2.2rem; gap:.6rem; align-items:start; }
+  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
+  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; align-items:start; }
   .src-row select, .src-row textarea{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; }
-  .src-row textarea{ min-height:2.2rem; resize:vertical; line-height:1.35; }
+  .src-row textarea{ min-height:2.2rem; resize:vertical; line-height:1.35; overflow:hidden; }
+  .src-row-actions{ display:flex; align-items:flex-start; gap:.3rem; }
   .src-row .btn-del{ align-self:start; }
   @media (max-width: 800px){
     .src-table-head{ display:none; }
@@ -289,10 +298,12 @@ if('serviceWorker' in navigator){
   .attack-players-col h4{ font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin-bottom:.5rem; }
   .attack-players-col.quality h4{ color:var(--good); }
   .attack-players-col.wear h4{ color:var(--warn); }
-  .attack-player-row{ display:flex; align-items:center; gap:.6rem; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:.45rem .65rem; margin-bottom:.4rem; }
+  .attack-player-row{ display:flex; flex-direction:column; gap:.35rem; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:.45rem .65rem; margin-bottom:.4rem; }
+  .attack-player-main{ display:flex; align-items:center; gap:.6rem; }
   .attack-player-row .cpr-avatar{ width:28px; height:28px; border-radius:7px; background:var(--surface-2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:.62rem; font-weight:700; color:var(--text-dim); flex:none; }
   .attack-player-row .cpr-avatar img{ width:100%; height:100%; object-fit:cover; }
   .attack-player-row .cpr-name{ flex:1; min-width:0; font-size:.82rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .attack-notes{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.35rem .5rem; font-size:.78rem; color:var(--text); width:100%; resize:vertical; min-height:1.8rem; line-height:1.3; overflow:hidden; }
   .attack-add-row{ display:flex; gap:.5rem; align-items:center; }
   .attack-add-row select{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.35rem .5rem; font-size:.8rem; }
 
@@ -558,6 +569,8 @@ if('serviceWorker' in navigator){
         </div>
       </div>
       <div class="topbar-actions">
+        <button class="btn-export btn-refresh-rival" type="button" title="Vuelve a cargar los datos de este rival sin salir de esta pantalla">↻ Refrescar</button>
+        <button class="btn-export btn-save-rival" type="button" title="Fuerza el guardado de lo que estés escribiendo ahora mismo">💾 Guardar</button>
         <label class="lang-field"><span class="tb-label">Idioma</span>
           <select class="mini-input lang-select" id="reportLangSelect" title="Idioma del informe en PDF">
             <option value="es">Español</option>
@@ -655,6 +668,8 @@ if('serviceWorker' in navigator){
           </div>
         </div>
         <div class="collective-actions">
+          <button class="btn-export btn-refresh-rival" type="button" title="Vuelve a cargar los datos de este rival sin salir de esta pantalla">↻ Refrescar</button>
+          <button class="btn-export btn-save-rival" type="button" title="Fuerza el guardado de lo que estés escribiendo ahora mismo">💾 Guardar</button>
           <label class="lang-field"><span class="tb-label">Idioma</span>
             <select class="mini-input lang-select" id="collLangSelect" title="Idioma del informe en PDF">
               <option value="es">Español</option>
@@ -817,6 +832,35 @@ if('serviceWorker' in navigator){
     if(!emoji) return;
     try{ doc.addImage(emojiToImageDataUrl(emoji, 64), 'PNG', cx - sizeMm/2, cy - sizeMm/2, sizeMm, sizeMm); }
     catch(e){ console.error('drawEmojiIcon', e); }
+  }
+  // Mismo problema que con los emojis (ver comentario arriba): cualquier glifo fuera de Latin-1
+  // dibujado con doc.text() y las fuentes estándar de jsPDF sale como caracteres basura (p.ej.
+  // "&&&" en vez de "★★★"). Para símbolos como la estrella de "importancia/jugadora clave" que
+  // además necesitan un color concreto (relleno vs vacío), se reutiliza la misma técnica de
+  // canvas -> PNG, pero pintando el glifo con ctx.fillStyle en vez de con el emoji de color.
+  var GLYPH_IMAGE_CACHE = {};
+  function glyphToImageDataUrl(glyph, sizePx, colorHex){
+    sizePx = sizePx || 64;
+    var cacheKey = glyph + ':' + sizePx + ':' + colorHex;
+    if(GLYPH_IMAGE_CACHE[cacheKey]) return GLYPH_IMAGE_CACHE[cacheKey];
+    var canvas = document.createElement('canvas');
+    canvas.width = sizePx; canvas.height = sizePx;
+    var ctx = canvas.getContext('2d');
+    ctx.font = 'bold ' + Math.round(sizePx * 0.82) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",Arial,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = colorHex || '#000000';
+    ctx.clearRect(0, 0, sizePx, sizePx);
+    ctx.fillText(glyph, sizePx / 2, sizePx / 2 + sizePx * 0.04);
+    var url = canvas.toDataURL('image/png');
+    GLYPH_IMAGE_CACHE[cacheKey] = url;
+    return url;
+  }
+  // Coloca un glifo (p.ej. ★) como imagen centrada en (cx, cy), con lado sizeMm y color rgb [r,g,b].
+  function drawGlyphIcon(doc, glyph, cx, cy, sizeMm, rgbColor){
+    if(!glyph) return;
+    var colorHex = '#' + rgbToHexNoHash(rgbColor || [0, 0, 0]);
+    try{ doc.addImage(glyphToImageDataUrl(glyph, 64, colorHex), 'PNG', cx - sizeMm/2, cy - sizeMm/2, sizeMm, sizeMm); }
+    catch(e){ console.error('drawGlyphIcon', e); }
   }
   // Estadística que se puede resaltar en la línea de marcador de la ficha (p.ej. destacar
   // "Reb" en una reboteadora). Los grupos coinciden con los tramos de la línea de estadísticas
@@ -2295,6 +2339,51 @@ if('serviceWorker' in navigator){
     state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta);
   }
 
+  // Botón "Refrescar": vuelve a suscribirse a todo lo del rival actual (mismo mecanismo que abrir
+  // el rival la primera vez, así que trae los datos más recientes) SIN tocar state.scoutMode ni
+  // state.mode — por eso si estabas en el Scout Colectivo de un rival, te quedas ahí mismo en vez
+  // de volver a la pantalla de inicio. Antes de refrescar, se fuerza el guardado de lo que se
+  // estuviera escribiendo (blur del campo activo) para no perder nada a medio escribir.
+  function refreshCurrentRival(btn){
+    if(!state.rivalId) return;
+    forceSaveActiveField();
+    if(btn) flashButtonFeedback(btn, '↻ Actualizado');
+    selectRival(state.rivalId);
+  }
+
+  // Fuerza el guardado de lo que haya a medio escribir: el campo enfocado ahora mismo puede ser
+  // de los que solo guardan al perder el foco (nombre, notas…), así que un blur programático
+  // dispara ese guardado. De paso, si hay cambios pendientes en la cola sin conexión y ya hay
+  // señal, se intenta sincronizar ahora mismo en vez de esperar al siguiente ciclo automático.
+  function forceSaveActiveField(){
+    var el = document.activeElement;
+    if(el && typeof el.blur === 'function'){
+      var tag = el.tagName;
+      if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') el.blur();
+    }
+    if(navigator.onLine) flushOfflineQueue();
+  }
+
+  function flashButtonFeedback(btn, text){
+    var original = btn.getAttribute('data-original-label') || btn.textContent;
+    btn.setAttribute('data-original-label', original);
+    btn.textContent = text;
+    btn.disabled = true;
+    setTimeout(function(){ btn.textContent = original; btn.disabled = false; }, 1100);
+  }
+
+  function wireRefreshSaveButtons(){
+    $all('.btn-refresh-rival').forEach(function(btn){
+      btn.addEventListener('click', function(){ refreshCurrentRival(btn); });
+    });
+    $all('.btn-save-rival').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        forceSaveActiveField();
+        flashButtonFeedback(btn, '✓ Guardado');
+      });
+    });
+  }
+
   // ---------------- Rival logo upload ----------------
   function wireRivalLogoUpload(){
     var fileInput = $('#rivalLogoInput');
@@ -2485,6 +2574,7 @@ if('serviceWorker' in navigator){
     $('#btnFibaImportFetch').addEventListener('click', parseFibaPastedContent);
     $('#btnFibaImportConfirm').addEventListener('click', confirmFibaImport);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
+    wireRefreshSaveButtons();
     $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
     $('#btnExportScoutingImages').addEventListener('click', exportScoutingImages);
@@ -3990,6 +4080,30 @@ if('serviceWorker' in navigator){
     input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); doAdd(); } });
   }
 
+  // Amplía automáticamente el alto de un <textarea> según su contenido, en vez de quedarse fijo
+  // a una sola fila — usado en las celdas de notas/sistemas de "fuentes de generación"/"cómo
+  // atacarlas" y en las notas de "jugadoras a atacar", para que nunca recorten texto de varias
+  // líneas.
+  function autoGrowTextarea(el){
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }
+
+  // Reordena una fila ya escrita intercambiando su campo "order" con el de la fila vecina
+  // (arriba/abajo según dir=-1/+1) — usado en esencia ofensiva/defensiva y en fuentes de
+  // generación/cómo atacarlas. list son los items ya ordenados tal y como los tiene el estado
+  // (mismo orden que la consulta orderBy('order')), así que basta con mirar el índice vecino.
+  function reorderItem(list, index, dir, collName){
+    var j = index + dir;
+    if(j < 0 || j >= list.length) return;
+    var ref = currentRivalRef();
+    if(!ref) return;
+    var a = list[index], b = list[j];
+    var oa = a.order, ob = b.order;
+    ref.collection(collName).doc(a.id).update({order: ob}).catch(function(err){ console.error('reorder', err); });
+    ref.collection(collName).doc(b.id).update({order: oa}).catch(function(err){ console.error('reorder', err); });
+  }
+
   // ---------------- Scout Colectivo: fuentes de generación / cómo atacarlas ----------------
   function renderSrcTable(kind){
     var rows = kind === 'off' ? state.offSources : state.defSources;
@@ -4013,15 +4127,38 @@ if('serviceWorker' in navigator){
       }).join('');
     }
 
+    // Solo se pueden reordenar filas que ya existen de verdad (no la fila fantasma que se
+    // muestra cuando todavía no hay ninguna).
+    var canReorder = rows.length > 0;
+
     var focus = captureFocus(container, 'data-src-id', 'data-src-field');
-    container.innerHTML = displayRows.map(function(r){
+    container.innerHTML = displayRows.map(function(r, idx){
+      var reorderHtml = canReorder
+        ? ('<div class="item-reorder">' +
+            '<button type="button" class="btn-reorder" data-src-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
+            '<button type="button" class="btn-reorder" data-src-down' + (idx === displayRows.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
+          '</div>')
+        : '<div class="item-reorder"></div>';
       return '<div class="src-row" data-src-id="' + esc(r.id) + '">' +
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
         '<textarea data-src-field="systems" rows="1" placeholder="Sistemas">' + esc(r.systems || '') + '</textarea>' +
-        '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
+        '<div class="src-row-actions">' + reorderHtml +
+          '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
+        '</div>' +
       '</div>';
     }).join('');
+
+    container.querySelectorAll('textarea[data-src-field]').forEach(function(ta){
+      autoGrowTextarea(ta);
+      ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
+    });
+    container.querySelectorAll('[data-src-up]').forEach(function(btn, idx){
+      btn.addEventListener('click', function(){ reorderItem(rows, idx, -1, collName); });
+    });
+    container.querySelectorAll('[data-src-down]').forEach(function(btn, idx){
+      btn.addEventListener('click', function(){ reorderItem(rows, idx, 1, collName); });
+    });
 
     container.querySelectorAll('[data-src-field]').forEach(function(el){
       el.addEventListener('change', function(){
@@ -4057,6 +4194,10 @@ if('serviceWorker' in navigator){
       });
     });
     restoreFocus(container, focus);
+    // restoreFocus puede haber puesto de vuelta un valor en progreso (con más o menos líneas
+    // que el que se acababa de pintar), así que el alto se recalcula otra vez para ese campo.
+    var restoredTa = container.querySelector('textarea[data-src-field]:focus');
+    if(restoredTa) autoGrowTextarea(restoredTa);
   }
 
   function addSrcRow(kind){
@@ -4073,18 +4214,28 @@ if('serviceWorker' in navigator){
 
     var joined = state.attackPlayers.map(function(a){
       var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-      return p ? { id: a.id, player: p, category: a.category } : null;
+      return p ? { id: a.id, player: p, category: a.category, notes: a.notes } : null;
     }).filter(Boolean);
 
     function rowHtml(item){
       var p = item.player;
       var avatarInner = p.photo ? ('<img src="' + p.photo + '" alt="">') : esc(initialsFor(p));
       return '<div class="attack-player-row" data-attack-id="' + esc(item.id) + '">' +
-        '<div class="cpr-avatar">' + avatarInner + '</div>' +
-        '<div class="cpr-name">' + esc(fullName(p) || 'Sin nombre') + '</div>' +
-        '<button type="button" class="btn-del" data-attack-del title="Quitar">✕</button>' +
+        '<div class="attack-player-main">' +
+          '<div class="cpr-avatar">' + avatarInner + '</div>' +
+          '<div class="cpr-name">' + esc(fullName(p) || 'Sin nombre') + '</div>' +
+          '<button type="button" class="btn-del" data-attack-del title="Quitar">✕</button>' +
+        '</div>' +
+        '<textarea class="attack-notes" data-attack-field="notes" rows="1" placeholder="Notas">' + esc(item.notes || '') + '</textarea>' +
       '</div>';
     }
+
+    // Las notas son texto libre (pueden crecer a varias líneas), así que hace falta el mismo
+    // cuidado con el foco que en el resto de campos "de escribir": se captura antes de
+    // reconstruir el HTML y se restaura después, sobre un contenedor que cubre las dos columnas
+    // (calidad/desgaste) porque ambas se repintan juntas en esta misma función.
+    var attackRoot = $('#collectiveView');
+    var attackFocus = captureFocus(attackRoot, 'data-attack-id', 'data-attack-field');
 
     var quality = joined.filter(function(i){ return i.category === 'calidad'; });
     var wear = joined.filter(function(i){ return i.category === 'desgaste'; });
@@ -4099,6 +4250,19 @@ if('serviceWorker' in navigator){
         ref.collection('defPlayersToAttack').doc(id).delete().catch(function(err){ console.error('delete attack player', err); });
       });
     });
+    $all('#collectiveView [data-attack-field]').forEach(function(ta){
+      autoGrowTextarea(ta);
+      ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
+      ta.addEventListener('change', function(){
+        var id = ta.closest('[data-attack-id]').getAttribute('data-attack-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('defPlayersToAttack').doc(id).update({notes: ta.value}).catch(function(err){ console.error('save attack notes', err); });
+      });
+    });
+    restoreFocus(attackRoot, attackFocus);
+    var restoredAttackTa = attackRoot.querySelector('[data-attack-field]:focus');
+    if(restoredAttackTa) autoGrowTextarea(restoredAttackTa);
 
     // Rebuild the "add" dropdowns with roster players not already classified in either column.
     var joinedIds = joined.map(function(i){ return i.player.id; });
@@ -4118,7 +4282,7 @@ if('serviceWorker' in navigator){
   function addAttackPlayer(playerId, category){
     var ref = currentRivalRef();
     if(!ref || !playerId) return;
-    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
+    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, notes: '', order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
   }
 
   // ---------------- Scout Colectivo: cuadro inicial de esencia ofensiva/defensiva (lista visual) ----------------
@@ -4134,10 +4298,14 @@ if('serviceWorker' in navigator){
     }
 
     var focus = captureFocus(list);
-    list.innerHTML = items.map(function(it){
+    list.innerHTML = items.map(function(it, idx){
       return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
         '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        '<div class="item-reorder">' +
+          '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
+          '<button type="button" class="btn-reorder" data-item-down' + (idx === items.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
+        '</div>' +
         '<button type="button" class="btn-del" data-item-del title="Quitar">✕</button>' +
       '</div>';
     }).join('');
@@ -4157,6 +4325,12 @@ if('serviceWorker' in navigator){
         if(!ref) return;
         ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete essence item', err); });
       });
+    });
+    list.querySelectorAll('[data-item-up]').forEach(function(btn, idx){
+      btn.addEventListener('click', function(){ reorderItem(items, idx, -1, collName); });
+    });
+    list.querySelectorAll('[data-item-down]').forEach(function(btn, idx){
+      btn.addEventListener('click', function(){ reorderItem(items, idx, 1, collName); });
     });
     restoreFocus(list, focus);
   }
@@ -6630,11 +6804,11 @@ if('serviceWorker' in navigator){
     // "Importancia/jugadora clave" (el campo threat) con 3 marcas llenas/vacías en vez de
     // fabricar una valoración de 1-5 estrellas que la app no guarda: baja=1, media=2, alta=3.
     function importanceMarks(x0, y0, level){
+      // doc.text() con las fuentes est\u00e1ndar de jsPDF no puede dibujar '\u2605' (sale como "&&&" en el
+      // PDF real) \u2014 se usa la misma t\u00e9cnica de canvas->imagen que los emojis (ver drawGlyphIcon).
       var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(5.6);
       for(var i = 0; i < 3; i++){
-        doc.setTextColor.apply(doc, i < filled ? numberInk : [212,212,212]);
-        doc.text('\u2605', x0 + i * 2.5, y0);
+        drawGlyphIcon(doc, '\u2605', x0 + i * 2.5 + 1.0, y0 - 1.6, 2.6, i < filled ? numberInk : [212,212,212]);
       }
       return 3 * 2.5;
     }
