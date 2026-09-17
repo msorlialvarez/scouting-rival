@@ -789,6 +789,35 @@ if('serviceWorker' in navigator){
   var PLAYER_TYPE_ORDER = ['generadora', 'shooter', 'paint', 'energia'];
   var PLAYER_TYPE_ICONS = {generadora:'🧠', shooter:'🎯', paint:'💪', energia:'⚡'};
   var PLAYER_TYPE_LABELS_ES = {generadora:'Generadora', shooter:'Shooter', paint:'Paint', energia:'Energía'};
+
+  // jsPDF dibuja texto con las 14 fuentes estándar del PDF (helvetica/times/courier), que NO
+  // incluyen glifos de emoji — un doc.text('🧠', ...) con esas fuentes no se ve. Para poder usar
+  // los emojis de PLAYER_TYPE_ICONS dentro de un PDF, se dibuja el emoji en un <canvas> (ahí sí
+  // lo renderiza la fuente de emoji del sistema) y se inserta como imagen con doc.addImage — la
+  // técnica habitual para esto. Se cachea por emoji+tamaño para no regenerar la misma imagen en
+  // cada jugadora del informe.
+  var EMOJI_IMAGE_CACHE = {};
+  function emojiToImageDataUrl(emoji, sizePx){
+    sizePx = sizePx || 64;
+    var cacheKey = emoji + ':' + sizePx;
+    if(EMOJI_IMAGE_CACHE[cacheKey]) return EMOJI_IMAGE_CACHE[cacheKey];
+    var canvas = document.createElement('canvas');
+    canvas.width = sizePx; canvas.height = sizePx;
+    var ctx = canvas.getContext('2d');
+    ctx.font = Math.round(sizePx * 0.82) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.clearRect(0, 0, sizePx, sizePx);
+    ctx.fillText(emoji, sizePx / 2, sizePx / 2 + sizePx * 0.04);
+    var url = canvas.toDataURL('image/png');
+    EMOJI_IMAGE_CACHE[cacheKey] = url;
+    return url;
+  }
+  // Coloca un emoji de PLAYER_TYPE_ICONS como imagen centrada en (cx, cy), con lado sizeMm.
+  function drawEmojiIcon(doc, emoji, cx, cy, sizeMm){
+    if(!emoji) return;
+    try{ doc.addImage(emojiToImageDataUrl(emoji, 64), 'PNG', cx - sizeMm/2, cy - sizeMm/2, sizeMm, sizeMm); }
+    catch(e){ console.error('drawEmojiIcon', e); }
+  }
   // Estadística que se puede resaltar en la línea de marcador de la ficha (p.ej. destacar
   // "Reb" en una reboteadora). Los grupos coinciden con los tramos de la línea de estadísticas
   // ("20' – 2 pts – 6 FG (2 3P/20%) – FT 50% (25/50) – 4 Reb (1 Off) – 5 Ast").
@@ -836,7 +865,7 @@ if('serviceWorker' in navigator){
       threatTotalBadge: 'IMPORTANCIA: ',
       threatShotBadge: 'AMENAZA DE TIRO: ',
       clutchBadge: 'CLUTCH: ',
-      templeBadge: 'TEMPLE: ',
+      templeBadge: 'MENTAL: ',
       playerTypesLabel: 'Tipo de jugadora',
       playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
       strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Cómo defenderla',
@@ -847,6 +876,7 @@ if('serviceWorker' in navigator){
       reportFallback: 'Scouting rival',
       noRosterYet: 'Todavía no hay jugadoras en la plantilla.',
       noStats: 'Sin estadísticas',
+      statsRowLabel: 'Temporada',
       footerName: 'Valencia Basket Club',
       playerSheetsLabel: 'FICHAS DE JUGADORAS',
       collectiveReportTitle: 'SCOUTING COLECTIVO',
@@ -889,6 +919,7 @@ if('serviceWorker' in navigator){
       reportFallback: 'Scouting report',
       noRosterYet: 'No players in the roster yet.',
       noStats: 'No stats recorded',
+      statsRowLabel: 'Season',
       footerName: 'Valencia Basket Club',
       playerSheetsLabel: 'PLAYER SHEETS',
       collectiveReportTitle: 'TEAM SCOUTING REPORT',
@@ -3507,7 +3538,7 @@ if('serviceWorker' in navigator){
     }).join('');
     var templeBtns = ['rojo','amarillo','verde'].map(function(c){
       var sel = (p.temple || 'amarillo') === c ? ' selected' : '';
-      return '<button type="button" class="dot-' + c + sel + '" data-temple="' + c + '" title="Temple: ' + c + '"></button>';
+      return '<button type="button" class="dot-' + c + sel + '" data-temple="' + c + '" title="Mental: ' + c + '"></button>';
     }).join('');
     var playerTypesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
     var typeBtns = PLAYER_TYPE_ORDER.map(function(t){
@@ -3566,7 +3597,7 @@ if('serviceWorker' in navigator){
         '<div class="threat-block"><span class="tb-label">Nivel de clutch</span>' +
           '<div class="stoplight" data-stoplight>' + clutchBtns + '</div>' +
         '</div>' +
-        '<div class="threat-block"><span class="tb-label">Temple (dureza mental)</span>' +
+        '<div class="threat-block"><span class="tb-label">Mental (dureza)</span>' +
           '<div class="stoplight" data-stoplight>' + templeBtns + '</div>' +
         '</div>' +
       '</div>' +
@@ -4786,7 +4817,11 @@ if('serviceWorker' in navigator){
     var lang = state.reportLang || 'es';
     runTeamExport($('#btnExportPlayersPdf'), 'scouting_jugadoras_', function(rival, rosterJoined){
       var competition = state.exportCompetition || rivalCompetitions(rival)[0];
-      var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
+      // Apaisado (no vertical como el resto de informes): la referencia que envió Marta es un
+      // documento ancho, con mucho más sitio por jugadora del que da una página A4 vertical —
+      // necesario para que la fila de cada jugadora (foto + info + párrafo + tabla) quepa tal
+      // cual, sin apretar el texto en tarjetas estrechas.
+      var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
       drawPlayerFacingReport(doc, rival, rosterJoined, lang, competition);
       addFooters(doc, lang);
       return doc;
@@ -6483,44 +6518,158 @@ if('serviceWorker' in navigator){
     cursor.y = y;
   }
 
+  // "Informe jugadoras" (Scout individual) — formato igual al de la referencia que envió Marta
+  // (foto de un informe de scouting profesional): sin tarjetas con caja ni franja de color — una
+  // lista continua por columna, separada por una línea fina entre jugadoras. Apaisado (ver
+  // exportPlayersTeamPdf) porque la referencia es un documento ancho con mucho más sitio por
+  // jugadora que una A4 vertical.
+  //
+  // Ronda 3 de ajustes:
+  // - El nombre va SOLO en su propia línea (se lee completo, sin truncar salvo caso extremo).
+  // - Estrellas = "importancia/jugadora clave" (el campo threat).
+  // - En esa misma línea de las estrellas van también, en este orden: estrellas, pastilla de
+  //   mano dominante, e iconos de tipo de jugadora — ya no hay una línea aparte de texto
+  //   "GENERADORA / SHOOTER". La pastilla ahora se dibuja con coordenadas top+alto (no
+  //   baseline con offsets a ojo), para que quede bien ajustada al texto y no se pise con nada.
+  // - Los tres semáforos (amenaza de tiro / clutch / temple) van debajo de la foto, con más
+  //   separación entre ellos para que no se toquen.
+  // - El párrafo nunca puede desbordar su hueco (wrapCapped: se corta con "…" si no cabe en 3
+  //   líneas).
+  // - Los iconos de tipo de jugadora son emoji de verdad (PLAYER_TYPE_ICONS) — como jsPDF no
+  //   dibuja emoji con las fuentes estándar, se insertan como imagen (drawEmojiIcon/
+  //   emojiToImageDataUrl más arriba), tanto en la leyenda de cabecera como en cada jugadora.
+  // A propósito sigue usando SOLO los datos que la app ya guarda hoy (sin partido a partido /
+  // "Last 6", sin ampliar de 4 a 11 insignias) — decisión explícita de Marta.
   function drawPlayerFacingReport(doc, rival, rosterJoined, lang, competition){
     lang = lang || 'es';
     var L = tr(lang);
-    var pageW = 210, pageH = 297, margin = 14;
+    var pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+    var margin = 12;
     var accent = hexToRgb(rival.color);
-    var headerInk = contrastInk(accent);
     var textInk = [20,23,28], textDim = [91,98,112];
     var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
+    var numberInk = shadeColor(accent, 0.15);
+    var semLabels = lang === 'en' ? ['CLUTCH', 'MENTAL'] : ['CLUTCH', 'MENTAL'];
 
-    doc.setFillColor.apply(doc, accent);
-    doc.rect(0, 0, pageW, 28, 'F');
-    var logoSize = 19;
+    // Cabecera: escudo + nombre + temporada a la izquierda, leyenda de insignias (las 4 que
+    // tiene la app, con su emoji real) a la derecha — como el bloque de iconos "Shot Creator /
+    // Midrange Assassin…" de la referencia, con las etiquetas que sí tenemos en vez de las 11
+    // suyas.
+    var headY = 8;
+    var logoSize = 14;
     var titleX = margin;
     if(rival.logo){
-      try{ doc.addImage(rival.logo, 'JPEG', margin, 4.5, logoSize, logoSize); titleX = margin + logoSize + 6; }
+      try{ doc.addImage(rival.logo, 'JPEG', margin, headY, logoSize, logoSize); titleX = margin + logoSize + 5; }
       catch(e){ console.error('addImage logo', e); }
     }
-    doc.setTextColor.apply(doc, headerInk);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
-    doc.text((rival.name || 'Rival').toUpperCase(), titleX, 15);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    doc.text([rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.reportFallback, titleX, 22.5);
+    doc.setTextColor.apply(doc, textInk);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+    doc.text((rival.name || 'Rival').toUpperCase(), titleX, headY + 6);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.setTextColor.apply(doc, textDim);
+    doc.text(([rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.reportFallback).toUpperCase(), titleX, headY + 11);
 
-    var y = 36, col = 0;
-    var gap = 7;
-    var cardW = (pageW - margin*2 - gap) / 2;
-    var cardH = 50;
-    var showCompPrefix = rivalCompetitions(rival).length !== 1;
-    var keyStats = ['pts', 'reb', 'ast', 'threePct'];
+    var legendTypes = PLAYER_TYPE_ORDER;
+    var legendBoxW = 22, legendBoxH = 9;
+    var legendX0 = pageW - margin - legendTypes.length * legendBoxW;
+    legendTypes.forEach(function(t, i){
+      var lx = legendX0 + i * legendBoxW;
+      doc.setDrawColor.apply(doc, tintColor(accent, 0.55));
+      doc.setFillColor(252,252,253);
+      doc.roundedRect(lx, headY, legendBoxW - 3, legendBoxH, 1.5, 1.5, 'FD');
+      drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], lx + (legendBoxW - 3) / 2, headY + 4.6, 5.4);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.6);
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(PLAYER_TYPE_LABELS_ES[t].toUpperCase(), lx + (legendBoxW - 3) / 2, headY + legendBoxH + 3, {align: 'center', maxWidth: legendBoxW - 2});
+    });
 
-    function chip(text, color, x0, y0){
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.6);
-      var w = doc.getTextWidth(text) + 4.4;
-      doc.setFillColor.apply(doc, color);
-      doc.roundedRect(x0, y0, w, 4.6, 1.2, 1.2, 'F');
-      doc.setTextColor(255,255,255);
-      doc.text(text, x0 + w/2, y0 + 3.35, {align: 'center'});
-      return x0 + w + 2.6;
+    doc.setDrawColor.apply(doc, accent);
+    doc.setLineWidth(0.9);
+    doc.line(margin, headY + logoSize + 4, pageW - margin, headY + logoSize + 4);
+    doc.setLineWidth(0.2);
+
+    var topY = headY + logoSize + 6;
+    var colGap = 8;
+    var colW = (pageW - margin * 2 - colGap) / 2;
+    var colX = [margin, margin + colW + colGap];
+    var y = [topY, topY];
+
+    // Orden y columnas de stats pedido explícitamente: min, pts, FG (tiros de campo intentados —
+    // fga, el mismo campo que ya usa la línea de marcador del PPTX), 3PA, 3P%, TLA, TL%, OR, DR
+    // (rebotes defensivos: la app no los guarda directamente, se calculan como reb − offReb),
+    // AS, TO.
+    var STAT_COLS = [
+      {label:'MIN', get:function(s){ return s.minutes; }},
+      {label:'PTS', get:function(s){ return s.pts; }},
+      {label:'FG', get:function(s){ return s.fga; }},
+      {label:'3PA', get:function(s){ return s.threeAtt; }},
+      {label:'3P%', pct:true, get:function(s){ return s.threePct; }},
+      {label:'TLA', get:function(s){ return s.ftAtt; }},
+      {label:'TL%', pct:true, get:function(s){ return s.ftPct; }},
+      {label:'OR', get:function(s){ return s.offReb; }},
+      {label:'DR', get:function(s){ return (s.reb != null && s.offReb != null) ? (s.reb - s.offReb) : null; }},
+      {label:'AS', get:function(s){ return s.ast; }},
+      {label:'TO', get:function(s){ return s.to; }}
+    ];
+
+    // Pastilla con coordenadas de esquina superior (rectTop) + alto, no baseline con offsets a
+    // ojo — así el rectángulo queda bien ajustado al texto pase lo que pase con el tamaño de
+    // fuente, en vez de tener que calibrarlo a mano (el 0.68 es la misma proporción alto-de-caja
+    // → línea-base que ya usa el resto de chips del código, ver drawSectionHeader más abajo).
+    function pill(text, x0, rectTop, h){
+      h = h || 4.3;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
+      var w = doc.getTextWidth(text) + 4;
+      doc.setFillColor(235,236,238);
+      doc.roundedRect(x0, rectTop, w, h, 1.2, 1.2, 'F');
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(text, x0 + w / 2, rectTop + h * 0.68, {align: 'center'});
+      return w;
+    }
+
+    // "Importancia/jugadora clave" (el campo threat) con 3 marcas llenas/vacías en vez de
+    // fabricar una valoración de 1-5 estrellas que la app no guarda: baja=1, media=2, alta=3.
+    function importanceMarks(x0, y0, level){
+      var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(5.6);
+      for(var i = 0; i < 3; i++){
+        doc.setTextColor.apply(doc, i < filled ? numberInk : [212,212,212]);
+        doc.text('\u2605', x0 + i * 2.5, y0);
+      }
+      return 3 * 2.5;
+    }
+
+    // Color según el semáforo (rojo/ámbar/verde) de amenaza de tiro / clutch / temple — un único
+    // color, sin fabricar un índice de 3 posiciones como antes.
+    function colorForThreat(v){
+      return v === 'rojo' ? danger : (v === 'verde' ? good : warn);
+    }
+
+    // Clutch y mental (antes "temple") debajo de la foto: la palabra completa centrada en su
+    // mitad del ancho de la foto, con un único círculo relleno del color que toque justo debajo
+    // — antes era una abreviatura (CL/TE) + círculo en la misma línea.
+    function statusDot(x0, w, labelY, label, colorRgb){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(3.6);
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(label, x0 + w / 2, labelY, {align: 'center'});
+      doc.setFillColor.apply(doc, colorRgb);
+      doc.circle(x0 + w / 2, labelY + 1.9, 1.15, 'F');
+    }
+
+    // Envuelve el texto a como mucho maxLines líneas y, si no cabe entero, recorta la última con
+    // "…" — para que el párrafo NUNCA se salga del hueco reservado para cada jugadora, pase lo
+    // que pase con la longitud del texto.
+    function wrapCapped(text, maxWidth, maxLines){
+      var lines = doc.splitTextToSize(text || '', maxWidth);
+      if(lines.length <= maxLines) return lines;
+      var kept = lines.slice(0, maxLines);
+      var last = kept[maxLines - 1].replace(/[.,;:\s]+$/, '');
+      // Ojo: `last` ya cabe de sobra en maxWidth (viene de splitTextToSize), así que
+      // truncateForWidth(last, maxWidth) la devolvería TAL CUAL, sin "…" — hay que forzar la
+      // comprobación añadiendo la elipsis primero y solo recortar si con ella ya no cabe.
+      var withEllipsis = last + '…';
+      kept[maxLines - 1] = (doc.getTextWidth(withEllipsis) <= maxWidth) ? withEllipsis : truncateForWidth(doc, last, maxWidth);
+      return kept;
     }
 
     var sorted = rosterJoined.slice().sort(function(a,b){
@@ -6533,90 +6682,176 @@ if('serviceWorker' in navigator){
     if(!sorted.length){
       doc.setTextColor.apply(doc, textDim);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
-      doc.text(L.noRosterYet, margin, y + 10);
+      doc.text(L.noRosterYet, margin, topY + 10);
       return;
     }
 
-    sorted.forEach(function(item){
-      if(y + cardH > pageH - 16){ doc.addPage(); y = 16; col = 0; }
-      var x = margin + col * (cardW + gap);
+    // rowH reducido a propósito para que quepan las 12 jugadoras de una plantilla (2 columnas x
+    // 6 filas) en una sola hoja sin saltar de página — pedido explícito de Marta. La foto y el
+    // resto de elementos se han escalado hacia abajo en proporción.
+    var stripeW = 2.2;
+    var photoW = 17, photoH = 20;
+    var rowH = 28;
+
+    sorted.forEach(function(item, idx){
+      var col = idx % 2;
+      if(y[col] + rowH > pageH - 14){
+        // Un salto de página aquí afecta a las DOS columnas por igual (jsPDF no tiene flujo
+        // multi-columna nativo): se empieza página nueva y las dos columnas vuelven arriba a la
+        // vez, para que nunca queden desalineadas entre sí. Con rowH=28 y 12 jugadoras esto ya
+        // no debería activarse con una plantilla normal, pero se deja como red de seguridad.
+        doc.addPage();
+        y[0] = 14; y[1] = 14;
+      }
+      var x = colX[col];
+      var rowY = y[col];
       var p = item.player;
-      var tcol = p.threat === 'alta' ? danger : (p.threat === 'baja' ? good : warn);
-      var scol = p.shootThreat === 'rojo' ? danger : (p.shootThreat === 'verde' ? good : warn);
 
-      doc.setDrawColor(222,222,222); doc.setFillColor(250,250,250);
-      doc.roundedRect(x, y, cardW, cardH, 2.5, 2.5, 'FD');
-      doc.setFillColor.apply(doc, tcol);
-      doc.roundedRect(x, y, 3.4, cardH, 1.6, 1.6, 'F');
+      // Tira lateral de color = amenaza de tiro (antes era uno de los 3 semáforos bajo la foto;
+      // ahora tiene su propio hueco, a todo lo alto de la fila, bien visible de un vistazo).
+      doc.setFillColor.apply(doc, colorForThreat(p.shootThreat));
+      doc.rect(x, rowY, stripeW, rowH - 1.5, 'F');
 
-      var innerX = x + 9;
-      var photoSize = 22;
-      var photoY = y + 6;
-      if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', innerX, photoY, photoSize, photoSize); }catch(e){} }
+      var px = x + stripeW + 1.3;
+      if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', px, rowY, photoW, photoH); }catch(e){} }
       else {
         doc.setFillColor(232,232,232);
-        doc.rect(innerX, photoY, photoSize, photoSize, 'F');
-        doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(11);
-        doc.text(initialsFor(p), innerX + photoSize/2, photoY + photoSize/2 + 3.6, {align:'center'});
+        doc.rect(px, rowY, photoW, photoH, 'F');
+        doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6, {align:'center'});
       }
 
-      var tx = innerX + photoSize + 6;
-      var textMaxW = cardW - (photoSize + 9 + 9) - 6;
-      doc.setTextColor.apply(doc, textInk);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-      doc.text(truncateForWidth(doc, 'Nº ' + (item.number != null ? item.number : '-') + '  ' + (fullName(p) || L.noName), textMaxW), tx, y + 12);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-      doc.setTextColor.apply(doc, textDim);
-      doc.text(truncateForWidth(doc, [formatHeight(p.height), translatePosition(lang, p.position), translateHand(lang, p.hand)].filter(Boolean).join(' · '), textMaxW), tx, y + 17.5);
+      // Clutch y mental, debajo de la foto — palabra completa + círculo de color debajo (ver
+      // statusDot). La amenaza de tiro ya no va aquí, ahora es la tira lateral.
+      var dotLabelY = rowY + photoH + 2.8;
+      var dotHalf = photoW / 2;
+      statusDot(px, dotHalf, dotLabelY, semLabels[0], colorForThreat(p.clutch));
+      statusDot(px + dotHalf, dotHalf, dotLabelY, semLabels[1], colorForThreat(p.temple));
 
-      var statsBlock = pickStatsForExport(item.stats, competition);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.3);
+      var tx = px + photoW + 3;
+      var rowW = colW - stripeW - 1.3 - photoW - 3;
+
+      // Fila 1 (única): dorsal + nombre a la izquierda; estrellas + mano + tipo + posición·altura
+      // ancladas a la derecha, TODO en la misma línea (antes el nombre iba solo y estrellas/mano/
+      // tipo ocupaban una segunda línea) — así el párrafo de debajo gana una línea entera. El
+      // bloque de la derecha se mide primero (sin dibujar) para saber cuánto sitio le queda al
+      // nombre y truncarlo si hace falta, y luego se dibuja de derecha a izquierda.
+      var rightInfo = [translatePosition(lang, p.position), formatHeight(p.height)].filter(Boolean).join(' · ');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+      var rightInfoW = rightInfo ? doc.getTextWidth(rightInfo) : 0;
+
+      var handTxt = translateHand(lang, p.hand);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
+      var pillW = handTxt ? (doc.getTextWidth(handTxt.toUpperCase()) + 4) : 0;
+
+      var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+      var iconsW = typesArr.length * 3.8;
+      var starsW = 3 * 2.5;
+
+      var trailingW = (starsW + 1.6) + (pillW ? pillW + 1.6 : 0) + (iconsW ? iconsW + 1.6 : 0) + (rightInfoW ? rightInfoW + 2.0 : 0);
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+      doc.setTextColor.apply(doc, numberInk);
+      doc.text(String(item.number != null ? item.number : '-'), tx, rowY + 4.3);
+      var numW = doc.getTextWidth(String(item.number != null ? item.number : '-')) + 2.2;
       doc.setTextColor.apply(doc, textInk);
+      var nameStr = truncateForWidth(doc, (fullName(p) || L.noName).toUpperCase(), rowW - numW - trailingW);
+      doc.text(nameStr, tx + numW, rowY + 4.3);
+
+      var rx = tx + rowW;
+      if(rightInfo){
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+        doc.setTextColor.apply(doc, textInk);
+        doc.text(rightInfo, rx, rowY + 4.1, {align: 'right'});
+        rx -= rightInfoW + 2.0;
+      }
+      typesArr.slice().reverse().forEach(function(t){
+        rx -= 3.8;
+        drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9, rowY + 3.1, 3.2);
+      });
+      if(typesArr.length) rx -= 1.6;
+      if(handTxt){
+        rx -= pillW;
+        pill(handTxt.toUpperCase(), rx, rowY + 1.6, 3.0);
+        rx -= 1.6;
+      }
+      rx -= starsW;
+      importanceMarks(rx, rowY + 4.0, p.threat);
+
+      // Párrafo: fortalezas + cómo defenderla fundidos en un único texto corrido. Ahora empieza
+      // justo debajo de la línea única de arriba (dorsal+nombre+estrellas+mano+tipo+pos·altura),
+      // con letra más grande (6.6, antes 5.8) e interlineado más aireado a juego (3.3mm, antes
+      // 2.6) mientras se queda en 3 líneas — el ancho de envoltura sigue siendo rowW, el mismo
+      // que usa la tabla de stats, así que la línea llega hasta la misma columna TO.
+      var paraText = [(p.strengths || '').trim(), (p.defend || '').trim()].filter(Boolean).join('  ·  ') || '—';
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
+      doc.setTextColor.apply(doc, textDim);
+      var paraLines = wrapCapped(paraText, rowW, 3);
+      // Justificado (como pidió Marta): todas las líneas menos la última, que se queda alineada a
+      // la izquierda sin estirar — es la convención tipográfica habitual (si se justificase
+      // también la última línea, con poco texto jsPDF separaría muchísimo las pocas palabras).
+      // jsPDF soporta esto de forma nativa con {align:'justify', maxWidth}.
+      paraLines.forEach(function(line, li){
+        var isLast = li === paraLines.length - 1;
+        var y = rowY + 7.8 + li * 3.3;
+        if(isLast) doc.text(line, tx, y);
+        else doc.text(line, tx, y, {maxWidth: rowW, align: 'justify'});
+      });
+
+      // La etiqueta de competición/temporada que iba aquí se ha quitado a petición de Marta,
+      // para dar ese hueco al párrafo de arriba — la competición se puede ver igualmente en el
+      // desplegable de exportación y en la ficha de la jugadora dentro de la app.
+      var statsBlock = pickStatsForExport(item.stats, competition);
+
+      // Tabla de stats: además de dejar sitio al párrafo, ahora se ESTIRA hacia abajo (cabecera
+      // 3.0mm + valores 5.2mm = 8.2mm, antes 2.9+3.1=6mm) para que la tarjeta entera —texto +
+      // tabla— llegue hasta el final de la fila en vez de dejar un hueco en blanco debajo de la
+      // tabla; de paso los números de la tabla quedan más grandes y legibles.
+      var tableY = rowY + 17.3;
+      var tableHeaderH = 3.0, tableValueH = 5.2;
+      var tableX = tx, tableW = rowW;
+      var colW2 = tableW / STAT_COLS.length;
+      doc.setFillColor.apply(doc, shadeColor(accent, 0.15));
+      doc.rect(tableX, tableY, tableW, tableHeaderH, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4);
+      doc.setTextColor.apply(doc, contrastInk(shadeColor(accent, 0.15)));
+      STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05, {align:'center'}); });
+
+      doc.setFillColor.apply(doc, tintColor(accent, 0.92));
+      doc.rect(tableX, tableY + tableHeaderH, tableW, tableValueH, 'F');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6);
+      doc.setTextColor.apply(doc, textInk);
+      var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
       if(statsBlock){
-        var prefix = (showCompPrefix && statsBlock.competition) ? (statsBlock.competition + ': ') : '';
-        var statsLine = prefix + keyStats.map(function(k){
-          var v = statsBlock[k];
-          return (L.statLabels[k] || k) + ' ' + ((v === undefined || v === null || v === '') ? '—' : v);
-        }).join('   ');
-        // Wrap onto up to two lines instead of truncating — every stat stays readable
-        // instead of getting cut off with an ellipsis.
-        var statsLines = doc.splitTextToSize(statsLine, textMaxW).slice(0, 2);
-        statsLines.forEach(function(line, li){ doc.text(line, tx, y + 22 + li*3.5); });
+        STAT_COLS.forEach(function(c, i){
+          var v = c.get(statsBlock);
+          var txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v));
+          doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
+        });
       } else {
         doc.setTextColor.apply(doc, textDim);
-        doc.text(L.noStats, tx, y + 22);
+        doc.text(L.noStats, tableX + tableW/2, valueTextY, {align:'center'});
       }
 
-      var chipY = y + 30.6;
-      var cx = chip(L.threatLevels[p.threat] || L.threatLevels.media, tcol, tx, chipY);
-      chip(L.shootLevels[p.shootThreat] || L.shootLevels.amarillo, scol, cx, chipY);
+      // Línea fina de separación entre jugadoras, como la referencia (que separa cada fila con
+      // una simple regla horizontal en vez de una caja con borde).
+      doc.setDrawColor(225,225,225);
+      doc.setLineWidth(0.15);
+      doc.line(x, rowY + rowH - 1.5, x + colW, rowY + rowH - 1.5);
 
-      var notesW = cardW - 16;
-      var strengthsVal = (p.strengths || '').trim();
-      var defendVal = (p.defend || '').trim();
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, textInk);
-      doc.text(L.strengths + ':', innerX, y + cardH - 12);
-      var lbl1W = doc.getTextWidth(L.strengths + ': ');
-      doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, textDim);
-      doc.text(truncateForWidth(doc, strengthsVal || '—', notesW - lbl1W), innerX + lbl1W, y + cardH - 12);
-
-      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, textInk);
-      doc.text(L.defend + ':', innerX, y + cardH - 6);
-      var lbl2W = doc.getTextWidth(L.defend + ': ');
-      doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, textDim);
-      doc.text(truncateForWidth(doc, defendVal || '—', notesW - lbl2W), innerX + lbl2W, y + cardH - 6);
-
-      col++;
-      if(col > 1){ col = 0; y += cardH + gap; }
+      y[col] += rowH;
     });
   }
 
   function addFooters(doc){
-    var pageW = 210, pageH = 297, margin = 16;
+    var margin = 16;
     var pageCount = doc.internal.getNumberOfPages();
     for(var i = 1; i <= pageCount; i++){
       doc.setPage(i);
+      // No se asume vertical: el informe de jugadoras (drawPlayerFacingReport) ahora se genera
+      // apaisado, así que el tamaño real de cada página puede variar según el informe.
+      var pageW = doc.internal.pageSize.getWidth();
+      var pageH = doc.internal.pageSize.getHeight();
       doc.setFillColor(20,23,28);
       doc.rect(0, pageH - 10, pageW, 10, 'F');
       doc.setTextColor(255,255,255); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
