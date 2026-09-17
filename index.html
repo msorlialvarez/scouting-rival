@@ -5242,7 +5242,8 @@ if('serviceWorker' in navigator){
     cover.addText((rival.name || 'Rival').toUpperCase(), { x:0.6, y:0.85, w:6.3, h:1.1, fontSize:40, bold:true, italic:true, color: inkHex, fontFace: FONT_BOLD, valign:'top' });
     cover.addShape('rect', { x:0.62, y:1.98, w:1.8, h:0.06, fill:{color: accentHex}, line:{type:'none'} });
     cover.addText(lang === 'en' ? 'INDIVIDUAL SCOUTING' : 'SCOUTING INDIVIDUAL', { x:0.62, y:2.2, w:6.5, h:0.5, fontSize:24, italic:true, color: inkHex, fontFace: FONT_LIGHT });
-    var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
+    // Solo la competición seleccionada en el exportador, no todas las del rival (pedido de Marta).
+    var metaLine = [rival.season, competition || rivalCompetitions(rival)[0]].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
     cover.addText(metaLine, { x:0.62, y:2.8, w:6.3, h:0.5, fontSize:16, italic:true, color: dimHex, fontFace: FONT_LIGHT, valign:'middle' });
     if(compLogo){
       // Abajo a la izquierda (como en la plantilla), para no quedar debajo del grupo de
@@ -5547,7 +5548,8 @@ if('serviceWorker' in navigator){
       ctx.fillText(scoutingLabel, IN(0.62 + scoutingPadX), IN(ny + 0.12 + scoutingPillH/2));
       ctx.textBaseline = 'top';
 
-      var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
+      // Solo la competición seleccionada en el exportador, no todas las del rival (pedido de Marta).
+      var metaLine = [rival.season, competition || rivalCompetitions(rival)[0]].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
       ctx.fillStyle = dimHex;
       setFont(ctx, PT(16), {});
       ctx.fillText(metaLine, IN(0.62), IN(ny + 0.86));
@@ -5947,7 +5949,10 @@ if('serviceWorker' in navigator){
     var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
     doc.text(metaLine, margin, y); y += 6;
     doc.text(rosterJoined.length + (rosterJoined.length === 1 ? L.playersSuffix1 : L.playersSuffixN), margin, y);
-    y += 12;
+
+    // La plantilla empieza en una página nueva, no debajo de la portada (pedido de Marta).
+    doc.addPage();
+    y = 20;
 
     doc.setTextColor.apply(doc, ink);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
@@ -6937,7 +6942,8 @@ if('serviceWorker' in navigator){
     doc.text((rival.name || 'Rival').toUpperCase(), titleX, headY + 6);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
     doc.setTextColor.apply(doc, textDim);
-    doc.text(([rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.reportFallback).toUpperCase(), titleX, headY + 11);
+    // Solo la competición seleccionada en el exportador, no todas las del rival (pedido de Marta).
+    doc.text(([rival.season, competition || rivalCompetitions(rival)[0]].filter(Boolean).join(' · ') || L.reportFallback).toUpperCase(), titleX, headY + 11);
 
     var legendTypes = PLAYER_TYPE_ORDER;
     var legendBoxW = 22, legendBoxH = 9;
