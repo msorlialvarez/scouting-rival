@@ -683,6 +683,9 @@ if('serviceWorker' in navigator){
               <option value="en">English</option>
             </select>
           </label>
+          <label class="lang-field" id="collExportCompetitionField" hidden><span class="tb-label">Competición</span>
+            <select class="mini-input lang-select" id="collExportCompetitionSelect" title="Competición a mostrar en el escudo y las estadísticas de los informes"></select>
+          </label>
           <button class="btn-export" id="btnExportCollectivePdf" type="button">Generar informe PDF</button>
           <button class="btn-export" id="btnTogglePlayersPdf" type="button">PDF para jugadoras</button>
           <span class="export-error" id="collectiveExportError"></span>
@@ -887,7 +890,7 @@ if('serviceWorker' in navigator){
   // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it —
   // comfortably above the "under 10MB" reports Marta actually uploads.
   var MAX_STATS_PDF_BYTES = 12 * 1024 * 1024;
-  var STATSLIVE_URL = 'https://rajivi.ddns.net/statslife2/scouting/post-partido';
+  var STATSLIVE_URL = 'https://rajivi.ddns.net/statslife2/scouting/pre-partido';
   var DEFAULT_COLOR = '#c9540c';
 
   var POSITION_EN = {'Base':'Point guard','Escolta':'Shooting guard','Alero':'Small forward','Ala-pívot':'Power forward','Pívot':'Center'};
@@ -912,6 +915,7 @@ if('serviceWorker' in navigator){
       seasonCompUnspecified: 'Temporada y competición sin especificar',
       roster: 'PLANTILLA',
       colNum: 'Nº', colPlayer: 'Jugadora', colPosition: 'Posición', colThreat: 'Importancia', colShot: 'Tiro',
+      colHeight: 'Altura', colMental: 'Mental', colClutch: 'Clutch', colType: 'Tipo', colHand: 'Mano',
       positionHandUnspecified: 'Posición y mano sin especificar',
       threatTotalBadge: 'IMPORTANCIA: ',
       threatShotBadge: 'AMENAZA DE TIRO: ',
@@ -955,6 +959,7 @@ if('serviceWorker' in navigator){
       seasonCompUnspecified: 'Season and competition not specified',
       roster: 'ROSTER',
       colNum: 'No.', colPlayer: 'Player', colPosition: 'Position', colThreat: 'Importance', colShot: 'Shot',
+      colHeight: 'Height', colMental: 'Mental', colClutch: 'Clutch', colType: 'Type', colHand: 'Hand',
       positionHandUnspecified: 'Position and hand not specified',
       threatTotalBadge: 'IMPORTANCE: ',
       threatShotBadge: 'SHOOTING THREAT: ',
@@ -2229,22 +2234,37 @@ if('serviceWorker' in navigator){
   // estadísticas distintos por competición; sin este selector, los informes/portadas no tenían
   // forma de saber cuál mostrar y siempre acababan cogiendo la primera que se hubiera añadido.
   // Con una sola competición (el caso normal) el selector se queda oculto y no cambia nada.
+  // Dos copias del mismo selector — una en la cabecera de Scout Individual
+  // (#exportCompetitionField) y otra en la de Scout Colectivo (#collExportCompetitionField, ver
+  // 4.15) — porque la cabecera de Scout Individual (#rivalTopbar) está oculta mientras se está en
+  // modo Colectivo y si no, no habría forma de elegir competición desde ahí. Las dos comparten
+  // `state.exportCompetition`, así que elegir en una vale también para la otra.
+  var EXPORT_COMPETITION_SELECT_IDS = [
+    {field: 'exportCompetitionField', sel: 'exportCompetitionSelect'},
+    {field: 'collExportCompetitionField', sel: 'collExportCompetitionSelect'}
+  ];
   function renderExportCompetitionSelect(){
-    var field = $('#exportCompetitionField');
-    var sel = $('#exportCompetitionSelect');
-    if(!field || !sel) return;
     var comps = rivalCompetitions(state.rival);
     if(comps.length < 2){
-      field.hidden = true;
+      EXPORT_COMPETITION_SELECT_IDS.forEach(function(ids){
+        var field = $('#' + ids.field);
+        if(field) field.hidden = true;
+      });
       state.exportCompetition = comps[0] || '';
       return;
     }
     var prevValue = state.exportCompetition;
-    sel.innerHTML = comps.map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
     var value = (prevValue && comps.indexOf(prevValue) !== -1) ? prevValue : comps[0];
-    sel.value = value;
     state.exportCompetition = value;
-    field.hidden = false;
+    var optionsHtml = comps.map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
+    EXPORT_COMPETITION_SELECT_IDS.forEach(function(ids){
+      var field = $('#' + ids.field);
+      var sel = $('#' + ids.sel);
+      if(!field || !sel) return;
+      sel.innerHTML = optionsHtml;
+      sel.value = value;
+      field.hidden = false;
+    });
   }
 
   // Elige, de entre los posibles bloques de estadísticas de una jugadora (uno por
@@ -2656,7 +2676,14 @@ if('serviceWorker' in navigator){
     }
     $('#reportLangSelect').addEventListener('change', function(e){ applyLangChange(e.target.value); });
     $('#collLangSelect').addEventListener('change', function(e){ applyLangChange(e.target.value); });
-    $('#exportCompetitionSelect').addEventListener('change', function(e){ state.exportCompetition = e.target.value; });
+    EXPORT_COMPETITION_SELECT_IDS.forEach(function(ids){
+      var sel = $('#' + ids.sel);
+      if(!sel) return;
+      sel.addEventListener('change', function(e){
+        state.exportCompetition = e.target.value;
+        EXPORT_COMPETITION_SELECT_IDS.forEach(function(other){ var s = $('#' + other.sel); if(s && s !== sel) s.value = e.target.value; });
+      });
+    });
   }
 
   function triggerBrowserDownload(filename, blob){
@@ -4574,7 +4601,7 @@ if('serviceWorker' in navigator){
     var baseHeaderLabel = ((rival.name||'Rival') + (rival.season ? ' · ' + rival.season : '')).toUpperCase();
     var cursor = { headerLabel: baseHeaderLabel };
 
-    drawCollectiveCoverPage(doc, cursor, rival, rosterJoined, accent, lang);
+    drawCollectiveCoverPage(doc, cursor, rival, rosterJoined, accent, lang, competition);
 
     var drewAnySection = false;
     var offAny = cfg.offItems || cfg.offSources || cfg.offSystems;
@@ -4585,9 +4612,21 @@ if('serviceWorker' in navigator){
         drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colOffSystemsCol]);
         cursor.y += TABLE_GAP_EXTRA;
       }
-      if(cfg.offSystems){
-        drawPlainSubLabel(doc, cursor, L.offSystemsLabel);
-        drawAdvancedStatsPlaceholder(doc, cursor, lang, state.offSystemsPdfMeta);
+      // Antes aquí se escribía un apartado "Sistemas de juego" con una etiqueta y una caja de
+      // aviso ("informe adjunto a continuación"), y el PDF real se adjuntaba al final de todo el
+      // informe. Ahora, a petición de Marta, no se escribe nada — si hay un PDF de sistemas de
+      // juego subido, sus páginas reales se insertan aquí mismo (justo después de "Principales
+      // fuentes de generación"), en vez de al final. Se marca el punto de inserción (número de
+      // página actual, en 0-based porque pdf-lib cuenta así) y se fuerza un salto de página limpio
+      // para que el PDF insertado empiece en una página propia; runCollectiveExport/
+      // appendUploadedPdfSections son quienes hacen la inserción real una vez generados los bytes.
+      if(cfg.offSystems && state.offSystemsPdfMeta && state.offSystemsPdfMeta.filePath){
+        doc.addPage();
+        doc._offSystemsInsertPageIndex = doc.internal.getNumberOfPages() - 1;
+        // Sin este reset, cursor.y seguiría con el valor de justo antes del salto de página (cerca
+        // del final de la página anterior) y la siguiente sección disparía SU PROPIO salto de
+        // página automático (ensureSpace) al no caber ahí, dejando una página en blanco de más.
+        drawPageHeaderLabel(doc, cursor);
       }
       drewAnySection = true;
     }
@@ -4617,25 +4656,45 @@ if('serviceWorker' in navigator){
       drawSectionHeader(doc, cursor, accent, lang, L.roster, true);
       drawRosterTable(doc, cursor, rosterJoined, accent, lang);
 
-      cursor.headerLabel = baseHeaderLabel + '  —  ' + L.playerSheetsLabel;
+      // Justo al acabar la tabla-resumen, las jugadoras completas con toda la info, con el mismo
+      // estilo que el informe jugadoras de Scout Individual (drawPlayerFacingCard, más abajo) —
+      // sin empezar en una hoja nueva: se sigue rellenando la página actual y solo se salta de
+      // página cuando ya no cabe una fila más, igual que el resto de tablas de este informe.
       if(rosterJoined.length){
-        doc.addPage();
-        drawPageHeaderLabel(doc, cursor);
-        rosterJoined.forEach(function(item){
-          drawPlayerBlock(doc, item.player, singleStatBlockArray(item.stats, competition), item.number, accent, lang, cursor);
+        cursor.headerLabel = baseHeaderLabel + '  —  ' + L.playerSheetsLabel;
+        var sortedForCards = rosterJoined.slice().sort(function(a,b){
+          var ta = THREAT_ORDER[a.player.threat] != null ? THREAT_ORDER[a.player.threat] : 1;
+          var tb = THREAT_ORDER[b.player.threat] != null ? THREAT_ORDER[b.player.threat] : 1;
+          if(ta !== tb) return ta - tb;
+          return (Number(a.number)||0) - (Number(b.number)||0);
         });
+        var cardMargin = 16, cardColGap = 8;
+        var cardColW = (210 - cardMargin*2 - cardColGap) / 2;
+        var cardColX = [cardMargin, cardMargin + cardColW + cardColGap];
+        // 32 (antes 28): el nombre pasó a tener su propia línea (ver drawPlayerFacingCard), así
+        // que la tarjeta necesita 4mm más de alto para no perder ninguna línea del párrafo.
+        var cardRowH = 32;
+        var cardY = [cursor.y, cursor.y];
+        sortedForCards.forEach(function(item, idx){
+          var col = idx % 2;
+          if(cardY[col] + cardRowH > 297 - 14){
+            // Un salto de página aquí afecta a las dos columnas por igual (jsPDF no tiene flujo
+            // multi-columna nativo), igual que en el informe jugadoras de Scout Individual.
+            doc.addPage();
+            drawPageHeaderLabel(doc, cursor);
+            cardY[0] = cursor.y; cardY[1] = cursor.y;
+          }
+          drawPlayerFacingCard(doc, item, cardColX[col], cardY[col], cardColW, cardRowH, lang, accent, competition);
+          cardY[col] += cardRowH;
+        });
+        cursor.y = Math.max(cardY[0], cardY[1]);
       }
       drewAnySection = true;
     }
 
-    // Drawn last on purpose: when a PDF has been uploaded, its real pages are appended right
-    // after this section (appendUploadedPdfSections), so keeping it as the final section
-    // means "adjunto a continuación" is always literally true.
-    if(cfg.advancedStats){
-      if(drewAnySection) cursor.y += SECTION_GAP_MAIN;
-      drawSectionHeader(doc, cursor, accent, lang, L.advancedStatsLabel, true);
-      drawAdvancedStatsPlaceholder(doc, cursor, lang, state.advancedStatsMeta);
-    }
+    // Sin apartado escrito (a petición de Marta): si hay un PDF de estadística avanzada subido,
+    // sus páginas reales se adjuntan tal cual al final de todo (appendUploadedPdfSections), sin
+    // título ni caja de aviso antes. Si no hay PDF subido, no aparece nada en absoluto.
 
     addFooters(doc, lang);
     return doc;
@@ -4800,6 +4859,58 @@ if('serviceWorker' in navigator){
     });
   }
 
+  // Igual que mergePdfBytesVector pero inserta las páginas del PDF extra en una posición
+  // concreta (pageIndex, 0-based, al estilo pdf-lib) en vez de siempre al final. Se usa para
+  // "Sistemas de juego" en el informe de Scout Colectivo, que ahora debe aparecer justo después
+  // de "Principales fuentes de generación" en vez de al final del documento (ver
+  // buildCollectiveDoc, donde se marca doc._offSystemsInsertPageIndex).
+  function insertPdfBytesAt(baseBytes, extraBytes, pageIndex){
+    return loadPdfLib().then(function(PDFLib){
+      return PDFLib.PDFDocument.load(baseBytes, {ignoreEncryption: true}).then(function(mainDoc){
+        return PDFLib.PDFDocument.load(extraBytes, {ignoreEncryption: true}).then(function(extraDoc){
+          return mainDoc.copyPages(extraDoc, extraDoc.getPageIndices()).then(function(copiedPages){
+            copiedPages.forEach(function(p, i){ mainDoc.insertPage(pageIndex + i, p); });
+            return mainDoc.save();
+          });
+        });
+      });
+    });
+  }
+
+  // Fallback de insertPdfBytesAt, igual que appendPdfAsImagesToBytes pero insertando en una
+  // posición concreta en vez de al final.
+  function insertPdfAsImagesToBytesAt(baseBytes, extraBytes, pageIndex){
+    var pageW = 595.28, pageH = 841.89;
+    return Promise.all([loadPdfLib(), loadPdfJs()]).then(function(libs){
+      var PDFLib = libs[0], pdfjsLib = libs[1];
+      return PDFLib.PDFDocument.load(baseBytes, {ignoreEncryption: true}).then(function(mainDoc){
+        return pdfjsLib.getDocument({data: extraBytes}).promise.then(function(pdfDoc){
+          var chain = Promise.resolve();
+          for(var i = 1; i <= pdfDoc.numPages; i++){
+            (function(pageNum, idx){
+              chain = chain.then(function(){ return pdfDoc.getPage(pageNum); }).then(function(page){
+                var viewport = page.getViewport({scale: 2});
+                var canvas = document.createElement('canvas');
+                canvas.width = viewport.width; canvas.height = viewport.height;
+                return page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise.then(function(){
+                  var imgData = canvas.toDataURL('image/jpeg', 0.85);
+                  return mainDoc.embedJpg(imgData).then(function(jpgImage){
+                    var ratio = viewport.width / viewport.height;
+                    var w = pageW, h = pageW / ratio;
+                    if(h > pageH){ h = pageH; w = pageH * ratio; }
+                    var pdfPage = mainDoc.insertPage(pageIndex + idx, [pageW, pageH]);
+                    pdfPage.drawImage(jpgImage, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h });
+                  });
+                });
+              });
+            })(i, i - 1);
+          }
+          return chain;
+        }).then(function(){ return mainDoc.save(); });
+      });
+    });
+  }
+
   // Adjunta, en orden, cada PDF subido (Sistemas de juego / Estadística avanzada) al informe ya
   // construido. Antes cada apartado se adjuntaba por separado a partir del doc de jsPDF
   // original; ahora que puede haber DOS PDF subidos para el mismo rival y los dos activados en
@@ -4824,12 +4935,16 @@ if('serviceWorker' in navigator){
           return res.data.arrayBuffer();
         }).then(function(buf){
           var extraBytes = new Uint8Array(buf);
-          return mergePdfBytesVector(baseBytes, extraBytes).then(function(merged){
+          // Si el entry trae `insertAt` (Sistemas de juego, ver buildCollectiveDoc), sus páginas
+          // se insertan en esa posición concreta en vez de añadirse al final del documento.
+          var vectorFn = (entry.insertAt != null) ? function(b, e){ return insertPdfBytesAt(b, e, entry.insertAt); } : mergePdfBytesVector;
+          var imageFn = (entry.insertAt != null) ? function(b, e){ return insertPdfAsImagesToBytesAt(b, e, entry.insertAt); } : appendPdfAsImagesToBytes;
+          return vectorFn(baseBytes, extraBytes).then(function(merged){
             baseBytes = merged;
             results[entry.key] = {attached: true, skipped: false, error: null};
           }).catch(function(err){
             console.error('vector merge failed for ' + entry.key + ', trying image fallback', err);
-            return appendPdfAsImagesToBytes(baseBytes, extraBytes).then(function(merged){
+            return imageFn(baseBytes, extraBytes).then(function(merged){
               baseBytes = merged;
               results[entry.key] = {attached: true, skipped: false, error: null};
             }).catch(function(err2){
@@ -4868,7 +4983,14 @@ if('serviceWorker' in navigator){
       var accent = hexToRgb(rival.color);
       var doc = (builderFn || buildCollectiveDoc)(rival, rosterJoined, accent, lang, cfg);
       var entries = COLLECTIVE_PDF_ATTACHMENTS.filter(function(a){ return cfg[a.cfgKey]; })
-        .map(function(a){ return { key: a.cfgKey, meta: state[UPLOADED_PDF_KINDS[a.kind].metaField] }; });
+        .map(function(a){
+          var entry = { key: a.cfgKey, meta: state[UPLOADED_PDF_KINDS[a.kind].metaField] };
+          // Marcado por buildCollectiveDoc cuando "Sistemas de juego" debe insertarse justo
+          // después de "Principales fuentes de generación" en vez de al final (ver
+          // insertPdfBytesAt / appendUploadedPdfSections).
+          if(a.cfgKey === 'offSystems' && doc._offSystemsInsertPageIndex != null) entry.insertAt = doc._offSystemsInsertPageIndex;
+          return entry;
+        });
       return appendUploadedPdfSections(doc, entries);
     }).then(function(result){
       attachResult = result;
@@ -5891,8 +6013,10 @@ if('serviceWorker' in navigator){
   var SECTION_GAP_MAIN = 9;
   // Extra breathing room specifically after a table subsection (fuentes de generación, cómo
   // atacarlas), on top of the normal SUBSECTION_GAP already applied — a table reads visually
-  // "heavier", so it needs more air before whatever comes next.
-  var TABLE_GAP_EXTRA = 5;
+  // "heavier", so it needs more air before whatever comes next. Antes era 5 (9mm en total junto
+  // con SUBSECTION_GAP) — Marta lo vio muy pegado entre "Cómo atacarlas" y "Defensas especiales",
+  // así que ahora es 8 (12mm en total).
+  var TABLE_GAP_EXTRA = 8;
 
   // Big banner used only for the report's 4 main sections (Esencia ofensiva, Esencia defensiva,
   // Estadística avanzada, Plantilla) so they read as clearly distinct from the subsections inside
@@ -5912,7 +6036,7 @@ if('serviceWorker' in navigator){
 
   // Cover band for the Scout Colectivo report: identity + meta only. Sets cursor.y so the
   // essence sections that follow can keep flowing straight after it.
-  function drawCollectiveCoverPage(doc, cursor, rival, rosterJoined, accent, lang){
+  function drawCollectiveCoverPage(doc, cursor, rival, rosterJoined, accent, lang, competition){
     lang = lang || 'es';
     var L = tr(lang);
     var pageW = 210, margin = 16;
@@ -5933,7 +6057,11 @@ if('serviceWorker' in navigator){
 
     doc.setTextColor(91,98,112);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    var metaLine = [rival.season, rivalCompetitions(rival).join(' · ')].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
+    // Antes se juntaban TODAS las competiciones del rival aquí (rivalCompetitions(rival).join)
+    // — con un rival de varias competiciones salían todas seguidas en la misma línea. Ahora se
+    // muestra solo la competición elegida en el selector (igual que en Scout Individual), la
+    // misma que ya se usa para elegir escudo/estadísticas en el resto del informe.
+    var metaLine = [rival.season, competition || rivalCompetitions(rival)[0]].filter(Boolean).join(' · ') || L.seasonCompUnspecified;
     cursor.y = 36;
     doc.text(metaLine, margin, cursor.y); cursor.y += 6;
     doc.text(rosterJoined.length + (rosterJoined.length === 1 ? L.playersSuffix1 : L.playersSuffixN), margin, cursor.y);
@@ -6004,7 +6132,8 @@ if('serviceWorker' in navigator){
     doc.text(title.toUpperCase(), margin, cursor.y);
     cursor.y += 6;
 
-    var cols = [ {label: colLabels[0], w: 34}, {label: colLabels[1], w: 68}, {label: colLabels[2], w: 68} ];
+    // Última columna (sistemas) más estrecha y notas más ancha (pedido de Marta) — antes 34/68/68.
+    var cols = [ {label: colLabels[0], w: 34}, {label: colLabels[1], w: 92}, {label: colLabels[2], w: 44} ];
     var totalW = pageW - margin*2;
     var colScale = totalW / cols.reduce(function(s,c){ return s + c.w; }, 0);
 
@@ -6120,22 +6249,44 @@ if('serviceWorker' in navigator){
 
   // Roster table (same columns as the staff report), kept for the very end of the Scout
   // Colectivo document, right before the individual player sheets.
+  // Tabla-resumen de la plantilla al empezar el apartado (pedido de Marta): además de dorsal y
+  // jugadora, ahora también posición, altura, importancia, tiro, mental, clutch, tipo de
+  // jugadora y mano — un vistazo rápido a toda la plantilla antes de entrar en las fichas
+  // completas de cada jugadora justo debajo.
+  function semaforoColor(v){
+    return v === 'rojo' ? [199,52,52] : (v === 'verde' ? [31,138,95] : [245,166,35]);
+  }
   function drawRosterTable(doc, cursor, rosterJoined, accent, lang){
     var L = tr(lang);
     var pageW = 210, margin = 16;
     var ink = [20,23,28], dim = [91,98,112];
 
-    var cols = [ {label:L.colNum, w:12}, {label:L.colPlayer, w:70}, {label:L.colPosition, w:38}, {label:L.colThreat, w:34}, {label:L.colShot, w:20} ];
+    var cols = [
+      {key:'num', label:L.colNum, w:8},
+      {key:'player', label:L.colPlayer, w:38},
+      {key:'position', label:L.colPosition, w:18},
+      {key:'height', label:L.colHeight, w:13},
+      {key:'threat', label:L.colThreat, w:16},
+      {key:'shot', label:L.colShot, w:10},
+      {key:'temple', label:L.colMental, w:10},
+      {key:'clutch', label:L.colClutch, w:10},
+      {key:'type', label:L.colType, w:20},
+      {key:'hand', label:L.colHand, w:14}
+    ];
     var totalW = pageW - margin*2;
     var colScale = totalW / cols.reduce(function(s,c){ return s + c.w; }, 0);
+    var colX = [margin];
+    cols.forEach(function(c, i){ colX.push(colX[i] + c.w * colScale); });
 
     ensureSpace(doc, cursor, 7);
     doc.setFillColor(245,245,245);
     doc.rect(margin, cursor.y, totalW, 7, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
     doc.setTextColor.apply(doc, dim);
-    var x = margin;
-    cols.forEach(function(c){ doc.text(c.label, x + 2, cursor.y + 4.8); x += c.w * colScale; });
+    cols.forEach(function(c, i){
+      var headLines = doc.splitTextToSize(c.label, c.w * colScale - 2);
+      doc.text(headLines[0] || '', colX[i] + 2, cursor.y + 4.8);
+    });
     cursor.y += 7;
 
     if(!rosterJoined.length){
@@ -6153,22 +6304,42 @@ if('serviceWorker' in navigator){
       return (Number(a.number)||0) - (Number(b.number)||0);
     });
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
     sorted.forEach(function(item, idx){
       ensureSpace(doc, cursor, 7);
+      var rowMidY = cursor.y + 3.5;
       if(idx % 2 === 1){ doc.setFillColor(250,250,250); doc.rect(margin, cursor.y, totalW, 7, 'F'); }
-      x = margin;
+      var p = item.player;
+
       doc.setTextColor.apply(doc, ink);
-      doc.text(String(item.number != null ? item.number : '-'), x + 2, cursor.y + 4.8); x += cols[0].w * colScale;
-      doc.text(fullName(item.player) || L.noName, x + 2, cursor.y + 4.8); x += cols[1].w * colScale;
+      doc.text(String(item.number != null ? item.number : '-'), colX[0] + 2, cursor.y + 4.8);
+      doc.text(truncateForWidth(doc, fullName(p) || L.noName, cols[1].w * colScale - 3), colX[1] + 2, cursor.y + 4.8);
       doc.setTextColor.apply(doc, dim);
-      doc.text(translatePosition(lang, item.player.position) || '—', x + 2, cursor.y + 4.8); x += cols[2].w * colScale;
-      var tcol = item.player.threat === 'alta' ? [199,52,52] : (item.player.threat === 'baja' ? [31,138,95] : [245,166,35]);
+      doc.text(translatePosition(lang, p.position) || '—', colX[2] + 2, cursor.y + 4.8);
+      doc.text(formatHeight(p.height) || '—', colX[3] + 2, cursor.y + 4.8);
+      var tcol = p.threat === 'alta' ? [199,52,52] : (p.threat === 'baja' ? [31,138,95] : [245,166,35]);
       doc.setTextColor.apply(doc, tcol);
-      doc.text(L.threatLevels[item.player.threat] || L.threatLevels.media, x + 2, cursor.y + 4.8); x += cols[3].w * colScale;
-      var scol = item.player.shootThreat === 'rojo' ? [199,52,52] : (item.player.shootThreat === 'verde' ? [31,138,95] : [245,166,35]);
-      doc.setFillColor.apply(doc, scol);
-      doc.circle(x + 4, cursor.y + 3.3, 1.8, 'F');
+      doc.text(L.threatLevels[p.threat] || L.threatLevels.media, colX[4] + 2, cursor.y + 4.8);
+
+      doc.setFillColor.apply(doc, semaforoColor(p.shootThreat));
+      doc.circle(colX[5] + cols[5].w * colScale / 2, rowMidY, 1.7, 'F');
+      doc.setFillColor.apply(doc, semaforoColor(p.temple));
+      doc.circle(colX[6] + cols[6].w * colScale / 2, rowMidY, 1.7, 'F');
+      doc.setFillColor.apply(doc, semaforoColor(p.clutch));
+      doc.circle(colX[7] + cols[7].w * colScale / 2, rowMidY, 1.7, 'F');
+
+      var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+      var typeX = colX[8] + 2;
+      typesArr.forEach(function(t){
+        drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], typeX + 1.6, rowMidY, 3.4);
+        typeX += 4;
+      });
+
+      doc.setTextColor.apply(doc, dim);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+      doc.text(translateHand(lang, p.hand) || '—', colX[9] + 2, cursor.y + 4.8);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+
       cursor.y += 7;
     });
     cursor.y += SUBSECTION_GAP;
@@ -6935,7 +7106,11 @@ if('serviceWorker' in navigator){
       // tipo ocupaban una segunda línea) — así el párrafo de debajo gana una línea entera. El
       // bloque de la derecha se mide primero (sin dibujar) para saber cuánto sitio le queda al
       // nombre y truncarlo si hace falta, y luego se dibuja de derecha a izquierda.
-      var rightInfo = [translatePosition(lang, p.position), formatHeight(p.height)].filter(Boolean).join(' · ');
+      // Posición abreviada en inglés (PG/SG/SF/PF/C, positionAbbr) en vez de la palabra completa
+      // traducida — pedido de Marta para ganar sitio en la línea, aquí y en drawPlayerFacingCard
+      // (el sitio equivalente del PDF de Scout Colectivo). La tabla de plantilla sigue mostrando
+      // la posición completa (translatePosition), eso no cambia.
+      var rightInfo = [positionAbbr(p.position), formatHeight(p.height)].filter(Boolean).join(' · ');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
       var rightInfoW = rightInfo ? doc.getTextWidth(rightInfo) : 0;
 
@@ -7040,6 +7215,219 @@ if('serviceWorker' in navigator){
 
       y[col] += rowH;
     });
+  }
+
+  // Ficha de una jugadora con el mismo estilo visual que el informe jugadoras de Scout Individual
+  // (drawPlayerFacingReport, justo arriba: tira de color de amenaza de tiro, foto, clutch/mental
+  // como puntos de color, estrellas de importancia, tipo, mano, párrafo justificado y tabla de
+  // stats) — pero como pieza suelta que se puede colocar en cualquier (x, y) dentro de OTRO
+  // documento en curso, en vez de dibujar su propia cabecera/leyenda y recorrer ella misma todo
+  // el roster. Se usa en el PDF de Scout Colectivo, justo después de la tabla-resumen de
+  // plantilla, para que las jugadoras completas vayan apareciendo "igual que en el informe
+  // jugadoras" sin tener que generar un documento aparte. Duplica a propósito la lógica de
+  // dibujado de drawPlayerFacingReport en vez de compartirla, para no arriesgar ningún cambio de
+  // comportamiento en el informe de Scout Individual ya aprobado por Marta.
+  function drawPlayerFacingCard(doc, item, x, rowY, colW, rowH, lang, accent, competition){
+    lang = lang || 'es';
+    var L = tr(lang);
+    var textInk = [20,23,28], textDim = [91,98,112];
+    var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
+    var numberInk = shadeColor(accent, 0.15);
+    var semLabels = ['CLUTCH', 'MENTAL'];
+    var p = item.player;
+
+    var STAT_COLS = [
+      {label:'MIN', get:function(s){ return s.minutes; }},
+      {label:'PTS', get:function(s){ return s.pts; }},
+      {label:'FG', get:function(s){ return s.fga; }},
+      {label:'3PA', get:function(s){ return s.threeAtt; }},
+      {label:'3P%', pct:true, get:function(s){ return s.threePct; }},
+      {label:'TLA', get:function(s){ return s.ftAtt; }},
+      {label:'TL%', pct:true, get:function(s){ return s.ftPct; }},
+      {label:'OR', get:function(s){ return s.offReb; }},
+      {label:'DR', get:function(s){ return (s.reb != null && s.offReb != null) ? (s.reb - s.offReb) : null; }},
+      {label:'AS', get:function(s){ return s.ast; }},
+      {label:'TO', get:function(s){ return s.to; }}
+    ];
+
+    function pill(text, x0, rectTop, h){
+      h = h || 4.3;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
+      var w = doc.getTextWidth(text) + 4;
+      doc.setFillColor(235,236,238);
+      doc.roundedRect(x0, rectTop, w, h, 1.2, 1.2, 'F');
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(text, x0 + w / 2, rectTop + h * 0.68, {align: 'center'});
+      return w;
+    }
+    function importanceMarks(x0, y0, level){
+      var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
+      for(var i = 0; i < 3; i++){
+        drawGlyphIcon(doc, '★', x0 + i * 2.5 + 1.0, y0 - 1.6, 2.6, i < filled ? numberInk : [212,212,212]);
+      }
+      return 3 * 2.5;
+    }
+    function colorForThreat(v){
+      return v === 'rojo' ? danger : (v === 'verde' ? good : warn);
+    }
+    function statusDot(x0, w, labelY, label, colorRgb){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(3.6);
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(label, x0 + w / 2, labelY, {align: 'center'});
+      doc.setFillColor.apply(doc, colorRgb);
+      doc.circle(x0 + w / 2, labelY + 1.9, 1.15, 'F');
+    }
+    function wrapCapped(text, maxWidth, maxLines){
+      var lines = doc.splitTextToSize(text || '', maxWidth);
+      if(lines.length <= maxLines) return lines;
+      var kept = lines.slice(0, maxLines);
+      var last = kept[maxLines - 1].replace(/[.,;:\s]+$/, '');
+      var withEllipsis = last + '…';
+      kept[maxLines - 1] = (doc.getTextWidth(withEllipsis) <= maxWidth) ? withEllipsis : truncateForWidth(doc, last, maxWidth);
+      return kept;
+    }
+
+    var stripeW = 2.2;
+    var photoW = 17, photoH = 20;
+
+    doc.setFillColor.apply(doc, colorForThreat(p.shootThreat));
+    doc.rect(x, rowY, stripeW, rowH - 1.5, 'F');
+
+    var px = x + stripeW + 1.3;
+    if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', px, rowY, photoW, photoH); }catch(e){} }
+    else {
+      doc.setFillColor(232,232,232);
+      doc.rect(px, rowY, photoW, photoH, 'F');
+      doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6, {align:'center'});
+    }
+
+    var dotLabelY = rowY + photoH + 2.8;
+    var dotHalf = photoW / 2;
+    statusDot(px, dotHalf, dotLabelY, semLabels[0], colorForThreat(p.clutch));
+    statusDot(px + dotHalf, dotHalf, dotLabelY, semLabels[1], colorForThreat(p.temple));
+
+    var tx = px + photoW + 3;
+    var rowW = colW - stripeW - 1.3 - photoW - 3;
+
+    // Pedido de Marta: si el nombre y los badges (estrellas/mano/tipo/posición·altura) caben
+    // juntos en una sola línea, van en una sola línea (como antes); si no caben, el nombre pasa
+    // a su propia línea (los badges bajan a una segunda línea) para que el nombre NUNCA se
+    // recorte — si aun así un nombre muy largo no cupiese en su línea propia, se reduce la letra
+    // (nunca se corta con "…").
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    doc.setTextColor.apply(doc, numberInk);
+    var numStr = String(item.number != null ? item.number : '-');
+    doc.text(numStr, tx, rowY + 4.3);
+    var numW = doc.getTextWidth(numStr) + 2.2;
+    doc.setTextColor.apply(doc, textInk);
+    var nameStr = (fullName(p) || L.noName).toUpperCase();
+
+    // Posición abreviada en inglés (PG/SG/SF/PF/C) — igual que en drawPlayerFacingReport, ver
+    // comentario ahí. La tabla de plantilla (drawRosterTable) sigue con la posición completa.
+    var rightInfo = [positionAbbr(p.position), formatHeight(p.height)].filter(Boolean).join(' · ');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+    var rightInfoW = rightInfo ? doc.getTextWidth(rightInfo) : 0;
+
+    var handTxt = translateHand(lang, p.hand);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
+    var pillW = handTxt ? (doc.getTextWidth(handTxt.toUpperCase()) + 4) : 0;
+
+    var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+    var starsW = 3 * 2.5;
+
+    var trailingW = starsW;
+    if(handTxt) trailingW += pillW + 1.6;
+    if(typesArr.length) trailingW += typesArr.length * 3.8 + 1.6;
+    if(rightInfo) trailingW += rightInfoW + 2.0;
+
+    var nameGap = 3.0; // hueco mínimo entre el nombre y los badges cuando comparten línea
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    var fitsOneLine = (numW + doc.getTextWidth(nameStr) + nameGap + trailingW) <= rowW;
+
+    var badgeY;
+    if(fitsOneLine){
+      // Todo cabe: nombre y badges comparten la misma línea, como en el diseño original.
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+      doc.setTextColor.apply(doc, textInk);
+      doc.text(nameStr, tx + numW, rowY + 4.3);
+      badgeY = rowY + 4.3;
+    } else {
+      // No cabe: el nombre se queda solo en su línea (encogiendo la letra si hace falta, nunca
+      // recortando) y los badges bajan a una segunda línea debajo.
+      var nameAvailW = rowW - numW;
+      var nameFontSize = 8.2;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(nameFontSize);
+      while(nameFontSize > 5.5 && doc.getTextWidth(nameStr) > nameAvailW){
+        nameFontSize -= 0.2;
+        doc.setFontSize(nameFontSize);
+      }
+      doc.setTextColor.apply(doc, textInk);
+      doc.text(nameStr, tx + numW, rowY + 4.3);
+      badgeY = rowY + 8.3;
+    }
+
+    var rx = tx + rowW;
+    if(rightInfo){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+      doc.setTextColor.apply(doc, textInk);
+      doc.text(rightInfo, rx, badgeY - 0.2, {align: 'right'});
+      rx -= rightInfoW + 2.0;
+    }
+    typesArr.slice().reverse().forEach(function(t){
+      rx -= 3.8;
+      drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9, badgeY - 1.2, 3.2);
+    });
+    if(typesArr.length) rx -= 1.6;
+    if(handTxt){
+      rx -= pillW;
+      pill(handTxt.toUpperCase(), rx, badgeY - 2.7, 3.0);
+      rx -= 1.6;
+    }
+    rx -= starsW;
+    importanceMarks(rx, badgeY - 0.3, p.threat);
+
+    var paraText = [(p.strengths || '').trim(), (p.defend || '').trim()].filter(Boolean).join('  ·  ') || '—';
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
+    doc.setTextColor.apply(doc, textDim);
+    var paraLines = wrapCapped(paraText, rowW, 3);
+    paraLines.forEach(function(line, li){
+      var isLast = li === paraLines.length - 1;
+      var ly = rowY + 11.8 + li * 3.3;
+      if(isLast) doc.text(line, tx, ly);
+      else doc.text(line, tx, ly, {maxWidth: rowW, align: 'justify'});
+    });
+
+    var statsBlock = pickStatsForExport(item.stats, competition);
+    var tableY = rowY + 21.3;
+    var tableHeaderH = 3.0, tableValueH = 5.2;
+    var tableX = tx, tableW = rowW;
+    var colW2 = tableW / STAT_COLS.length;
+    doc.setFillColor.apply(doc, shadeColor(accent, 0.15));
+    doc.rect(tableX, tableY, tableW, tableHeaderH, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4);
+    doc.setTextColor.apply(doc, contrastInk(shadeColor(accent, 0.15)));
+    STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05, {align:'center'}); });
+
+    doc.setFillColor.apply(doc, tintColor(accent, 0.92));
+    doc.rect(tableX, tableY + tableHeaderH, tableW, tableValueH, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6);
+    doc.setTextColor.apply(doc, textInk);
+    var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
+    if(statsBlock){
+      STAT_COLS.forEach(function(c, i){
+        var v = c.get(statsBlock);
+        var txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v));
+        doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
+      });
+    } else {
+      doc.setTextColor.apply(doc, textDim);
+      doc.text(L.noStats, tableX + tableW/2, valueTextY, {align:'center'});
+    }
+
+    doc.setDrawColor(225,225,225);
+    doc.setLineWidth(0.15);
+    doc.line(x, rowY + rowH - 1.5, x + colW, rowY + rowH - 1.5);
   }
 
   function addFooters(doc){
