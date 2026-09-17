@@ -70,7 +70,14 @@ if('serviceWorker' in navigator){
   .mode-toggle[hidden]{ display:none; }
 
   /* ---------- Sidebar ---------- */
-  .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; min-height:100vh; }
+  /* Antes era min-height:100vh, así que si la lista de rivales o de jugadoras crecía, todo el
+     panel lateral (y con él, toda la página) se hacía más alto — el bloque de abajo ("Logos de
+     competición", estado de sincronización, usuario) se iba empujando fuera de la pantalla.
+     Con height:100vh fijo + position:sticky, el panel lateral mide siempre el alto de la
+     ventana y no se mueve al hacer scroll del contenido principal; la lista de rivales/jugadoras
+     (.rival-list, más abajo) tiene su propio scroll interno (barra lateral) dentro de ese
+     espacio fijo, así el bloque de abajo siempre queda visible. */
+  .sidebar{ background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; height:100vh; position:sticky; top:0; align-self:start; overflow:hidden; }
   .brand{ display:flex; align-items:center; gap:.7rem; padding:1.1rem 1rem .9rem; border-bottom:1px solid var(--border); }
   .brand-mark{ width:34px;height:34px;border-radius:8px; flex:none; display:block; overflow:hidden; }
   .brand-text{ display:flex; flex-direction:column; line-height:1.15; min-width:0;}
@@ -137,7 +144,7 @@ if('serviceWorker' in navigator){
   .topbar{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:1.1rem 1.6rem; border-bottom:1px solid var(--border); flex-wrap:wrap; }
   .rival-heading-row{ display:flex; align-items:flex-start; gap:.9rem; min-width:0; flex:1; }
   .rival-heading{ display:flex; flex-direction:column; gap:.25rem; min-width:0; flex:1; }
-  .rival-name-input{ font-family:"Oswald",sans-serif; font-size:1.5rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; background:transparent; border:none; color:var(--text); padding:.15rem 0; min-width:0; width:100%; }
+  .rival-name-input{ font-family:"Oswald",sans-serif; font-size:1.5rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; background:transparent; border:none; color:var(--text); padding:.15rem 0; min-width:0; width:100%; resize:none; overflow:hidden; white-space:normal; word-wrap:break-word; line-height:1.15; display:block; }
   .rival-name-input:focus{ outline:none; border-bottom:2px solid var(--accent); }
   .rival-meta-row{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
   .competition-tags{ display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; }
@@ -390,7 +397,8 @@ if('serviceWorker' in navigator){
   .btn-mini-add{ border:1px dashed var(--border); background:transparent; color:var(--text-dim); font-size:.7rem; font-weight:700; padding:.25rem .55rem; border-radius:6px; cursor:pointer; }
   .btn-mini-add:hover{ border-color:var(--accent); color:var(--accent); }
 
-  .stat-block{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:.6rem .65rem; display:flex; flex-direction:column; gap:.5rem; }
+  .stat-blocks{ display:flex; flex-wrap:wrap; gap:.6rem; }
+  .stat-block{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:.6rem .65rem; display:flex; flex-direction:column; gap:.5rem; flex:1 1 260px; min-width:230px; }
   .stat-block-head{ display:flex; align-items:center; gap:.5rem; }
   .stat-block-head input{ flex:1; font-weight:700; font-size:.82rem; background:transparent; border:none; border-bottom:1px solid transparent; min-width:0; }
   .stat-block-head input:focus{ outline:none; border-bottom-color:var(--accent); }
@@ -424,7 +432,7 @@ if('serviceWorker' in navigator){
 
   @media (max-width: 760px){
     .app{ grid-template-columns:1fr; }
-    .sidebar{ min-height:auto; max-height:38vh; }
+    .sidebar{ position:static; height:auto; max-height:38vh; overflow-y:auto; }
     .threat-row{ grid-template-columns:2.6rem 1fr; grid-template-areas:"av name" "note note"; }
     .threat-row .tavatar{ grid-area:av; }
     .threat-row .tinfo{ grid-area:name; }
@@ -539,7 +547,7 @@ if('serviceWorker' in navigator){
           </label>
         </div>
         <div class="rival-heading">
-          <input class="rival-name-input" id="rivalNameInput" placeholder="Nombre del rival" type="text">
+          <textarea class="rival-name-input" id="rivalNameInput" placeholder="Nombre del rival" rows="1"></textarea>
           <div class="rival-meta-row">
             <input class="mini-input" id="rivalSeasonInput" placeholder="Temporada (ej. 2026/27)" type="text">
             <div class="competition-tags" id="rivalCompetitionTags"></div>
@@ -580,7 +588,6 @@ if('serviceWorker' in navigator){
         <label class="lang-field" id="exportCompetitionField" hidden><span class="tb-label">Competición</span>
           <select class="mini-input lang-select" id="exportCompetitionSelect" title="Competición a mostrar en el escudo y las estadísticas de los informes"></select>
         </label>
-        <button class="btn-export" id="btnExportStaffPdf" type="button">Informe Staff</button>
         <button class="btn-export" id="btnExportPlayersPdf" type="button">Informe Jugadoras</button>
         <button class="btn-export" id="btnExportScoutingImages" type="button">Portadas Individuales</button>
         <span class="export-error" id="teamExportError"></span>
@@ -2279,7 +2286,11 @@ if('serviceWorker' in navigator){
       if(!snap.exists) return;
       state.rival = Object.assign({id: snap.id}, snap.data());
       $('#updatedAt').textContent = state.rival.updatedAt ? ('Actualizado ' + fmtDate(state.rival.updatedAt)) : '';
-      if(document.activeElement !== $('#rivalNameInput')) $('#rivalNameInput').value = state.rival.name || '';
+      if(document.activeElement !== $('#rivalNameInput')){
+        var nameEl = $('#rivalNameInput');
+        nameEl.value = state.rival.name || '';
+        autoGrowTextarea(nameEl);
+      }
       if(document.activeElement !== $('#rivalSeasonInput')) $('#rivalSeasonInput').value = state.rival.season || '';
       renderRivalCompetitionTags();
 
@@ -2529,7 +2540,17 @@ if('serviceWorker' in navigator){
     $('#btnNewPlayer').addEventListener('click', createGlobalPlayerStandalone);
     $('#sidebarSearch').addEventListener('input', renderSidebarList);
 
-    $('#rivalNameInput').addEventListener('change', function(e){ saveRivalField('name', e.target.value.trim() || 'Sin nombre'); });
+    (function(){
+      var nameInput = $('#rivalNameInput');
+      // Textarea de una línea que crece hacia abajo si el nombre es largo, para que siempre se
+      // vea completo (antes era un <input> de una sola línea y los nombres largos quedaban
+      // cortados). Enter guarda y quita el foco en vez de insertar un salto de línea.
+      nameInput.addEventListener('input', function(){ autoGrowTextarea(nameInput); });
+      nameInput.addEventListener('change', function(e){ saveRivalField('name', e.target.value.trim() || 'Sin nombre'); });
+      nameInput.addEventListener('keydown', function(e){
+        if(e.key === 'Enter'){ e.preventDefault(); nameInput.blur(); }
+      });
+    })();
     $('#rivalSeasonInput').addEventListener('change', function(e){ saveRivalField('season', e.target.value.trim()); });
     (function(){
       var compInput = $('#rivalCompetitionInput');
@@ -2575,7 +2596,6 @@ if('serviceWorker' in navigator){
     $('#btnFibaImportConfirm').addEventListener('click', confirmFibaImport);
     $('#btnCreateAndLink').addEventListener('click', createAndLinkNewPlayer);
     wireRefreshSaveButtons();
-    $('#btnExportStaffPdf').addEventListener('click', exportStaffTeamPdf);
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
     $('#btnExportScoutingImages').addEventListener('click', exportScoutingImages);
     $('#btnExportCollectivePdf').addEventListener('click', exportCollectivePdf);
@@ -3792,6 +3812,11 @@ if('serviceWorker' in navigator){
       card.querySelector('[data-open-profile]').addEventListener('click', function(){
         switchSection('players');
         selectPlayerProfile(playerId);
+        // Sin esto, si en Scout Individual estabas con scroll bajado, al entrar al perfil
+        // completo se quedaba en esa misma posición de scroll en vez de arrancar arriba.
+        window.scrollTo(0, 0);
+        var mainEl = document.querySelector('.main');
+        if(mainEl) mainEl.scrollTop = 0;
       });
 
       var delRosterBtn = card.querySelector('[data-remove-roster]');
