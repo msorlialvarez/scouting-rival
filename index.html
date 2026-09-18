@@ -387,6 +387,11 @@ if('serviceWorker' in navigator){
   .player-field label{ font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim); display:block; margin-bottom:.25rem; }
   .player-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.45rem .5rem; font-size:.82rem; line-height:1.4; min-height:3rem; resize:vertical; }
   .player-defend textarea{ border-color:var(--accent); }
+  /* "Informe" es el único campo que ven las jugadoras en sus informes — se marca en verde
+     (mismo tono que "calidad"/verde de la app) para distinguirlo de un vistazo del resto,
+     que son solo para staff. */
+  .player-informe textarea{ border-color:var(--good); }
+  .player-informe label{ color:var(--good); }
 
   .stats-section{ display:flex; flex-direction:column; gap:.6rem; }
   .stats-head{ display:flex; align-items:center; justify-content:space-between; }
@@ -768,6 +773,7 @@ if('serviceWorker' in navigator){
         <div class="essence-sub">
           <h3>Jugadoras a atacar</h3>
           <span class="empty-hint" id="attackNoRosterHint" hidden style="padding:0 0 .5rem;">Añade jugadoras a este rival desde Scout Individual para poder clasificarlas aquí.</span>
+          <span class="export-error" id="attackNotesError"></span>
         </div>
         <div class="attack-players">
           <div class="attack-players-col quality">
@@ -924,6 +930,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Tipo de jugadora',
       playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
       strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Cómo defenderla',
+      informe: 'Informe',
       noNotes: 'Sin notas.',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
       competitionFallback: 'Competición',
@@ -968,6 +975,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Player type',
       playerTypeNames: {generadora:'Playmaker', shooter:'Shooter finisher', paint:'Paint finisher', energia:'Energy/hustle'},
       strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'How to defend her',
+      informe: 'Report',
       noNotes: 'No notes.',
       statsTitle: 'STATS BY COMPETITION',
       competitionFallback: 'Competition',
@@ -2523,7 +2531,7 @@ if('serviceWorker' in navigator){
     db.collection('players').add({
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
       threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
-      strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
+      strengths: '', weaknesses: '', defend: '', informe: '', updatedAt: nowIso()
     }).then(function(ref){
       selectPlayerProfile(ref.id);
       setTimeout(function(){ var i = $('#profileView [data-field="firstName"]'); if(i){ i.focus(); i.select(); } }, 150);
@@ -2789,7 +2797,7 @@ if('serviceWorker' in navigator){
     db.collection('players').add({
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
       threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
-      strengths: '', weaknesses: '', defend: '', updatedAt: nowIso()
+      strengths: '', weaknesses: '', defend: '', informe: '', updatedAt: nowIso()
     }).then(function(ref){
       return rivalRef.collection('roster').add({ playerId: ref.id, number: 0, addedAt: nowIso() }).then(function(){ return ref.id; });
     }).then(function(newId){
@@ -3037,7 +3045,7 @@ if('serviceWorker' in navigator){
         return db.collection('players').add({
           firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', photoSourceUrl: p.photoUrl || '', position: p.position || '', hand: '',
           height: p.height || null, threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
-          strengths: '', weaknesses: '', defend: '',
+          strengths: '', weaknesses: '', defend: '', informe: '',
           updatedAt: nowIso()
         }).then(function(ref){
           return rivalRef.collection('roster').add({ playerId: ref.id, number: p.number || 0, addedAt: nowIso() });
@@ -3528,7 +3536,7 @@ if('serviceWorker' in navigator){
         return db.collection('players').add({
           firstName: p.firstName || '', lastName: p.lastName || '', photo: p.photo || '', photoSourceUrl: p.photoUrl || '', position: p.position || '', hand: '',
           height: p.height || null, threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
-          strengths: '', weaknesses: '', defend: '',
+          strengths: '', weaknesses: '', defend: '', informe: '',
           updatedAt: nowIso()
         }).then(function(ref){
           return rivalRef.collection('roster').add({ playerId: ref.id, number: p.number || 0, addedAt: nowIso() });
@@ -3745,6 +3753,7 @@ if('serviceWorker' in navigator){
         '<div class="player-field"><label>Fortalezas</label><textarea data-field="strengths" placeholder="Ej. tiradora exterior, transición">' + esc(p.strengths) + '</textarea></div>' +
         '<div class="player-field"><label>Qué queremos que pase</label><textarea data-field="weaknesses" placeholder="Relacionado con sus fortalezas. Ej. si es tiradora: que bote y vaya para dentro">' + esc(p.weaknesses) + '</textarea></div>' +
         '<div class="player-field player-defend"><label>Cómo defenderla</label><textarea data-field="defend" placeholder="Instrucción concreta para banquillo">' + esc(p.defend) + '</textarea></div>' +
+        '<div class="player-field player-informe"><label>Informe</label><textarea data-field="informe" placeholder="Lo que verán las jugadoras: este texto es el único que aparece en los informes para jugadoras (Informe Jugadoras, Portadas Individuales, PDF para jugadoras). En los informes de staff aparece todo lo de arriba menos esto.">' + esc(p.informe) + '</textarea></div>' +
         '<div class="stats-section">' +
           '<div class="stats-head"><span>Estadísticas por competición</span><button type="button" class="btn-mini-add" data-add-stat>+ Añadir competición</button></div>' +
           '<div class="highlight-stat-row"><label>Resaltar en la ficha</label><select data-field="highlightStat">' +
@@ -4309,7 +4318,20 @@ if('serviceWorker' in navigator){
         var id = ta.closest('[data-attack-id]').getAttribute('data-attack-id');
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection('defPlayersToAttack').doc(id).update({notes: ta.value}).catch(function(err){ console.error('save attack notes', err); });
+        ref.collection('defPlayersToAttack').doc(id).update({notes: ta.value}).catch(function(err){
+          // Antes este error solo se veía en la consola, así que si la columna "notes" de
+          // attack_players no existía todavía en la base de datos (falta ejecutar
+          // supabase_schema_patch7.sql) el guardado fallaba en silencio: la nota parecía
+          // escribirse pero nunca llegaba a guardarse de verdad. Ahora se avisa en pantalla.
+          console.error('save attack notes', err);
+          var el = $('#attackNotesError');
+          if(el){
+            el.textContent = 'No se pudo guardar la nota. Si el problema persiste, revisa que la base de datos tenga la columna "notes" (supabase_schema_patch7.sql).';
+            el.style.display = 'block';
+            clearTimeout(el._hideTimer);
+            el._hideTimer = setTimeout(function(){ el.style.display = 'none'; }, 8000);
+          }
+        });
       });
     });
     restoreFocus(attackRoot, attackFocus);
@@ -5332,16 +5354,12 @@ if('serviceWorker' in navigator){
         slide.addText(caveat, { x:textX, y:2.72, w:6.35, h:0.24, fontSize:8, italic:true, color: caveatHex, fontFace: FONT_LIGHT });
       }
 
-      var strengthsVal = (p.strengths || '').trim() || '—';
-      var weaknessesVal = (p.weaknesses || '').trim() || '—';
-      var defendVal = (p.defend || '').trim() || '—';
+      // Solo el apartado "Informe" (texto para que lo lean las jugadoras) — antes se mostraban
+      // fortalezas/qué queremos que pase/cómo defenderla, que ahora son solo para staff.
+      var informeVal = (p.informe || '').trim() || '—';
       slide.addText([
-        { text: '– ' + L.strengths.toUpperCase() + ':  ', options: { bold:true, color: goodHex } },
-        { text: strengthsVal, options: { breakLine:true } },
-        { text: '– ' + L.weaknesses.toUpperCase() + ':  ', options: { bold:true, color: warnHex } },
-        { text: weaknessesVal, options: { breakLine:true } },
-        { text: '– ' + L.defend.toUpperCase() + ':  ', options: { bold:true, color: accentHex } },
-        { text: defendVal, options: { breakLine:true } }
+        { text: '– ' + L.informe.toUpperCase() + ':  ', options: { bold:true, color: accentHex } },
+        { text: informeVal, options: { breakLine:true } }
       ], { x:0.78, y:3.05, w:7.5, h:1.65, fontSize:15, italic:true, color: noteInkHex, fontFace: FONT_MEDIUM, valign:'top', lineSpacingMultiple:1.3 });
 
       if(compLogo){
@@ -5783,26 +5801,16 @@ if('serviceWorker' in navigator){
         statsLineH = 0.42;
       }
 
-      // ---- fortalezas / qué queremos que pase (en columnas, para relacionarlas) / cómo
-      // defenderla (fila completa debajo, para instrucciones defensivas específicas) ----
+      // ---- "Informe": un único bloque con el texto pensado para que lo lean las jugadoras
+      // (antes iban aquí fortalezas / qué queremos que pase / cómo defenderla — esos tres campos
+      // son ahora solo para los informes de staff, pedido explícito de Marta). ----
       var noteAreaTop = statsY + statsLineH + (statsBlock && statsBlock.competition ? 0.36 : 0.18);
       var noteAreaBottom = Hin - 0.16;
       var noteAvail = Math.max(noteAreaBottom - noteAreaTop, 0.6);
-      var CARD_CHROME = 0.27, CARD_GAP = 0.07, CARD_LABEL_H = 0.22;
-      // Fortalezas y "qué queremos que pase" van en dos columnas, una junto a la otra, para que
-      // se puedan relacionar de un vistazo (p.ej. fortaleza "shooter" -> qué queremos que pase
-      // "que bote y vaya para dentro"); cómo defenderla va como fila completa debajo, por si hay
-      // alguna instrucción defensiva específica más larga.
-      var noteColGap = 0.14;
-      var noteColW = (cW - noteColGap) / 2;
-      var noteColWidthPx = IN(noteColW - 0.28);
+      var CARD_CHROME = 0.27, CARD_LABEL_H = 0.22;
       var noteFullWidthPx = IN(cW - 0.28);
-      var colCards = [
-        { label: L.strengths, color: goodHex, value: (p.strengths || '').trim() || '—' },
-        { label: L.weaknesses, color: warnHex, value: (p.weaknesses || '').trim() || '—' }
-      ];
-      var fullCard = { label: L.defend, color: accentDeepHex, value: (p.defend || '').trim() || '—' };
-      // reduce el tamaño de letra de las notas hasta que quepan en el hueco disponible. Antes se
+      var informeValue = (p.informe || '').trim() || '—';
+      // reduce el tamaño de letra de la nota hasta que quepa en el hueco disponible. Antes se
       // paraba en 9pt aunque no cupiese (podía desbordar por debajo del lienzo con texto muy
       // largo); ahora sigue probando tamaños más pequeños y, si aun así ninguno cabe del todo, se
       // queda con el que menos se desborda en vez de con el último probado.
@@ -5811,17 +5819,11 @@ if('serviceWorker' in navigator){
       while(noteFontSize >= 6){
         setFont(ctx, PT(noteFontSize), {italic:false});
         var lineHIn = (noteFontSize * 1.24) / 72;
-        var colLines = colCards.map(function(c){
-          var lines = wrapLines(ctx, c.value, noteColWidthPx);
-          return { lines: lines, cardH: CARD_CHROME + lines.length * lineHIn };
-        });
-        var colRowH = Math.max(colLines[0].cardH, colLines[1].cardH);
-        var fullLines = wrapLines(ctx, fullCard.value, noteFullWidthPx);
+        var fullLines = wrapLines(ctx, informeValue, noteFullWidthPx);
         var fullCardH = CARD_CHROME + fullLines.length * lineHIn;
-        var total = colRowH + CARD_GAP + fullCardH;
-        var candidate = { fontSize: noteFontSize, lineHIn: lineHIn, colLines: colLines, colRowH: colRowH, fullLines: fullLines, fullCardH: fullCardH, total: total };
-        if(!bestSoFar || total < bestSoFar.total) bestSoFar = candidate;
-        if(total <= noteAvail){ fitted = candidate; break; }
+        var candidate = { fontSize: noteFontSize, lineHIn: lineHIn, fullLines: fullLines, fullCardH: fullCardH, total: fullCardH };
+        if(!bestSoFar || candidate.total < bestSoFar.total) bestSoFar = candidate;
+        if(candidate.total <= noteAvail){ fitted = candidate; break; }
         noteFontSize -= 0.5;
       }
       if(!fitted) fitted = bestSoFar;
@@ -5838,12 +5840,7 @@ if('serviceWorker' in navigator){
         var ly = y + CARD_LABEL_H + 0.06;
         lines.forEach(function(l){ ctx.fillText(l, IN(x + 0.2), IN(ly)); ly += fitted.lineHIn; });
       }
-      colCards.forEach(function(c, idx){
-        var cx = cx0 + idx * (noteColW + noteColGap);
-        drawNoteCard(cx, noteY, noteColW, fitted.colRowH, c.label, c.color, fitted.colLines[idx].lines);
-      });
-      var defendY = noteY + fitted.colRowH + CARD_GAP;
-      drawNoteCard(cx0, defendY, cW, fitted.fullCardH, fullCard.label, fullCard.color, fitted.fullLines);
+      drawNoteCard(cx0, noteY, cW, fitted.fullCardH, L.informe, accentDeepHex, fitted.fullLines);
     }
 
     var sorted = rosterJoined.slice().sort(function(a,b){
@@ -6852,9 +6849,10 @@ if('serviceWorker' in navigator){
       wrapped.forEach(function(line, li){ doc.text(line, margin + 9, y + 13.5 + li*4.4); });
       y += cardH + 4.5;
     }
-    contentCard(L.strengths, good, p.strengths);
-    contentCard(L.weaknesses, danger, p.weaknesses);
-    contentCard(L.defend, accent, p.defend);
+    // "PDF para jugadoras": solo el apartado "Informe" (texto pensado para que lo lean las
+    // jugadoras), nunca fortalezas/qué queremos que pase/cómo defenderla — esos son para staff
+    // (pedido explícito de Marta). Antes se mostraban esos tres campos en vez de este.
+    contentCard(L.informe, accent, p.informe);
 
     if(statsBlocks && statsBlocks.length){
       if(y + 10 > pageH - 16){ doc.addPage(); y = 20; }
@@ -7158,12 +7156,13 @@ if('serviceWorker' in navigator){
       rx -= starsW;
       importanceMarks(rx, rowY + 4.0, p.threat);
 
-      // Párrafo: fortalezas + cómo defenderla fundidos en un único texto corrido. Ahora empieza
-      // justo debajo de la línea única de arriba (dorsal+nombre+estrellas+mano+tipo+pos·altura),
-      // con letra más grande (6.6, antes 5.8) e interlineado más aireado a juego (3.3mm, antes
-      // 2.6) mientras se queda en 3 líneas — el ancho de envoltura sigue siendo rowW, el mismo
+      // Párrafo: el campo "Informe" (texto pensado para que lo lean las jugadoras — antes se
+      // fundían aquí fortalezas + cómo defenderla, pero esos dos campos son ahora solo para los
+      // informes de staff, pedido explícito de Marta). Empieza justo debajo de la línea única de
+      // arriba (dorsal+nombre+estrellas+mano+tipo+pos·altura), con letra 6.6 e interlineado
+      // 3.3mm mientras se queda en 3 líneas — el ancho de envoltura sigue siendo rowW, el mismo
       // que usa la tabla de stats, así que la línea llega hasta la misma columna TO.
-      var paraText = [(p.strengths || '').trim(), (p.defend || '').trim()].filter(Boolean).join('  ·  ') || '—';
+      var paraText = (p.informe || '').trim() || '—';
       doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
       doc.setTextColor.apply(doc, textDim);
       var paraLines = wrapCapped(paraText, rowW, 3);
