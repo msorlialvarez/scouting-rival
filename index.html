@@ -227,6 +227,35 @@ if('serviceWorker' in navigator){
   .players-pdf-grid label{ display:flex; align-items:center; gap:.5rem; font-size:.84rem; cursor:pointer; }
   .players-pdf-grid input[type="checkbox"]{ width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex:none; }
   .players-pdf-actions{ display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
+
+  /* ---- Plan de Partido ---- */
+  .game-plan-hint{ font-size:.8rem; color:var(--text-dim); margin:-.3rem 0 .8rem; line-height:1.45; }
+  .game-plan-date-field{ display:block; margin-bottom:1.1rem; }
+  .game-plan-date-field input[type="text"]{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.5rem .6rem; font-size:.85rem; color:var(--text); margin-top:.3rem; }
+  .game-plan-sets-head{ display:flex; align-items:center; justify-content:space-between; gap:.7rem; flex-wrap:wrap; margin-bottom:.6rem; }
+  .game-plan-sets-head h4{ font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
+  .game-plan-sets-list{ display:grid; grid-template-columns:repeat(3, 1fr); gap:.8rem; }
+  @media (max-width: 900px){ .game-plan-sets-list{ grid-template-columns:1fr; } }
+  .game-plan-set-card{ background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:.7rem; display:flex; flex-direction:column; gap:.5rem; }
+  .game-plan-set-card input[type="text"]{ background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; font-weight:700; }
+  .game-plan-set-card textarea{ background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:.4rem .5rem; font-size:.8rem; color:var(--text); width:100%; min-height:3.4rem; resize:vertical; }
+  .game-plan-set-thumb{ width:100%; aspect-ratio:16/10; background:var(--surface); border:1px dashed var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--text-dim); font-size:.72rem; text-align:center; padding:.3rem; }
+  .game-plan-set-thumb img{ width:100%; height:100%; object-fit:contain; }
+  .game-plan-set-actions{ display:flex; gap:.4rem; }
+
+  /* Editor de recorte (modal a pantalla completa) */
+  .crop-modal{ position:fixed; inset:0; background:rgba(15,17,20,.72); z-index:200; display:flex; align-items:center; justify-content:center; padding:1.2rem; }
+  .crop-modal[hidden]{ display:none; }
+  .crop-modal-inner{ background:var(--surface); border-radius:12px; box-shadow:var(--shadow); width:min(880px, 100%); max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .crop-modal-head{ display:flex; align-items:center; justify-content:space-between; padding:.9rem 1rem; border-bottom:1px solid var(--border); }
+  .crop-modal-head h3{ font-size:.95rem; }
+  .crop-modal-toolbar{ display:flex; align-items:center; gap:.6rem; padding:.6rem 1rem; border-bottom:1px solid var(--border); flex-wrap:wrap; font-size:.8rem; color:var(--text-dim); }
+  .crop-modal-toolbar input[type="number"]{ background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:.3rem .4rem; color:var(--text); }
+  .crop-modal-canvas-wrap{ position:relative; overflow:auto; padding:1rem; flex:1; display:flex; align-items:flex-start; justify-content:center; background:var(--bg); user-select:none; }
+  .crop-modal-canvas-wrap canvas{ display:block; max-width:100%; box-shadow:0 1px 3px rgba(0,0,0,.25); cursor:crosshair; }
+  .crop-rect{ position:absolute; border:2px solid var(--accent); background:rgba(244,119,33,.18); pointer-events:none; }
+  .crop-rect[hidden]{ display:none; }
+  .crop-modal-foot{ display:flex; align-items:center; gap:.7rem; padding:.8rem 1rem; border-top:1px solid var(--border); justify-content:flex-end; }
   .collective-notes{ display:grid; grid-template-columns:1fr 1fr; gap:.9rem; margin-bottom:1.6rem; }
   @media (max-width: 900px){ .collective-notes{ grid-template-columns:1fr; } }
   .collective-player-list{ display:flex; flex-direction:column; gap:.5rem; }
@@ -267,12 +296,17 @@ if('serviceWorker' in navigator){
   .btn-reorder:disabled:hover{ background:var(--surface-2); color:var(--text-dim); border-color:var(--border); }
 
   .src-table{ display:flex; flex-direction:column; gap:.5rem; }
-  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
-  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; align-items:start; }
+  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.2rem 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
+  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.2rem 3.6rem; gap:.6rem; align-items:start; }
   .src-row select, .src-row textarea{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; }
   .src-row textarea{ min-height:2.2rem; resize:vertical; line-height:1.35; overflow:hidden; }
   .src-row-actions{ display:flex; align-items:flex-start; gap:.3rem; }
   .src-row .btn-del{ align-self:start; }
+  /* Casilla "Incluir en Plan de Partido" (ver 4.21/4.22 en el HANDOFF) — misma pastilla en
+     Ideas clave, Fuentes de generación y Cómo atacarlas. */
+  .game-plan-check{ display:flex; align-items:center; gap:.3rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:var(--text-dim); white-space:nowrap; cursor:pointer; flex:none; }
+  .game-plan-check input[type="checkbox"]{ width:14px; height:14px; accent-color:var(--good); cursor:pointer; }
+  .src-row .game-plan-check{ padding-top:.4rem; }
   @media (max-width: 800px){
     .src-table-head{ display:none; }
     .src-row{ grid-template-columns:1fr; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.6rem; }
@@ -729,7 +763,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="offSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="offSourceOptionsManager" data-options-manager="offSourceOptions"></div>
           <div class="src-table" id="offSourcesTable">
-            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Sistemas con los que nos pueden atacar</span><span></span></div>
+            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Sistemas con los que nos pueden atacar</span><span>Plan</span><span></span></div>
             <div id="offSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddOffSource">+ Añadir fuente</button>
           </div>
@@ -757,7 +791,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="defSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="defSourceOptionsManager" data-options-manager="defSourceOptions"></div>
           <div class="src-table" id="defSourcesTable">
-            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Sistemas para explotarlo</span><span></span></div>
+            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Sistemas para explotarlo</span><span>Plan</span><span></span></div>
             <div id="defSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddDefSource">+ Añadir fila</button>
           </div>
@@ -796,6 +830,53 @@ if('serviceWorker' in navigator){
           <div id="advancedStatsFileBox"></div>
         </div>
       </section>
+
+      <section class="essence-block">
+        <div class="essence-title offense"><span class="essence-bar"></span><h2>Plan de Partido</h2></div>
+        <p class="game-plan-hint">Reutiliza lo marcado con "Plan" en Ideas clave, Fuentes de generación y Cómo atacarlas de arriba, más las jugadoras a atacar. Aquí solo hace falta la fecha, los 3 sets defensivos y el botón de generar.</p>
+        <div class="essence-card">
+          <label class="game-plan-date-field"><span class="tb-label">Fecha / jornada del partido</span>
+            <input type="text" data-teamfield="gamePlanDate" placeholder="Ej. Jornada 14 · 21/09/2026 · Pabellón Fuente de San Luis">
+          </label>
+          <div class="game-plan-sets-head">
+            <h4>Cómo les defendemos — nuestros 3 sets</h4>
+            <span class="empty-hint" id="gamePlanNoSystemsHint" hidden>Sube primero el PDF en "Sistemas de juego" (arriba) para poder recortar los sets.</span>
+          </div>
+          <div id="gamePlanSetsList" class="game-plan-sets-list"></div>
+        </div>
+        <div class="players-pdf-actions">
+          <button class="btn-export" id="btnExportGamePlanPdf" type="button">Generar Plan de Partido</button>
+          <span class="export-error" id="gamePlanExportError"></span>
+        </div>
+      </section>
+
+      <!-- Editor de recorte: elige una página del PDF de Sistemas de juego ya subido y marca con
+           el ratón el rectángulo que corresponde a un set concreto (varios sets pueden compartir
+           la misma página, por eso hace falta recortar y no basta con capturar la página entera). -->
+      <div class="crop-modal" id="gamePlanCropModal" hidden>
+        <div class="crop-modal-inner">
+          <div class="crop-modal-head">
+            <h3 id="gamePlanCropTitle">Recortar set</h3>
+            <button type="button" class="btn-del" id="btnCropClose" title="Cerrar">✕</button>
+          </div>
+          <div class="crop-modal-toolbar">
+            <label>Página <input type="number" min="1" id="gamePlanCropPage" style="width:4.5rem;"></label>
+            <span id="gamePlanCropPageCount" class="empty-hint"></span>
+            <button type="button" class="btn-mini-add" id="btnCropPagePrev">◀</button>
+            <button type="button" class="btn-mini-add" id="btnCropPageNext">▶</button>
+            <span class="empty-hint">Arrastra sobre la página para marcar el recorte del set.</span>
+          </div>
+          <div class="crop-modal-canvas-wrap" id="gamePlanCropCanvasWrap">
+            <canvas id="gamePlanCropCanvas"></canvas>
+            <div class="crop-rect" id="gamePlanCropRect" hidden></div>
+          </div>
+          <div class="crop-modal-foot">
+            <span class="export-error" id="gamePlanCropError"></span>
+            <button type="button" class="btn-mini-add" id="btnCropClear">Quitar recorte</button>
+            <button type="button" class="btn-export" id="btnCropSave">Guardar recorte</button>
+          </div>
+        </div>
+      </div>
 
       <div class="panel-head">
         <h2>Jugadoras en el informe</h2>
@@ -1034,6 +1115,7 @@ if('serviceWorker' in navigator){
     offSourceOptions: [], defSourceOptions: [],
     offSources: [], defSources: [], attackPlayers: [],
     offEssenceItems: [], defEssenceItems: [],
+    gamePlanSets: [], gamePlanSeeding: false,
     advancedStatsMeta: null, advancedStatsFileData: null, advancedStatsFileDataFor: null, advancedStatsLoading: false,
     advancedStatsUploading: false,
     offSystemsPdfMeta: null, offSystemsPdfFileData: null, offSystemsPdfFileDataFor: null, offSystemsPdfLoading: false,
@@ -1246,6 +1328,7 @@ if('serviceWorker' in navigator){
     defPlayersToAttack: { table: 'attack_players', parentKey: 'rival_id' },
     offEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'off' } },
     defEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'def' } },
+    gamePlanSets:       { table: 'game_plan_sets', parentKey: 'rival_id' },
     stats:              { table: 'player_stats', parentKey: 'player_id' }
   };
   var ROOT_TABLES = { rivals: 'rivals', players: 'players', settings: 'app_settings' };
@@ -1265,7 +1348,14 @@ if('serviceWorker' in navigator){
       table: 'off_systems_pdf', pathSuffix: '_systems', boxId: 'offSystemsPdfFileBox',
       metaField: 'offSystemsPdfMeta', fileDataField: 'offSystemsPdfFileData', fileDataForField: 'offSystemsPdfFileDataFor',
       loadingField: 'offSystemsPdfLoading', uploadingField: 'offSystemsPdfUploading',
-      placeholder: 'Sube aquí el PDF con los sistemas propios (por ejemplo, exportado desde Fastdraw).'
+      placeholder: 'Sube aquí el PDF con los sistemas propios (por ejemplo, exportado desde Fastdraw).',
+      // Límite propio, más alto que el resto (ver MAX_STATS_PDF_BYTES): este PDF alimenta
+      // los recortes del Plan de Partido y Marta necesita subir archivos más pesados que
+      // Estadística avanzada — pedido explícito suyo. Ojo: el bucket de Supabase Storage
+      // tiene también su propio límite de tamaño de archivo (configurable en el proyecto,
+      // normalmente 50MB por defecto) — si algún día 30MB se quedan cortos, hay que subir
+      // el límite aquí Y en la configuración del proyecto de Supabase.
+      maxBytes: 30 * 1024 * 1024
     }
   };
 
@@ -2025,7 +2115,7 @@ if('serviceWorker' in navigator){
     state.section = sec;
     clearActiveSubs();
     state.rivalId = null; state.rival = null; state.roster = [];
-    state.offSources = []; state.defSources = []; state.attackPlayers = [];
+    state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.offEssenceItems = []; state.defEssenceItems = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
@@ -2375,7 +2465,13 @@ if('serviceWorker' in navigator){
     var unsubOffSystemsPdfMeta = subscribeUploadedPdfMeta(rivalRef, 'offSystemsPdf');
     var unsubAdvancedStatsMeta = subscribeUploadedPdfMeta(rivalRef, 'advancedStats');
 
-    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta);
+    var unsubGamePlanSets = rivalRef.collection('gamePlanSets').orderBy('orderIndex', 'asc').onSnapshot(function(snap){
+      state.gamePlanSets = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      ensureGamePlanSets();
+      renderGamePlanSets();
+    }, function(err){ console.error('gamePlanSets onSnapshot', err); });
+
+    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta, unsubGamePlanSets);
   }
 
   // Botón "Refrescar": vuelve a suscribirse a todo lo del rival actual (mismo mecanismo que abrir
@@ -2542,7 +2638,7 @@ if('serviceWorker' in navigator){
     state.section = 'players';
     clearActiveSubs();
     state.rivalId = null; state.rival = null; state.roster = [];
-    state.offSources = []; state.defSources = []; state.attackPlayers = [];
+    state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.offEssenceItems = []; state.defEssenceItems = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
@@ -2641,6 +2737,8 @@ if('serviceWorker' in navigator){
     });
     $('#btnAddOffSource').addEventListener('click', function(){ addSrcRow('off'); });
     $('#btnAddDefSource').addEventListener('click', function(){ addSrcRow('def'); });
+    $('#btnExportGamePlanPdf').addEventListener('click', exportGamePlanPdf);
+    wireGamePlanCropModal();
     $all('[data-toggle-options]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var key = btn.getAttribute('data-toggle-options');
@@ -4204,6 +4302,7 @@ if('serviceWorker' in navigator){
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
         '<textarea data-src-field="systems" rows="1" placeholder="Sistemas">' + esc(r.systems || '') + '</textarea>' +
+        '<label class="game-plan-check" title="Incluir esta fila en el Plan de Partido"><input type="checkbox" data-src-check' + (r.inGamePlan ? ' checked' : '') + (r.id ? '' : ' disabled') + '> Plan</label>' +
         '<div class="src-row-actions">' + reorderHtml +
           '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
         '</div>' +
@@ -4238,6 +4337,18 @@ if('serviceWorker' in navigator){
         var field = el.getAttribute('data-src-field');
         var patch = {}; patch[field] = el.value;
         ref.collection(collName).doc(id).update(patch).catch(function(err){ console.error('save src field', err); });
+      });
+    });
+    // Casilla "Incluir en Plan de Partido" (ver renderEssenceItems para el mismo patrón).
+    // Deshabilitada en la fila fantasma (sin id todavía) — no hay nada que marcar hasta que la
+    // fila exista de verdad.
+    container.querySelectorAll('[data-src-check]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var id = cb.closest('[data-src-id]').getAttribute('data-src-id');
+        if(!id) return;
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection(collName).doc(id).update({inGamePlan: cb.checked}).catch(function(err){ console.error('save src inGamePlan', err); });
       });
     });
     container.querySelectorAll('[data-src-del]').forEach(function(btn){
@@ -4376,6 +4487,7 @@ if('serviceWorker' in navigator){
       return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
         '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        '<label class="game-plan-check" title="Incluir esta idea clave en el Plan de Partido"><input type="checkbox" data-essence-check' + (it.inGamePlan ? ' checked' : '') + '> Plan</label>' +
         '<div class="item-reorder">' +
           '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
           '<button type="button" class="btn-reorder" data-item-down' + (idx === items.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
@@ -4390,6 +4502,17 @@ if('serviceWorker' in navigator){
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection(collName).doc(id).update({text: el.value}).catch(function(err){ console.error('save essence item', err); });
+      });
+    });
+    // Casilla "Incluir en Plan de Partido" (pedido de Marta, ver buildGamePlanDoc): mismo patrón
+    // que data-collective-check para la plantilla, un listener aparte porque es un checkbox
+    // (.checked) y no un campo de texto (.value) como el resto de [data-field] de arriba.
+    list.querySelectorAll('[data-essence-check]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var id = cb.closest('[data-id]').getAttribute('data-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection(collName).doc(id).update({inGamePlan: cb.checked}).catch(function(err){ console.error('save essence inGamePlan', err); });
       });
     });
     list.querySelectorAll('[data-item-del]').forEach(function(btn){
@@ -4413,6 +4536,530 @@ if('serviceWorker' in navigator){
     var ref = currentRivalRef();
     if(!ref || !text) return;
     ref.collection(kind + 'EssenceItems').add({text: text, order: Date.now()}).catch(function(err){ console.error('add essence item', err); });
+  }
+
+  // ---------------- Plan de Partido: 3 sets defensivos + recorte del PDF de Sistemas de juego ----------------
+  // Cada set es una fila de game_plan_sets (siempre 3 por rival, ensureGamePlanSets las crea la
+  // primera vez que se abre un rival) con una página + un rectángulo en proporciones 0-1 dentro
+  // del PDF ya subido en "Sistemas de juego" — así el recorte no depende de a qué resolución se
+  // vuelva a renderizar la página, ni aquí ni al exportar.
+  function ensureGamePlanSets(){
+    var ref = currentRivalRef();
+    if(!ref || state.gamePlanSeeding) return;
+    if(state.gamePlanSets.length >= 3) return;
+    state.gamePlanSeeding = true;
+    var have = state.gamePlanSets.length;
+    var chain = Promise.resolve();
+    for(var i = have + 1; i <= 3; i++){
+      (function(orderIndex){
+        chain = chain.then(function(){
+          return ref.collection('gamePlanSets').add({orderIndex: orderIndex, name: 'Set ' + orderIndex, notes: ''});
+        });
+      })(i);
+    }
+    chain.then(function(){ state.gamePlanSeeding = false; }).catch(function(err){
+      state.gamePlanSeeding = false;
+      console.error('ensureGamePlanSets', err);
+    });
+  }
+
+  function renderGamePlanSets(){
+    var list = $('#gamePlanSetsList');
+    if(!list) return;
+    var hint = $('#gamePlanNoSystemsHint');
+    var hasSystemsPdf = !!(state.offSystemsPdfMeta && state.offSystemsPdfMeta.filePath);
+    if(hint) hint.hidden = hasSystemsPdf;
+
+    var sets = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0) - (b.orderIndex||0); });
+    if(!sets.length){ list.innerHTML = ''; return; }
+
+    var focus = captureFocus(list);
+    list.innerHTML = sets.map(function(s){
+      var hasCrop = s.pdfPage != null && s.cropW != null;
+      var thumbHtml = hasCrop ? '<span>Página ' + esc(s.pdfPage) + ' · recorte guardado</span>' : '<span>Sin recorte todavía.</span>';
+      return '<div class="game-plan-set-card" data-set-id="' + esc(s.id) + '">' +
+        '<input type="text" data-set-field="name" value="' + esc(s.name || '') + '" placeholder="Nombre del set">' +
+        '<div class="game-plan-set-thumb" data-set-thumb>' + thumbHtml + '</div>' +
+        '<textarea data-set-field="notes" rows="2" placeholder="Notas">' + esc(s.notes || '') + '</textarea>' +
+        '<div class="game-plan-set-actions">' +
+          '<button type="button" class="btn-mini-add" data-set-crop-btn' + (hasSystemsPdf ? '' : ' disabled') + '>' + (hasCrop ? 'Cambiar recorte' : 'Elegir recorte') + '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    list.querySelectorAll('textarea[data-set-field]').forEach(function(ta){
+      autoGrowTextarea(ta);
+      ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
+    });
+    list.querySelectorAll('[data-set-field]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var id = el.closest('[data-set-id]').getAttribute('data-set-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        var patch = {}; patch[el.getAttribute('data-set-field')] = el.value;
+        ref.collection('gamePlanSets').doc(id).update(patch).catch(function(err){ console.error('save game plan set', err); });
+      });
+    });
+    list.querySelectorAll('[data-set-crop-btn]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.closest('[data-set-id]').getAttribute('data-set-id');
+        openGamePlanCrop(id);
+      });
+    });
+    restoreFocus(list, focus);
+
+    sets.forEach(function(s){ renderGamePlanSetThumb(s); });
+  }
+
+  // El PDF de "Sistemas de juego" se descarga una vez y se guarda en memoria mientras siga
+  // siendo el mismo archivo (mismo filePath + mismo updatedAt) — lo usan tanto las 3 miniaturas
+  // como el editor de recorte, y así no se vuelve a descargar 3-4 veces seguidas.
+  var gamePlanPdfBytesCache = null;
+  function loadGamePlanSystemsPdfBytes(){
+    var meta = state.offSystemsPdfMeta;
+    if(!meta || !meta.filePath) return Promise.reject(new Error('sin PDF de sistemas de juego'));
+    if(gamePlanPdfBytesCache && gamePlanPdfBytesCache.filePath === meta.filePath && gamePlanPdfBytesCache.updatedAt === meta.updatedAt){
+      return Promise.resolve(gamePlanPdfBytesCache.bytes);
+    }
+    return supabaseClient.storage.from('reports').download(meta.filePath).then(function(res){
+      if(res.error) throw res.error;
+      return res.data.arrayBuffer();
+    }).then(function(buf){
+      var bytes = new Uint8Array(buf);
+      gamePlanPdfBytesCache = {filePath: meta.filePath, updatedAt: meta.updatedAt, bytes: bytes};
+      return bytes;
+    });
+  }
+
+  // Renderiza una página de pdf.js a un canvas y recorta un rectángulo en proporciones 0-1 de
+  // esa página a un segundo canvas, devolviendo un JPEG en base64 — lo usan tanto las miniaturas
+  // (escala 2) como la exportación final (escala más alta, más nítida). `bytes.slice()` se pasa
+  // siempre a pdfjsLib.getDocument por quien llama a esta función porque pdf.js puede transferir
+  // (dejar inutilizable) el ArrayBuffer que se le pasa, y el mismo array de bytes en caché se usa
+  // varias veces seguidas (3 miniaturas + editor de recorte + exportación).
+  function renderCroppedPageToDataUrl(page, fx, fy, fw, fh, scale){
+    var viewport = page.getViewport({scale: scale});
+    var full = document.createElement('canvas');
+    full.width = viewport.width; full.height = viewport.height;
+    return page.render({canvasContext: full.getContext('2d'), viewport: viewport}).promise.then(function(){
+      var sx = fx * viewport.width, sy = fy * viewport.height, sw = fw * viewport.width, sh = fh * viewport.height;
+      var out = document.createElement('canvas');
+      out.width = Math.max(1, Math.round(sw)); out.height = Math.max(1, Math.round(sh));
+      out.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      return out.toDataURL('image/jpeg', 0.9);
+    });
+  }
+
+  var gamePlanThumbCache = {};
+  function renderGamePlanSetThumb(setRow){
+    if(setRow.pdfPage == null || setRow.cropW == null) return;
+    var cacheKey = setRow.id + '|' + setRow.pdfPage + '|' + setRow.cropX + ',' + setRow.cropY + ',' + setRow.cropW + ',' + setRow.cropH +
+      '|' + ((state.offSystemsPdfMeta && state.offSystemsPdfMeta.updatedAt) || '');
+    if(gamePlanThumbCache[cacheKey]){
+      var thumbNow = document.querySelector('.game-plan-set-card[data-set-id="' + setRow.id + '"] [data-set-thumb]');
+      if(thumbNow) thumbNow.innerHTML = '<img src="' + gamePlanThumbCache[cacheKey] + '" alt="">';
+      return;
+    }
+    loadPdfJs().then(function(pdfjsLib){
+      return loadGamePlanSystemsPdfBytes().then(function(bytes){
+        return pdfjsLib.getDocument({data: bytes.slice()}).promise;
+      });
+    }).then(function(pdfDoc){
+      var pageNum = Math.min(Math.max(1, setRow.pdfPage), pdfDoc.numPages);
+      return pdfDoc.getPage(pageNum);
+    }).then(function(page){
+      return renderCroppedPageToDataUrl(page, setRow.cropX, setRow.cropY, setRow.cropW, setRow.cropH, 2);
+    }).then(function(dataUrl){
+      gamePlanThumbCache[cacheKey] = dataUrl;
+      var thumb = document.querySelector('.game-plan-set-card[data-set-id="' + setRow.id + '"] [data-set-thumb]');
+      if(thumb) thumb.innerHTML = '<img src="' + dataUrl + '" alt="">';
+    }).catch(function(err){
+      console.error('render game plan set thumb', err);
+      var thumb = document.querySelector('.game-plan-set-card[data-set-id="' + setRow.id + '"] [data-set-thumb]');
+      if(thumb) thumb.innerHTML = '<span>No se pudo cargar el recorte.</span>';
+    });
+  }
+
+  // ---------------- Editor de recorte (modal) ----------------
+  var gamePlanCropState = {setId: null, pdfDoc: null, pageNum: 1, rectFrac: null, dragging: false, dragStart: null};
+
+  function openGamePlanCrop(setId){
+    var setRow = state.gamePlanSets.find(function(s){ return s.id === setId; });
+    var meta = state.offSystemsPdfMeta;
+    if(!setRow || !meta || !meta.filePath) return;
+    gamePlanCropState = {
+      setId: setId, pdfDoc: null,
+      pageNum: setRow.pdfPage || 1,
+      rectFrac: (setRow.cropW != null) ? {x: setRow.cropX, y: setRow.cropY, w: setRow.cropW, h: setRow.cropH} : null,
+      dragging: false, dragStart: null
+    };
+    $('#gamePlanCropTitle').textContent = 'Recortar — ' + (setRow.name || 'set');
+    $('#gamePlanCropError').textContent = '';
+    $('#gamePlanCropModal').hidden = false;
+    loadPdfJs().then(function(pdfjsLib){
+      return loadGamePlanSystemsPdfBytes().then(function(bytes){
+        return pdfjsLib.getDocument({data: bytes.slice()}).promise;
+      });
+    }).then(function(pdfDoc){
+      gamePlanCropState.pdfDoc = pdfDoc;
+      if(gamePlanCropState.pageNum > pdfDoc.numPages) gamePlanCropState.pageNum = 1;
+      $('#gamePlanCropPage').value = gamePlanCropState.pageNum;
+      $('#gamePlanCropPageCount').textContent = 'de ' + pdfDoc.numPages;
+      return renderGamePlanCropPage();
+    }).catch(function(err){
+      console.error('open game plan crop', err);
+      $('#gamePlanCropError').textContent = 'No se pudo abrir el PDF de sistemas de juego.';
+    });
+  }
+
+  function renderGamePlanCropPage(){
+    var st = gamePlanCropState;
+    if(!st.pdfDoc) return Promise.resolve();
+    return st.pdfDoc.getPage(st.pageNum).then(function(page){
+      var viewport = page.getViewport({scale: 1.4});
+      var canvas = $('#gamePlanCropCanvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      return page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise;
+    }).then(function(){
+      drawGamePlanCropRectFromFrac();
+    });
+  }
+
+  function drawGamePlanCropRectFromFrac(){
+    var rectEl = $('#gamePlanCropRect');
+    var canvas = $('#gamePlanCropCanvas');
+    var wrap = $('#gamePlanCropCanvasWrap');
+    var frac = gamePlanCropState.rectFrac;
+    if(!frac || !canvas || !wrap){ if(rectEl) rectEl.hidden = true; return; }
+    var rect = canvas.getBoundingClientRect();
+    var wrapRect = wrap.getBoundingClientRect();
+    rectEl.hidden = false;
+    rectEl.style.left = (rect.left - wrapRect.left + wrap.scrollLeft + frac.x * rect.width) + 'px';
+    rectEl.style.top = (rect.top - wrapRect.top + wrap.scrollTop + frac.y * rect.height) + 'px';
+    rectEl.style.width = (frac.w * rect.width) + 'px';
+    rectEl.style.height = (frac.h * rect.height) + 'px';
+  }
+
+  function gamePlanCropPointToFrac(evt){
+    var canvas = $('#gamePlanCropCanvas');
+    var rect = canvas.getBoundingClientRect();
+    var x = (evt.clientX - rect.left) / rect.width;
+    var y = (evt.clientY - rect.top) / rect.height;
+    return {x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y))};
+  }
+
+  function gamePlanCropChangePage(newPage){
+    var st = gamePlanCropState;
+    if(!st.pdfDoc) return;
+    newPage = Math.min(Math.max(1, newPage), st.pdfDoc.numPages);
+    if(newPage === st.pageNum) return;
+    st.pageNum = newPage;
+    st.rectFrac = null; // el recorte es específico de cada página
+    $('#gamePlanCropPage').value = newPage;
+    renderGamePlanCropPage();
+  }
+
+  function closeGamePlanCrop(){
+    $('#gamePlanCropModal').hidden = true;
+    gamePlanCropState = {setId: null, pdfDoc: null, pageNum: 1, rectFrac: null, dragging: false, dragStart: null};
+  }
+
+  function wireGamePlanCropModal(){
+    var canvas = $('#gamePlanCropCanvas');
+    if(!canvas) return;
+    canvas.addEventListener('mousedown', function(evt){
+      if(!gamePlanCropState.pdfDoc) return;
+      evt.preventDefault();
+      var p = gamePlanCropPointToFrac(evt);
+      gamePlanCropState.dragging = true;
+      gamePlanCropState.dragStart = p;
+      gamePlanCropState.rectFrac = {x: p.x, y: p.y, w: 0, h: 0};
+      drawGamePlanCropRectFromFrac();
+    });
+    window.addEventListener('mousemove', function(evt){
+      if(!gamePlanCropState.dragging) return;
+      var p = gamePlanCropPointToFrac(evt);
+      var s = gamePlanCropState.dragStart;
+      var x0 = Math.min(s.x, p.x), x1 = Math.max(s.x, p.x);
+      var y0 = Math.min(s.y, p.y), y1 = Math.max(s.y, p.y);
+      gamePlanCropState.rectFrac = {x: x0, y: y0, w: x1-x0, h: y1-y0};
+      drawGamePlanCropRectFromFrac();
+    });
+    window.addEventListener('mouseup', function(){ gamePlanCropState.dragging = false; });
+
+    $('#btnCropClose').addEventListener('click', closeGamePlanCrop);
+    $('#gamePlanCropPage').addEventListener('change', function(){
+      gamePlanCropChangePage(parseInt($('#gamePlanCropPage').value, 10) || 1);
+    });
+    $('#btnCropPagePrev').addEventListener('click', function(){ gamePlanCropChangePage(gamePlanCropState.pageNum - 1); });
+    $('#btnCropPageNext').addEventListener('click', function(){ gamePlanCropChangePage(gamePlanCropState.pageNum + 1); });
+    $('#btnCropClear').addEventListener('click', function(){
+      var id = gamePlanCropState.setId;
+      var ref = currentRivalRef();
+      if(!ref || !id) return;
+      ref.collection('gamePlanSets').doc(id).update({pdfPage: null, cropX: null, cropY: null, cropW: null, cropH: null})
+        .catch(function(err){ console.error('clear game plan crop', err); });
+      closeGamePlanCrop();
+    });
+    $('#btnCropSave').addEventListener('click', function(){
+      var st = gamePlanCropState;
+      var frac = st.rectFrac;
+      if(!frac || frac.w < 0.01 || frac.h < 0.01){
+        $('#gamePlanCropError').textContent = 'Arrastra sobre la página para marcar un recorte.';
+        return;
+      }
+      var id = st.setId;
+      var ref = currentRivalRef();
+      if(!ref || !id) return;
+      ref.collection('gamePlanSets').doc(id).update({pdfPage: st.pageNum, cropX: frac.x, cropY: frac.y, cropW: frac.w, cropH: frac.h})
+        .catch(function(err){ console.error('save game plan crop', err); });
+      closeGamePlanCrop();
+    });
+  }
+
+  // ---------------- Exportar Plan de Partido a PDF ----------------
+  function showGamePlanExportMsg(msg){
+    var el = $('#gamePlanExportError');
+    if(!el) return;
+    el.textContent = msg; el.style.display = 'block';
+    setTimeout(function(){ el.style.display = 'none'; }, 5000);
+  }
+
+  // Página 1 (apaisada): CLAVES DEL PARTIDO a todo el ancho arriba, y abajo 2 columnas — CÓMO LES
+  // DEFENDEMOS (sus fuentes de generación marcadas + los 3 sets recortados del PDF de Sistemas de
+  // juego) y CÓMO LES ATACAMOS (a quién atacar + cómo atacarlas marcado). Página 2: el informe de
+  // jugadoras de Scout Individual, reutilizado tal cual (drawPlayerFacingReport). A diferencia del
+  // resto de builders de PDF de este archivo, esta función es ASÍNCRONA (devuelve una promesa)
+  // porque las imágenes de los 3 sets hay que descargarlas y recortarlas antes de poder dibujarse.
+  function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition){
+    var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
+    var pageW = doc.internal.pageSize.getWidth();
+    var margin = 12;
+    var ink = [20,23,28], dim = [91,98,112];
+    var good = [31,138,95], warnC = [245,166,35];
+    var darkAccent = [58,62,70];
+
+    function roundRect(x,y,w,h,r,color){
+      doc.setFillColor.apply(doc, color);
+      doc.roundedRect(x, y, w, h, r, r, 'F');
+    }
+    function sectionLabel(x, y, w, text, color){
+      roundRect(x, y, w, 7.5, 1.5, color);
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(text, x+3, y+5.2);
+      return y+7.5+3.5;
+    }
+    function subLabel(x, y, text, color){
+      doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+      doc.text(text, x, y);
+      return y+4;
+    }
+
+    // ---- Cabecera ----
+    doc.setFillColor.apply(doc, accent);
+    doc.rect(0, 0, pageW, 20, 'F');
+    var titleX = margin;
+    if(rival.logo){
+      try{ doc.addImage(rival.logo, 'JPEG', margin, 3, 14, 14); titleX = margin + 18; }
+      catch(e){ console.error('addImage logo plan', e); }
+    }
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.text((rival.name || 'Rival').toUpperCase(), titleX, 11.5);
+    doc.setFont('helvetica','italic'); doc.setFontSize(9);
+    doc.text(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · ') || '', titleX, 17);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.text('PLAN DE PARTIDO', pageW - margin, 12, {align:'right'});
+
+    var fullW = pageW - margin*2;
+
+    // ---- CLAVES DEL PARTIDO ----
+    var keys = state.offEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'OFE', text: it.text}; })
+      .concat(state.defEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'DEF', text: it.text}; }));
+
+    var y0 = sectionLabel(margin, 26, fullW, 'CLAVES DEL PARTIDO', accent);
+    if(!keys.length){
+      doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.8);
+      doc.text('Marca ideas clave con la casilla "Plan" en Idea ofensiva/defensiva para que aparezcan aquí.', margin, y0);
+      y0 += 5;
+    } else {
+      var half = fullW/2 - 2;
+      var keyRowH = 6.5;
+      keys.forEach(function(k, i){
+        var col = i % 2, row = Math.floor(i/2);
+        var kx0 = margin + col*(half+4);
+        var ky = y0 + row*keyRowH;
+        var tagColor = k.tag === 'OFE' ? accent : darkAccent;
+        roundRect(kx0, ky-3.2, 8, 3.8, 0.8, tintColor(tagColor, 0.8));
+        doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(5.2);
+        doc.text(k.tag, kx0+4, ky-0.6, {align:'center'});
+        var lines = doc.splitTextToSize(k.text || '', half-11);
+        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(7.6);
+        doc.text(lines[0] || '', kx0+10, ky-0.6);
+      });
+      y0 += Math.ceil(keys.length/2) * keyRowH + 3;
+    }
+
+    // ---- Fila inferior: 2 columnas ----
+    var colGap = 8;
+    var colW = fullW/2 - colGap/2;
+    var colXL = margin, colXR = margin + colW + colGap;
+    var yTop = y0 + 3;
+
+    // Izquierda: CÓMO LES DEFENDEMOS
+    var yL = sectionLabel(colXL, yTop, colW, 'CÓMO LES DEFENDEMOS', darkAccent);
+    var offSel = state.offSources.filter(function(r){ return r.inGamePlan; });
+    yL = subLabel(colXL, yL+2, 'SUS FUENTES DE GENERACIÓN', darkAccent);
+    if(!offSel.length){
+      doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.2);
+      doc.text('Ninguna marcada con "Plan" en Fuentes de generación.', colXL, yL);
+      yL += 4;
+    } else {
+      offSel.forEach(function(r){
+        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+        doc.text(r.source || '—', colXL, yL);
+        yL += 3.4;
+        var desc = [r.notes, r.systems].filter(Boolean).join(' — ');
+        var lines = doc.splitTextToSize(desc || '', colW-2);
+        doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(7.2);
+        lines.forEach(function(line, li){ doc.text(line, colXL, yL + li*3.1); });
+        yL += lines.length*3.1 + 3;
+      });
+    }
+
+    yL = subLabel(colXL, yL+2, 'NUESTROS 3 SETS', darkAccent);
+    var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); });
+    var setW = (colW - 2*3) / 3;
+    var setImgH = setW * 0.62;
+    var setY = yL;
+
+    var chain = Promise.resolve();
+    var setImages = [];
+    setsSorted.forEach(function(s, i){
+      chain = chain.then(function(){
+        if(s.pdfPage == null || s.cropW == null) return null;
+        return loadPdfJs().then(function(pdfjsLib){
+          return loadGamePlanSystemsPdfBytes().then(function(bytes){
+            return pdfjsLib.getDocument({data: bytes.slice()}).promise;
+          });
+        }).then(function(pdfDoc){
+          var pageNum = Math.min(Math.max(1, s.pdfPage), pdfDoc.numPages);
+          return pdfDoc.getPage(pageNum);
+        }).then(function(page){
+          return renderCroppedPageToDataUrl(page, s.cropX, s.cropY, s.cropW, s.cropH, 3);
+        }).catch(function(err){
+          console.error('crop set image for export', err);
+          return null;
+        });
+      }).then(function(dataUrl){ setImages[i] = dataUrl; });
+    });
+
+    return chain.then(function(){
+      setsSorted.forEach(function(s, i){
+        var sx = colXL + i*(setW+3);
+        var img = setImages[i];
+        if(img){
+          try{ doc.addImage(img, 'JPEG', sx, setY, setW, setImgH); }
+          catch(e){
+            console.error('addImage set crop', e);
+            roundRect(sx, setY, setW, setImgH, 1.5, tintColor(darkAccent, 0.9));
+          }
+        } else {
+          roundRect(sx, setY, setW, setImgH, 1.5, tintColor(darkAccent, 0.9));
+          if(doc.setLineDashPattern) doc.setLineDashPattern([1,1], 0);
+          doc.setDrawColor.apply(doc, tintColor(darkAccent, 0.6));
+          doc.rect(sx+1, setY+1, setW-2, setImgH-2);
+          if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
+          doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(5.6);
+          doc.text('Sin recorte', sx+setW/2, setY+setImgH/2, {align:'center'});
+        }
+        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(6.6);
+        doc.text((s.name || ('SET '+(i+1))).toUpperCase(), sx+setW/2, setY+setImgH+3.5, {align:'center'});
+        if(s.notes){
+          var noteLines = doc.splitTextToSize(s.notes, setW);
+          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(5.6);
+          noteLines.slice(0,3).forEach(function(line, li){ doc.text(line, sx+setW/2, setY+setImgH+6.5+li*2.6, {align:'center'}); });
+        }
+      });
+
+      // Derecha: CÓMO LES ATACAMOS
+      var yR = sectionLabel(colXR, yTop, colW, 'CÓMO LES ATACAMOS', good);
+      yR = subLabel(colXR, yR+2, 'A QUIÉN ATACAR', good);
+      var attackJoined = state.attackPlayers.map(function(a){
+        var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
+        return p ? {player: p, category: a.category} : null;
+      }).filter(Boolean);
+      var ax = colXR;
+      attackJoined.forEach(function(item){
+        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || '');
+        var color = item.category === 'calidad' ? good : warnC;
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.2);
+        var w = doc.getTextWidth(label) + 5;
+        if(ax + w > colXR + colW){ ax = colXR; yR += 6; }
+        roundRect(ax, yR-3.4, w, 4.4, 2.2, tintColor(color, 0.85));
+        doc.setTextColor.apply(doc, shadeColor(color, 0.35));
+        doc.text(label, ax+w/2, yR-0.7, {align:'center'});
+        ax += w+2;
+      });
+      yR += 6;
+
+      yR = subLabel(colXR, yR+1, 'CÓMO ATACARLAS', good);
+      var defSel = state.defSources.filter(function(r){ return r.inGamePlan; });
+      if(!defSel.length){
+        doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.2);
+        doc.text('Ninguna marcada con "Plan" en Cómo atacarlas.', colXR, yR);
+        yR += 4;
+      } else {
+        defSel.forEach(function(r){
+          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+          doc.text(r.source || '—', colXR, yR);
+          yR += 3.4;
+          var lines = doc.splitTextToSize(r.notes || '', colW-2);
+          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(7.2);
+          lines.forEach(function(line, li){ doc.text(line, colXR, yR + li*3.1); });
+          yR += lines.length*3.1 + 1;
+          if(r.systems){
+            doc.setTextColor.apply(doc, shadeColor(good, 0.15)); doc.setFont('helvetica','italic'); doc.setFontSize(6.8);
+            doc.text('Sistema: ' + r.systems, colXR, yR);
+            yR += 4.5;
+          } else {
+            yR += 1.5;
+          }
+        });
+      }
+
+      // ---- Página 2: informe de jugadoras de Scout Individual, reutilizado tal cual ----
+      doc.addPage();
+      drawPlayerFacingReport(doc, rival, rosterJoined, lang, competition);
+
+      addFooters(doc);
+      return doc;
+    });
+  }
+
+  function exportGamePlanPdf(){
+    var btn = $('#btnExportGamePlanPdf');
+    if(!btn) return;
+    var lang = state.reportLang || 'es';
+    if(!downloadsCap){ showGamePlanExportMsg('La exportación a PDF no está disponible en esta vista.'); return; }
+    if(!window.jspdf || !window.jspdf.jsPDF){ showGamePlanExportMsg('No se pudo cargar el generador de PDF. Revisa tu conexión y prueba de nuevo.'); return; }
+    if(!state.rival){ return; }
+    var rival = state.rival;
+    var original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Generando…';
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
+    gatherCollectiveRosterJoined().then(function(rosterJoined){
+      var accent = hexToRgb(rival.color);
+      return buildGamePlanDoc(rival, rosterJoined, accent, lang, competition);
+    }).then(function(doc){
+      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '.pdf', data: doc.output('blob')});
+    }).then(function(){
+      btn.disabled = false; btn.textContent = original;
+    }).catch(function(err){
+      btn.disabled = false; btn.textContent = original;
+      if(err && err.code === 'declined') return;
+      showGamePlanExportMsg('No se pudo generar el Plan de Partido.');
+      console.error('export game plan pdf', err);
+    });
   }
 
   // ---------------- Sistemas de juego / Estadística avanzada: un PDF por rival ----------------
@@ -4451,6 +5098,10 @@ if('serviceWorker' in navigator){
         state[kindDef.fileDataForField] = null;
       }
       renderUploadedPdfBox(kind);
+      // El Plan de Partido depende de que haya (o no) un PDF de Sistemas de juego subido: el botón
+      // "Elegir recorte" de cada set y el aviso de "sube primero el PDF" tienen que reaccionar en
+      // el momento a que se suba, se reemplace o se borre ese PDF, no solo a cambios en los sets.
+      if(kind === 'offSystemsPdf') renderGamePlanSets();
     }, function(err){ console.error(kind + ' meta onSnapshot', err); });
   }
 
@@ -4539,8 +5190,9 @@ if('serviceWorker' in navigator){
 
     var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
     if(!isPdf){ showErr('Solo se admiten archivos PDF.'); input.value = ''; return; }
-    if(file.size > MAX_STATS_PDF_BYTES){
-      showErr('El PDF pesa demasiado (max. 12 MB). Prueba a exportarlo mas ligero.');
+    var maxBytes = kindDef.maxBytes || MAX_STATS_PDF_BYTES;
+    if(file.size > maxBytes){
+      showErr('El PDF pesa demasiado (max. ' + Math.round(maxBytes / (1024*1024)) + ' MB). Prueba a exportarlo mas ligero.');
       input.value = '';
       return;
     }
