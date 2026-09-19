@@ -4637,6 +4637,8 @@ if('serviceWorker' in navigator){
   // siempre a pdfjsLib.getDocument por quien llama a esta función porque pdf.js puede transferir
   // (dejar inutilizable) el ArrayBuffer que se le pasa, y el mismo array de bytes en caché se usa
   // varias veces seguidas (3 miniaturas + editor de recorte + exportación).
+  // Devuelve {dataUrl, width, height} (width/height en píxeles del recorte, no de la página
+  // entera) para que quien dibuje la imagen pueda respetar su proporción real y no deformarla.
   function renderCroppedPageToDataUrl(page, fx, fy, fw, fh, scale){
     var viewport = page.getViewport({scale: scale});
     var full = document.createElement('canvas');
@@ -4646,7 +4648,7 @@ if('serviceWorker' in navigator){
       var out = document.createElement('canvas');
       out.width = Math.max(1, Math.round(sw)); out.height = Math.max(1, Math.round(sh));
       out.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, out.width, out.height);
-      return out.toDataURL('image/jpeg', 0.9);
+      return {dataUrl: out.toDataURL('image/jpeg', 0.9), width: out.width, height: out.height};
     });
   }
 
@@ -4669,10 +4671,10 @@ if('serviceWorker' in navigator){
       return pdfDoc.getPage(pageNum);
     }).then(function(page){
       return renderCroppedPageToDataUrl(page, setRow.cropX, setRow.cropY, setRow.cropW, setRow.cropH, 2);
-    }).then(function(dataUrl){
-      gamePlanThumbCache[cacheKey] = dataUrl;
+    }).then(function(result){
+      gamePlanThumbCache[cacheKey] = result.dataUrl;
       var thumb = document.querySelector('.game-plan-set-card[data-set-id="' + setRow.id + '"] [data-set-thumb]');
-      if(thumb) thumb.innerHTML = '<img src="' + dataUrl + '" alt="">';
+      if(thumb) thumb.innerHTML = '<img src="' + result.dataUrl + '" alt="">';
     }).catch(function(err){
       console.error('render game plan set thumb', err);
       var thumb = document.querySelector('.game-plan-set-card[data-set-id="' + setRow.id + '"] [data-set-thumb]');
@@ -4843,15 +4845,24 @@ if('serviceWorker' in navigator){
       doc.setFillColor.apply(doc, color);
       doc.roundedRect(x, y, w, h, r, r, 'F');
     }
-    function sectionLabel(x, y, w, text, color){
-      roundRect(x, y, w, 7.5, 1.5, color);
-      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.text(text, x+3, y+5.2);
+    // `draw` por defecto true (los usos fuera de la medición no lo pasan, como antes) — pero la
+    // pasada de MEDICIÓN (más abajo, dentro de totalHeight) llama a estas mismas funciones con
+    // draw=false para calcular alturas SIN pintar nada; sin este flag se pintaban los banners y
+    // subtítulos también durante la medición (hasta 6 veces, una por cada intento de encoger la
+    // letra), dejando el PDF con títulos duplicados unos encima de otros.
+    function sectionLabel(x, y, w, text, color, draw){
+      if(draw !== false){
+        roundRect(x, y, w, 7.5, 1.5, color);
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.text(text, x+3, y+5.2);
+      }
       return y+7.5+3.5;
     }
-    function subLabel(x, y, text, color){
-      doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
-      doc.text(text, x, y);
+    function subLabel(x, y, text, color, draw){
+      if(draw !== false){
+        doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+        doc.text(text, x, y);
+      }
       return y+4;
     }
 
@@ -4870,68 +4881,244 @@ if('serviceWorker' in navigator){
     doc.setFont('helvetica','bold'); doc.setFontSize(11);
     doc.text('PLAN DE PARTIDO', pageW - margin, 12, {align:'right'});
 
+    var pageH = doc.internal.pageSize.getHeight();
     var fullW = pageW - margin*2;
 
-    // ---- CLAVES DEL PARTIDO ----
+    // ---- Contenido (independiente de la escala de letra: se calcula una sola vez) ----
     var keys = state.offEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'OFE', text: it.text}; })
       .concat(state.defEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'DEF', text: it.text}; }));
-
-    var y0 = sectionLabel(margin, 26, fullW, 'CLAVES DEL PARTIDO', accent);
-    if(!keys.length){
-      doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.8);
-      doc.text('Marca ideas clave con la casilla "Plan" en Idea ofensiva/defensiva para que aparezcan aquí.', margin, y0);
-      y0 += 5;
-    } else {
-      var half = fullW/2 - 2;
-      var keyRowH = 6.5;
-      keys.forEach(function(k, i){
-        var col = i % 2, row = Math.floor(i/2);
-        var kx0 = margin + col*(half+4);
-        var ky = y0 + row*keyRowH;
-        var tagColor = k.tag === 'OFE' ? accent : darkAccent;
-        roundRect(kx0, ky-3.2, 8, 3.8, 0.8, tintColor(tagColor, 0.8));
-        doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(5.2);
-        doc.text(k.tag, kx0+4, ky-0.6, {align:'center'});
-        var lines = doc.splitTextToSize(k.text || '', half-11);
-        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(7.6);
-        doc.text(lines[0] || '', kx0+10, ky-0.6);
-      });
-      y0 += Math.ceil(keys.length/2) * keyRowH + 3;
-    }
-
-    // ---- Fila inferior: 2 columnas ----
-    var colGap = 8;
-    var colW = fullW/2 - colGap/2;
-    var colXL = margin, colXR = margin + colW + colGap;
-    var yTop = y0 + 3;
-
-    // Izquierda: CÓMO LES DEFENDEMOS
-    var yL = sectionLabel(colXL, yTop, colW, 'CÓMO LES DEFENDEMOS', darkAccent);
     var offSel = state.offSources.filter(function(r){ return r.inGamePlan; });
-    yL = subLabel(colXL, yL+2, 'SUS FUENTES DE GENERACIÓN', darkAccent);
-    if(!offSel.length){
-      doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.2);
-      doc.text('Ninguna marcada con "Plan" en Fuentes de generación.', colXL, yL);
-      yL += 4;
-    } else {
-      offSel.forEach(function(r){
-        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
-        doc.text(r.source || '—', colXL, yL);
-        yL += 3.4;
-        var desc = [r.notes, r.systems].filter(Boolean).join(' — ');
-        var lines = doc.splitTextToSize(desc || '', colW-2);
-        doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(7.2);
-        lines.forEach(function(line, li){ doc.text(line, colXL, yL + li*3.1); });
-        yL += lines.length*3.1 + 3;
+    var defSel = state.defSources.filter(function(r){ return r.inGamePlan; });
+    var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); });
+    var attackJoined = state.attackPlayers.map(function(a){
+      var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
+      return p ? {player: p, category: a.category} : null;
+    }).filter(Boolean);
+
+    // Columna izquierda (defensa) más ancha que la derecha (ataque) — a petición de Marta, porque
+    // la defensa (fuentes de generación + 3 sets) suele llevar mucho más contenido.
+    var colGap = 8;
+    var colWL = fullW*0.6 - colGap/2, colWR = fullW*0.4 - colGap/2;
+    var colXL = margin, colXR = margin + colWL + colGap;
+
+    // ---------------------------------------------------------------------
+    // Todo lo de abajo se dibuja en DOS PASADAS con la MISMA función: la 1ª con draw=false solo
+    // mide (para saber cuánta letra hace falta encoger, `scale`, y así garantizar que quepa todo
+    // sin que se solape nada — pedido explícito de Marta); la 2ª con draw=true, ya con el `scale`
+    // definitivo, es la que realmente pinta el PDF. Mantener la medición y el dibujo en la MISMA
+    // función (en vez de dos funciones separadas que podrían desincronizarse) es lo que evita que
+    // vuelva a pasar el bug de antes (texto de varias líneas que solo avanzaba el cursor como si
+    // fuera de una).
+    // ---------------------------------------------------------------------
+    function layoutClaves(y0, scale, spc, draw){
+      var y = sectionLabel(margin, y0, fullW, 'CLAVES DEL PARTIDO', accent, draw);
+      var kf = 7.6*scale, klh = 3.4*scale, ktf = Math.max(4.4, 5*scale), tagW = 8, tagH = 3.8, indent = 10, gap = 2.2*spc;
+      if(!keys.length){
+        if(draw){
+          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.4*scale);
+          doc.text('Marca ideas clave con la casilla "Plan" en Idea ofensiva/defensiva para que aparezcan aquí.', margin, y+3);
+        }
+        return y + 6;
+      }
+      keys.forEach(function(k){
+        doc.setFont('helvetica','normal'); doc.setFontSize(kf);
+        var lines = doc.splitTextToSize(k.text || '', fullW - indent - 2);
+        var rowH = Math.max(tagH, lines.length*klh);
+        if(draw){
+          var tagColor = k.tag === 'OFE' ? accent : darkAccent;
+          roundRect(margin, y + rowH/2 - tagH/2, tagW, tagH, 0.8, tintColor(tagColor, 0.8));
+          doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(ktf);
+          doc.text(k.tag, margin+tagW/2, y + rowH/2 + ktf*0.32, {align:'center'});
+          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(kf);
+          lines.forEach(function(line, li){ doc.text(line, margin+indent, y + klh*0.85 + li*klh); });
+        }
+        y += rowH + gap;
       });
+      return y;
     }
 
-    yL = subLabel(colXL, yL+2, 'NUESTROS 3 SETS', darkAccent);
-    var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); });
-    var setW = (colW - 2*3) / 3;
-    var setImgH = setW * 0.62;
-    var setY = yL;
+    // Bloque de texto genérico: nombre en negrita + notas + "Sistema(s): ..." en cursiva, cada uno
+    // ajustado (wrap) al ancho disponible y con la altura real que ocupe (nunca solo la 1ª línea).
+    function layoutSourceList(x, y0, w, scale, spc, draw, list, emptyMsg, sysLabel, sysColor){
+      var y = y0;
+      var nf = 7.4*scale, nlh = 3.4*scale;
+      var bf = 7.0*scale, blh = 3.0*scale;
+      var sf = 6.6*scale, slh = 3.0*scale;
+      var gap = 3.0*spc;
+      if(!list.length){
+        if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf); doc.text(emptyMsg, x, y+3); }
+        return y + 6;
+      }
+      list.forEach(function(r){
+        if(draw){
+          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(nf);
+          doc.text(r.source || '—', x, y + nlh*0.82);
+        }
+        y += nlh;
+        if(r.notes){
+          doc.setFont('helvetica','normal'); doc.setFontSize(bf);
+          var lines = doc.splitTextToSize(r.notes, w);
+          if(draw){
+            doc.setTextColor.apply(doc, dim);
+            lines.forEach(function(line, li){ doc.text(line, x, y + blh*0.8 + li*blh); });
+          }
+          y += lines.length*blh;
+        }
+        if(r.systems){
+          doc.setFont('helvetica','italic'); doc.setFontSize(sf);
+          var sLines = doc.splitTextToSize(sysLabel + r.systems, w);
+          if(draw){
+            doc.setTextColor.apply(doc, sysColor);
+            sLines.forEach(function(line, li){ doc.text(line, x, y + slh*0.8 + li*slh); });
+          }
+          y += sLines.length*slh;
+        }
+        y += gap;
+      });
+      return y;
+    }
 
+    // Los 3 sets, uno DEBAJO del otro (pedido explícito de Marta, antes iban los 3 en la misma
+    // línea) — cada imagen conserva su proporción real (no se deforma) dentro de un ancho fijo
+    // (la columna) y una altura máxima; si el recorte es más "ancho" que alto se deja más bajo, y
+    // viceversa, centrada horizontalmente.
+    function layoutSets(x, y0, w, scale, spc, draw, images){
+      var y = y0;
+      // La altura máxima de cada recorte depende de `spc` (no de `scale`): cuando el texto ya está
+      // en su tamaño mínimo legible y aun así no cabe todo, son las 3 imágenes (lo que más espacio
+      // ocupa) las que se encogen más para que quepa todo, en vez de forzar la letra por debajo de
+      // lo legible — mínimo 15mm, siguen siendo diagramas reconocibles a ese tamaño.
+      var imgMaxH = Math.max(15, 30 * spc);
+      var nameFont = Math.max(6, 6.6*scale), notesFont = Math.max(5, 5.6*scale), notesLH = 2.7*scale;
+      setsSorted.forEach(function(s, i){
+        var img = images && images[i];
+        var imgH = imgMaxH, imgW = w;
+        if(img && img.width && img.height){
+          var aspect = img.width / img.height;
+          imgH = w / aspect;
+          if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+        }
+        var imgX = x + (w - imgW)/2;
+        if(draw){
+          if(img){
+            try{ doc.addImage(img.dataUrl, 'JPEG', imgX, y, imgW, imgH); }
+            catch(e){
+              console.error('addImage set crop', e);
+              roundRect(x, y, w, imgMaxH, 1.5, tintColor(darkAccent, 0.9));
+              imgH = imgMaxH;
+            }
+          } else {
+            roundRect(x, y, w, imgMaxH, 1.5, tintColor(darkAccent, 0.9));
+            if(doc.setLineDashPattern) doc.setLineDashPattern([1,1], 0);
+            doc.setDrawColor.apply(doc, tintColor(darkAccent, 0.6));
+            doc.rect(x+1, y+1, w-2, imgMaxH-2);
+            if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
+            doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(6*scale);
+            doc.text('Sin recorte', x+w/2, y+imgMaxH/2, {align:'center'});
+            imgH = imgMaxH;
+          }
+        } else if(!img){
+          imgH = imgMaxH;
+        }
+        y += imgH + 3.6*spc;
+        if(draw){
+          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(nameFont);
+          doc.text((s.name || ('SET '+(i+1))).toUpperCase(), x+w/2, y, {align:'center'});
+        }
+        y += 1.8*spc;
+        if(s.notes){
+          doc.setFont('helvetica','normal'); doc.setFontSize(notesFont);
+          var noteLines = doc.splitTextToSize(s.notes, w-4);
+          if(draw){
+            doc.setTextColor.apply(doc, dim);
+            noteLines.forEach(function(line, li){ doc.text(line, x+w/2, y + notesLH*0.8 + li*notesLH, {align:'center'}); });
+          }
+          y += noteLines.length*notesLH;
+        }
+        y += 4.5*spc;
+      });
+      return y;
+    }
+
+    function layoutAttackPills(x0, y0, w, scale, draw){
+      if(!attackJoined.length){
+        if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7*scale); doc.text('Ninguna jugadora marcada en "Jugadoras a atacar".', x0, y0+3); }
+        return y0 + 6;
+      }
+      var pf = Math.max(5.6, 7*scale), rowH = 6.2*scale;
+      var ax = x0, y = y0 + rowH*0.7;
+      doc.setFont('helvetica','bold'); doc.setFontSize(pf);
+      attackJoined.forEach(function(item){
+        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || '');
+        var wLabel = doc.getTextWidth(label) + 5*scale;
+        if(ax > x0 && ax + wLabel > x0 + w){ ax = x0; y += rowH; }
+        if(draw){
+          var color = item.category === 'calidad' ? good : warnC;
+          roundRect(ax, y - rowH*0.62, wLabel, rowH*0.78, rowH*0.39, tintColor(color, 0.85));
+          doc.setTextColor.apply(doc, shadeColor(color, 0.35)); doc.setFont('helvetica','bold'); doc.setFontSize(pf);
+          doc.text(label, ax+wLabel/2, y - rowH*0.12, {align:'center'});
+        }
+        ax += wLabel + 2*scale;
+      });
+      return y + rowH*0.55;
+    }
+
+    function layoutLeftColumn(y0, scale, spc, draw, images){
+      var y = sectionLabel(colXL, y0, colWL, 'CÓMO LES DEFENDEMOS', darkAccent, draw);
+      y = subLabel(colXL, y+2, 'SUS FUENTES DE GENERACIÓN', darkAccent, draw);
+      y = layoutSourceList(colXL, y, colWL, scale, spc, draw, offSel, 'Ninguna marcada con "Plan" en Fuentes de generación.', 'Sistema(s): ', darkAccent);
+      y = subLabel(colXL, y+2, 'NUESTROS 3 SETS', darkAccent, draw);
+      y = layoutSets(colXL, y, colWL, scale, spc, draw, images);
+      return y;
+    }
+
+    function layoutRightColumn(y0, scale, spc, draw){
+      var y = sectionLabel(colXR, y0, colWR, 'CÓMO LES ATACAMOS', good, draw);
+      y = subLabel(colXR, y+2, 'A QUIÉN ATACAR', good, draw);
+      y = layoutAttackPills(colXR, y, colWR, scale, draw);
+      y = subLabel(colXR, y+3, 'CÓMO ATACARLAS', good, draw);
+      y = layoutSourceList(colXR, y, colWR, scale, spc, draw, defSel, 'Ninguna marcada con "Plan" en Cómo atacarlas.', 'Sistema: ', shadeColor(good, 0.15));
+      return y;
+    }
+
+    var startY = 25;
+    var bottomLimit = pageH - 11;
+    var avail = bottomLimit - startY;
+
+    function totalHeight(scale, spc){
+      var yAfterClaves = layoutClaves(startY, scale, spc, false);
+      var yTop = yAfterClaves + 3;
+      var leftEnd = layoutLeftColumn(yTop, scale, spc, false, null);
+      var rightEnd = layoutRightColumn(yTop, scale, spc, false);
+      return Math.max(leftEnd, rightEnd) - startY;
+    }
+
+    // Dos "mandos" independientes: `scale` encoge la LETRA (con un suelo legible, 0.62 — nunca
+    // baja de ahí, "que se lea a la perfección" es innegociable) y `spc` encoge los HUECOS entre
+    // bloques y el alto de las 3 imágenes de los sets (que no tienen ese problema de legibilidad,
+    // así que pueden encogerse más). 1ª fase: bajar los dos juntos hasta el suelo de la letra. 2ª
+    // fase, solo si con eso aún no cabe todo: seguir bajando SOLO `spc` (huecos + imágenes) hasta
+    // que quepa, o hasta su propio suelo.
+    var scale = 1, spc = 1;
+    for(var iter = 0; iter < 6; iter++){
+      var need = totalHeight(scale, spc);
+      if(need <= avail) break;
+      var next = Math.max(0.62, scale * (avail / need) * 0.96);
+      scale = next; spc = next;
+    }
+    scale = Math.max(0.62, Math.min(1, scale));
+    spc = Math.max(0.62, Math.min(1, spc));
+    if(totalHeight(scale, spc) > avail){
+      for(var iter2 = 0; iter2 < 6; iter2++){
+        var need2 = totalHeight(scale, spc);
+        if(need2 <= avail) break;
+        spc = Math.max(0.42, spc * (avail / need2) * 0.96);
+      }
+      spc = Math.max(0.42, Math.min(1, spc));
+    }
+
+    // ---- Recortes de los 3 sets: se descargan/generan en paralelo a haber calculado `scale`
+    // (no dependen de ella, solo de qué recorte tenga guardado cada set) ----
     var chain = Promise.resolve();
     var setImages = [];
     setsSorted.forEach(function(s, i){
@@ -4950,82 +5137,15 @@ if('serviceWorker' in navigator){
           console.error('crop set image for export', err);
           return null;
         });
-      }).then(function(dataUrl){ setImages[i] = dataUrl; });
+      }).then(function(result){ setImages[i] = result; });
     });
 
     return chain.then(function(){
-      setsSorted.forEach(function(s, i){
-        var sx = colXL + i*(setW+3);
-        var img = setImages[i];
-        if(img){
-          try{ doc.addImage(img, 'JPEG', sx, setY, setW, setImgH); }
-          catch(e){
-            console.error('addImage set crop', e);
-            roundRect(sx, setY, setW, setImgH, 1.5, tintColor(darkAccent, 0.9));
-          }
-        } else {
-          roundRect(sx, setY, setW, setImgH, 1.5, tintColor(darkAccent, 0.9));
-          if(doc.setLineDashPattern) doc.setLineDashPattern([1,1], 0);
-          doc.setDrawColor.apply(doc, tintColor(darkAccent, 0.6));
-          doc.rect(sx+1, setY+1, setW-2, setImgH-2);
-          if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
-          doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(5.6);
-          doc.text('Sin recorte', sx+setW/2, setY+setImgH/2, {align:'center'});
-        }
-        doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(6.6);
-        doc.text((s.name || ('SET '+(i+1))).toUpperCase(), sx+setW/2, setY+setImgH+3.5, {align:'center'});
-        if(s.notes){
-          var noteLines = doc.splitTextToSize(s.notes, setW);
-          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(5.6);
-          noteLines.slice(0,3).forEach(function(line, li){ doc.text(line, sx+setW/2, setY+setImgH+6.5+li*2.6, {align:'center'}); });
-        }
-      });
-
-      // Derecha: CÓMO LES ATACAMOS
-      var yR = sectionLabel(colXR, yTop, colW, 'CÓMO LES ATACAMOS', good);
-      yR = subLabel(colXR, yR+2, 'A QUIÉN ATACAR', good);
-      var attackJoined = state.attackPlayers.map(function(a){
-        var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-        return p ? {player: p, category: a.category} : null;
-      }).filter(Boolean);
-      var ax = colXR;
-      attackJoined.forEach(function(item){
-        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || '');
-        var color = item.category === 'calidad' ? good : warnC;
-        doc.setFont('helvetica','bold'); doc.setFontSize(7.2);
-        var w = doc.getTextWidth(label) + 5;
-        if(ax + w > colXR + colW){ ax = colXR; yR += 6; }
-        roundRect(ax, yR-3.4, w, 4.4, 2.2, tintColor(color, 0.85));
-        doc.setTextColor.apply(doc, shadeColor(color, 0.35));
-        doc.text(label, ax+w/2, yR-0.7, {align:'center'});
-        ax += w+2;
-      });
-      yR += 6;
-
-      yR = subLabel(colXR, yR+1, 'CÓMO ATACARLAS', good);
-      var defSel = state.defSources.filter(function(r){ return r.inGamePlan; });
-      if(!defSel.length){
-        doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.2);
-        doc.text('Ninguna marcada con "Plan" en Cómo atacarlas.', colXR, yR);
-        yR += 4;
-      } else {
-        defSel.forEach(function(r){
-          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
-          doc.text(r.source || '—', colXR, yR);
-          yR += 3.4;
-          var lines = doc.splitTextToSize(r.notes || '', colW-2);
-          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','normal'); doc.setFontSize(7.2);
-          lines.forEach(function(line, li){ doc.text(line, colXR, yR + li*3.1); });
-          yR += lines.length*3.1 + 1;
-          if(r.systems){
-            doc.setTextColor.apply(doc, shadeColor(good, 0.15)); doc.setFont('helvetica','italic'); doc.setFontSize(6.8);
-            doc.text('Sistema: ' + r.systems, colXR, yR);
-            yR += 4.5;
-          } else {
-            yR += 1.5;
-          }
-        });
-      }
+      // ---- Pasada real de dibujo, ya con `scale`/`spc` definitivos ----
+      var yAfterClaves = layoutClaves(startY, scale, spc, true);
+      var yTop = yAfterClaves + 3;
+      layoutLeftColumn(yTop, scale, spc, true, setImages);
+      layoutRightColumn(yTop, scale, spc, true);
 
       // ---- Página 2: informe de jugadoras de Scout Individual, reutilizado tal cual ----
       doc.addPage();
