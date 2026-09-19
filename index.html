@@ -4910,9 +4910,31 @@ if('serviceWorker' in navigator){
     // vuelva a pasar el bug de antes (texto de varias líneas que solo avanzaba el cursor como si
     // fuera de una).
     // ---------------------------------------------------------------------
+    // En 2 columnas (ofensiva a la izquierda, defensiva a la derecha) en vez de una sola lista a
+    // todo el ancho — pedido de Marta tras ver el primer PDF: con una sola columna cada línea de
+    // texto corto dejaba la mitad de la hoja en blanco a su derecha, y además obligaba a las ideas
+    // ofensivas y defensivas a apilarse todas seguidas en vez de leerse en paralelo.
+    function layoutClaveColumn(x, y0, w, list, tagColor, scale, spc, draw){
+      var y = y0;
+      var kf = 7.6*scale, klh = 3.4*scale, ktf = Math.max(4.4, 5*scale), tagW = 8, tagH = 3.8, indent = 10, gap = 2.2*spc;
+      list.forEach(function(k){
+        doc.setFont('helvetica','normal'); doc.setFontSize(kf);
+        var lines = doc.splitTextToSize(k.text || '', w - indent - 2);
+        var rowH = Math.max(tagH, lines.length*klh);
+        if(draw){
+          roundRect(x, y + rowH/2 - tagH/2, tagW, tagH, 0.8, tintColor(tagColor, 0.8));
+          doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(ktf);
+          doc.text(k.tag, x+tagW/2, y + rowH/2 + ktf*0.32, {align:'center'});
+          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(kf);
+          lines.forEach(function(line, li){ doc.text(line, x+indent, y + klh*0.85 + li*klh); });
+        }
+        y += rowH + gap;
+      });
+      return y;
+    }
+
     function layoutClaves(y0, scale, spc, draw){
       var y = sectionLabel(margin, y0, fullW, 'CLAVES DEL PARTIDO', accent, draw);
-      var kf = 7.6*scale, klh = 3.4*scale, ktf = Math.max(4.4, 5*scale), tagW = 8, tagH = 3.8, indent = 10, gap = 2.2*spc;
       if(!keys.length){
         if(draw){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.4*scale);
@@ -4920,21 +4942,14 @@ if('serviceWorker' in navigator){
         }
         return y + 6;
       }
-      keys.forEach(function(k){
-        doc.setFont('helvetica','normal'); doc.setFontSize(kf);
-        var lines = doc.splitTextToSize(k.text || '', fullW - indent - 2);
-        var rowH = Math.max(tagH, lines.length*klh);
-        if(draw){
-          var tagColor = k.tag === 'OFE' ? accent : darkAccent;
-          roundRect(margin, y + rowH/2 - tagH/2, tagW, tagH, 0.8, tintColor(tagColor, 0.8));
-          doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(ktf);
-          doc.text(k.tag, margin+tagW/2, y + rowH/2 + ktf*0.32, {align:'center'});
-          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(kf);
-          lines.forEach(function(line, li){ doc.text(line, margin+indent, y + klh*0.85 + li*klh); });
-        }
-        y += rowH + gap;
-      });
-      return y;
+      var clavesGap = 6;
+      var clavesColW = fullW/2 - clavesGap/2;
+      var clavesXOff = margin, clavesXDef = margin + clavesColW + clavesGap;
+      var offKeys = keys.filter(function(k){ return k.tag === 'OFE'; });
+      var defKeys = keys.filter(function(k){ return k.tag === 'DEF'; });
+      var yOff = layoutClaveColumn(clavesXOff, y, clavesColW, offKeys, accent, scale, spc, draw);
+      var yDef = layoutClaveColumn(clavesXDef, y, clavesColW, defKeys, darkAccent, scale, spc, draw);
+      return Math.max(yOff, yDef);
     }
 
     // Bloque de texto genérico: nombre en negrita + notas + "Sistema(s): ..." en cursiva, cada uno
@@ -5021,17 +5036,19 @@ if('serviceWorker' in navigator){
           imgH = imgMaxH;
         }
         y += imgH + 3.6*spc;
+        // Nombre y notas alineados a la izquierda (como el resto del documento) en vez de
+        // centrados — pedido de Marta, el centrado no encajaba con el resto del texto.
         if(draw){
           doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(nameFont);
-          doc.text((s.name || ('SET '+(i+1))).toUpperCase(), x+w/2, y, {align:'center'});
+          doc.text((s.name || ('SET '+(i+1))).toUpperCase(), x, y);
         }
         y += 1.8*spc;
         if(s.notes){
           doc.setFont('helvetica','normal'); doc.setFontSize(notesFont);
-          var noteLines = doc.splitTextToSize(s.notes, w-4);
+          var noteLines = doc.splitTextToSize(s.notes, w);
           if(draw){
             doc.setTextColor.apply(doc, dim);
-            noteLines.forEach(function(line, li){ doc.text(line, x+w/2, y + notesLH*0.8 + li*notesLH, {align:'center'}); });
+            noteLines.forEach(function(line, li){ doc.text(line, x, y + notesLH*0.8 + li*notesLH); });
           }
           y += noteLines.length*notesLH;
         }
@@ -5063,13 +5080,19 @@ if('serviceWorker' in navigator){
       return y + rowH*0.55;
     }
 
+    // "Sus fuentes de generación" y "Nuestros 3 sets" en 2 columnas EN PARALELO (no una debajo de
+    // la otra) — pedido de Marta tras ver el primer PDF: apiladas dejaban demasiado hueco en
+    // blanco y hacían el documento mucho más largo de lo necesario.
     function layoutLeftColumn(y0, scale, spc, draw, images){
       var y = sectionLabel(colXL, y0, colWL, 'CÓMO LES DEFENDEMOS', darkAccent, draw);
-      y = subLabel(colXL, y+2, 'SUS FUENTES DE GENERACIÓN', darkAccent, draw);
-      y = layoutSourceList(colXL, y, colWL, scale, spc, draw, offSel, 'Ninguna marcada con "Plan" en Fuentes de generación.', 'Sistema(s): ', darkAccent);
-      y = subLabel(colXL, y+2, 'NUESTROS 3 SETS', darkAccent, draw);
-      y = layoutSets(colXL, y, colWL, scale, spc, draw, images);
-      return y;
+      var subGap = 6;
+      var subColW = (colWL - subGap) / 2;
+      var xFuentes = colXL, xSets = colXL + subColW + subGap;
+      var yF = subLabel(xFuentes, y+2, 'SUS FUENTES DE GENERACIÓN', darkAccent, draw);
+      yF = layoutSourceList(xFuentes, yF, subColW, scale, spc, draw, offSel, 'Ninguna marcada con "Plan" en Fuentes de generación.', 'Sistema(s): ', darkAccent);
+      var yS = subLabel(xSets, y+2, 'NUESTROS 3 SETS', darkAccent, draw);
+      yS = layoutSets(xSets, yS, subColW, scale, spc, draw, images);
+      return Math.max(yF, yS);
     }
 
     function layoutRightColumn(y0, scale, spc, draw){
