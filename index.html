@@ -455,6 +455,7 @@ if('serviceWorker' in navigator){
      ver "guardado con aviso" mas abajo (wirePlayerCard) y la gestion de sesion (onAuthStateChange). */
   .conn-banner{ display:flex; align-items:center; gap:.6rem; background:var(--danger-bg); color:var(--danger);
     border-bottom:1px solid var(--danger); padding:.5rem .9rem; font-size:.82rem; font-weight:600; }
+  .conn-banner[hidden]{ display:none; }
   .conn-banner button{ border:1px solid var(--danger); background:transparent; color:var(--danger); font-size:.74rem;
     cursor:pointer; padding:.25rem .55rem; border-radius:6px; font-weight:700; white-space:nowrap; }
   .conn-banner button:hover{ background:var(--danger); color:#fff; }
