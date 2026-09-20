@@ -296,17 +296,17 @@ if('serviceWorker' in navigator){
   .btn-reorder:disabled:hover{ background:var(--surface-2); color:var(--text-dim); border-color:var(--border); }
 
   .src-table{ display:flex; flex-direction:column; gap:.5rem; }
-  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.2rem 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
-  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.2rem 3.6rem; gap:.6rem; align-items:start; }
+  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
+  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; align-items:start; }
   .src-row select, .src-row textarea{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; }
   .src-row textarea{ min-height:2.2rem; resize:vertical; line-height:1.35; overflow:hidden; }
   .src-row-actions{ display:flex; align-items:flex-start; gap:.3rem; }
   .src-row .btn-del{ align-self:start; }
   /* Casilla "Incluir en Plan de Partido" (ver 4.21/4.22 en el HANDOFF) — misma pastilla en
      Ideas clave, Fuentes de generación y Cómo atacarlas. */
-  .game-plan-check{ display:flex; align-items:center; gap:.3rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:var(--text-dim); white-space:nowrap; cursor:pointer; flex:none; }
-  .game-plan-check input[type="checkbox"]{ width:14px; height:14px; accent-color:var(--good); cursor:pointer; }
-  .src-row .game-plan-check{ padding-top:.4rem; }
+  .game-plan-text-field{ margin:0 0 1.1rem; }
+  .game-plan-text-field h4{ font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin-bottom:.4rem; }
+  .game-plan-text-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.5rem .6rem; font-size:.85rem; color:var(--text); line-height:1.45; resize:vertical; }
   @media (max-width: 800px){
     .src-table-head{ display:none; }
     .src-row{ grid-template-columns:1fr; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.6rem; }
@@ -779,7 +779,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="offSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="offSourceOptionsManager" data-options-manager="offSourceOptions"></div>
           <div class="src-table" id="offSourcesTable">
-            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Sistemas con los que nos pueden atacar</span><span>Plan</span><span></span></div>
+            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Sistemas con los que nos pueden atacar</span><span></span></div>
             <div id="offSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddOffSource">+ Añadir fuente</button>
           </div>
@@ -807,7 +807,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="defSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="defSourceOptionsManager" data-options-manager="defSourceOptions"></div>
           <div class="src-table" id="defSourcesTable">
-            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Sistemas para explotarlo</span><span>Plan</span><span></span></div>
+            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Sistemas para explotarlo</span><span></span></div>
             <div id="defSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddDefSource">+ Añadir fila</button>
           </div>
@@ -849,16 +849,37 @@ if('serviceWorker' in navigator){
 
       <section class="essence-block">
         <div class="essence-title offense"><span class="essence-bar"></span><h2>Plan de Partido</h2></div>
-        <p class="game-plan-hint">Reutiliza lo marcado con "Plan" en Ideas clave, Fuentes de generación y Cómo atacarlas de arriba, más las jugadoras a atacar. Aquí solo hace falta la fecha, los 3 sets defensivos y el botón de generar.</p>
+        <p class="game-plan-hint">Texto propio para las jugadoras, con su propio tono — independiente de las notas de trabajo del cuerpo técnico de arriba.</p>
         <div class="essence-card">
           <label class="game-plan-date-field"><span class="tb-label">Fecha / jornada del partido</span>
             <input type="text" data-teamfield="gamePlanDate" placeholder="Ej. Jornada 14 · 21/09/2026 · Pabellón Fuente de San Luis">
           </label>
+
+          <div class="game-plan-text-field">
+            <h4>Claves del partido</h4>
+            <textarea data-teamfield="gamePlanClaves" rows="4" placeholder="Las 3-4 ideas más importantes del partido, explicadas para las jugadoras."></textarea>
+          </div>
+
           <div class="game-plan-sets-head">
             <h4>Cómo les defendemos — nuestros 3 sets</h4>
             <span class="empty-hint" id="gamePlanNoSystemsHint" hidden>Sube primero el PDF en "Sistemas de juego" (arriba) para poder recortar los sets.</span>
           </div>
           <div id="gamePlanSetsList" class="game-plan-sets-list"></div>
+
+          <div class="game-plan-text-field">
+            <h4>Sus fuentes de generación</h4>
+            <textarea data-teamfield="gamePlanFuentes" rows="4" placeholder="Cómo genera puntos el rival, explicado para las jugadoras."></textarea>
+          </div>
+
+          <div class="game-plan-text-field">
+            <h4>A quién atacar</h4>
+            <textarea data-teamfield="gamePlanAttackNote" rows="3" placeholder="Nota para las jugadoras sobre a quién atacar (las jugadoras concretas se eligen arriba, en Jugadoras a atacar)."></textarea>
+          </div>
+
+          <div class="game-plan-text-field">
+            <h4>Cómo atacarlas</h4>
+            <textarea data-teamfield="gamePlanHowAttack" rows="4" placeholder="Cómo les vamos a atacar, explicado para las jugadoras."></textarea>
+          </div>
         </div>
         <div class="players-pdf-actions">
           <button class="btn-export" id="btnExportGamePlanPdf" type="button">Generar Plan de Partido</button>
@@ -4463,7 +4484,6 @@ if('serviceWorker' in navigator){
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
         '<textarea data-src-field="systems" rows="1" placeholder="Sistemas">' + esc(r.systems || '') + '</textarea>' +
-        '<label class="game-plan-check" title="Incluir esta fila en el Plan de Partido"><input type="checkbox" data-src-check' + (r.inGamePlan ? ' checked' : '') + (r.id ? '' : ' disabled') + '> Plan</label>' +
         '<div class="src-row-actions">' + reorderHtml +
           '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
         '</div>' +
@@ -4498,18 +4518,6 @@ if('serviceWorker' in navigator){
         var field = el.getAttribute('data-src-field');
         var patch = {}; patch[field] = el.value;
         ref.collection(collName).doc(id).update(patch).catch(function(err){ console.error('save src field', err); });
-      });
-    });
-    // Casilla "Incluir en Plan de Partido" (ver renderEssenceItems para el mismo patrón).
-    // Deshabilitada en la fila fantasma (sin id todavía) — no hay nada que marcar hasta que la
-    // fila exista de verdad.
-    container.querySelectorAll('[data-src-check]').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        var id = cb.closest('[data-src-id]').getAttribute('data-src-id');
-        if(!id) return;
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection(collName).doc(id).update({inGamePlan: cb.checked}).catch(function(err){ console.error('save src inGamePlan', err); });
       });
     });
     container.querySelectorAll('[data-src-del]').forEach(function(btn){
@@ -4648,7 +4656,6 @@ if('serviceWorker' in navigator){
       return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
         '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
-        '<label class="game-plan-check" title="Incluir esta idea clave en el Plan de Partido"><input type="checkbox" data-essence-check' + (it.inGamePlan ? ' checked' : '') + '> Plan</label>' +
         '<div class="item-reorder">' +
           '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
           '<button type="button" class="btn-reorder" data-item-down' + (idx === items.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
@@ -4663,17 +4670,6 @@ if('serviceWorker' in navigator){
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection(collName).doc(id).update({text: el.value}).catch(function(err){ console.error('save essence item', err); });
-      });
-    });
-    // Casilla "Incluir en Plan de Partido" (pedido de Marta, ver buildGamePlanDoc): mismo patrón
-    // que data-collective-check para la plantilla, un listener aparte porque es un checkbox
-    // (.checked) y no un campo de texto (.value) como el resto de [data-field] de arriba.
-    list.querySelectorAll('[data-essence-check]').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        var id = cb.closest('[data-id]').getAttribute('data-id');
-        var ref = currentRivalRef();
-        if(!ref) return;
-        ref.collection(collName).doc(id).update({inGamePlan: cb.checked}).catch(function(err){ console.error('save essence inGamePlan', err); });
       });
     });
     list.querySelectorAll('[data-item-del]').forEach(function(btn){
@@ -4999,10 +4995,11 @@ if('serviceWorker' in navigator){
   // los datos guardados en Supabase — el plan siempre se guarda/edita en español, y la traducción
   // es solo una copia usada al exportar el PDF en inglés.
   function gatherGamePlanContent(){
-    var keys = state.offEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'OFE', text: it.text}; })
-      .concat(state.defEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'DEF', text: it.text}; }));
-    var offSel = state.offSources.filter(function(r){ return r.inGamePlan; }).map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
-    var defSel = state.defSources.filter(function(r){ return r.inGamePlan; }).map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
+    // Los 4 apartados de texto (claves, fuentes, nota de a quién atacar, cómo atacarlas) son
+    // ahora texto propio del Plan de Partido (`rivals.game_plan_*`), escrito con su propio tono
+    // para las jugadoras — YA NO se recogen marcando "Plan" en Ideas clave/Fuentes de
+    // generación/Cómo atacarlas (esas casillas se han quitado, ver 4.26 del HANDOFF).
+    var r = state.rival || {};
     var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); }).map(function(s){
       return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
     });
@@ -5010,7 +5007,13 @@ if('serviceWorker' in navigator){
       var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
       return p ? {player: p, category: a.category} : null;
     }).filter(Boolean);
-    return {keys: keys, offSel: offSel, defSel: defSel, setsSorted: setsSorted, attackJoined: attackJoined};
+    return {
+      claves: r.gamePlanClaves || '',
+      fuentes: r.gamePlanFuentes || '',
+      attackNote: r.gamePlanAttackNote || '',
+      howAttack: r.gamePlanHowAttack || '',
+      setsSorted: setsSorted, attackJoined: attackJoined
+    };
   }
 
   function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition, content){
@@ -5069,8 +5072,8 @@ if('serviceWorker' in navigator){
     // Si se pasa `content` (por ejemplo, ya traducido al inglés) se usa tal cual; si no, se reúne
     // aquí mismo desde el estado en español, como antes.
     var gathered = content || gatherGamePlanContent();
-    var keys = gathered.keys, offSel = gathered.offSel, defSel = gathered.defSel,
-        setsSorted = gathered.setsSorted, attackJoined = gathered.attackJoined;
+    var claves = gathered.claves, fuentes = gathered.fuentes, attackNote = gathered.attackNote,
+        howAttack = gathered.howAttack, setsSorted = gathered.setsSorted, attackJoined = gathered.attackJoined;
 
     // Columna izquierda (defensa) más ancha que la derecha (ataque) — a petición de Marta, porque
     // la defensa (fuentes de generación + 3 sets) suele llevar mucho más contenido.
@@ -5087,87 +5090,32 @@ if('serviceWorker' in navigator){
     // vuelva a pasar el bug de antes (texto de varias líneas que solo avanzaba el cursor como si
     // fuera de una).
     // ---------------------------------------------------------------------
-    // En 2 columnas (ofensiva a la izquierda, defensiva a la derecha) en vez de una sola lista a
-    // todo el ancho — pedido de Marta tras ver el primer PDF: con una sola columna cada línea de
-    // texto corto dejaba la mitad de la hoja en blanco a su derecha, y además obligaba a las ideas
-    // ofensivas y defensivas a apilarse todas seguidas en vez de leerse en paralelo.
-    function layoutClaveColumn(x, y0, w, list, tagColor, scale, spc, draw){
-      var y = y0;
-      var kf = 7.6*scale, klh = 3.4*scale, ktf = Math.max(4.4, 5*scale), tagW = 8, tagH = 3.8, indent = 10, gap = 2.2*spc;
-      list.forEach(function(k){
-        doc.setFont('helvetica','normal'); doc.setFontSize(kf);
-        var lines = doc.splitTextToSize(k.text || '', w - indent - 2);
-        var rowH = Math.max(tagH, lines.length*klh);
-        if(draw){
-          roundRect(x, y + rowH/2 - tagH/2, tagW, tagH, 0.8, tintColor(tagColor, 0.8));
-          doc.setTextColor.apply(doc, shadeColor(tagColor, 0.2)); doc.setFont('helvetica','bold'); doc.setFontSize(ktf);
-          doc.text(k.tag, x+tagW/2, y + rowH/2 + ktf*0.32, {align:'center'});
-          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','normal'); doc.setFontSize(kf);
-          lines.forEach(function(line, li){ doc.text(line, x+indent, y + klh*0.85 + li*klh); });
+    // Los 4 apartados de texto del Plan de Partido (claves, fuentes, nota de a quién atacar y
+    // cómo atacarlas) son ahora texto libre escrito directamente para las jugadoras (ver 4.26 del
+    // HANDOFF) — así que se dibujan todos con esta misma función genérica: un párrafo, ajustado
+    // (wrap) al ancho disponible, con la altura real que ocupe (nunca solo la 1ª línea, para no
+    // repetir el bug de solapes de antes).
+    function layoutParagraph(x, y0, w, scale, spc, draw, text, emptyMsg){
+      var bf = 7.6*scale, blh = 3.4*scale;
+      if(!text || !text.trim()){
+        if(draw && emptyMsg){
+          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf);
+          doc.text(emptyMsg, x, y0+3);
         }
-        y += rowH + gap;
-      });
-      return y;
+        return y0 + 6;
+      }
+      doc.setFont('helvetica','normal'); doc.setFontSize(bf);
+      var lines = doc.splitTextToSize(text, w);
+      if(draw){
+        doc.setTextColor.apply(doc, ink);
+        lines.forEach(function(line, li){ doc.text(line, x, y0 + blh*0.85 + li*blh); });
+      }
+      return y0 + lines.length*blh + 2*spc;
     }
 
     function layoutClaves(y0, scale, spc, draw){
       var y = sectionLabel(margin, y0, fullW, L.gamePlanClavesTitle, accent, draw);
-      if(!keys.length){
-        if(draw){
-          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.4*scale);
-          doc.text(L.gamePlanClavesEmpty, margin, y+3);
-        }
-        return y + 6;
-      }
-      var clavesGap = 6;
-      var clavesColW = fullW/2 - clavesGap/2;
-      var clavesXOff = margin, clavesXDef = margin + clavesColW + clavesGap;
-      var offKeys = keys.filter(function(k){ return k.tag === 'OFE'; });
-      var defKeys = keys.filter(function(k){ return k.tag === 'DEF'; });
-      var yOff = layoutClaveColumn(clavesXOff, y, clavesColW, offKeys, accent, scale, spc, draw);
-      var yDef = layoutClaveColumn(clavesXDef, y, clavesColW, defKeys, darkAccent, scale, spc, draw);
-      return Math.max(yOff, yDef);
-    }
-
-    // Bloque de texto genérico: nombre en negrita + notas + "Sistema(s): ..." en cursiva, cada uno
-    // ajustado (wrap) al ancho disponible y con la altura real que ocupe (nunca solo la 1ª línea).
-    function layoutSourceList(x, y0, w, scale, spc, draw, list, emptyMsg, sysLabel, sysColor){
-      var y = y0;
-      var nf = 7.4*scale, nlh = 3.4*scale;
-      var bf = 7.0*scale, blh = 3.0*scale;
-      var sf = 6.6*scale, slh = 3.0*scale;
-      var gap = 3.0*spc;
-      if(!list.length){
-        if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf); doc.text(emptyMsg, x, y+3); }
-        return y + 6;
-      }
-      list.forEach(function(r){
-        if(draw){
-          doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(nf);
-          doc.text(r.source || '—', x, y + nlh*0.82);
-        }
-        y += nlh;
-        if(r.notes){
-          doc.setFont('helvetica','normal'); doc.setFontSize(bf);
-          var lines = doc.splitTextToSize(r.notes, w);
-          if(draw){
-            doc.setTextColor.apply(doc, dim);
-            lines.forEach(function(line, li){ doc.text(line, x, y + blh*0.8 + li*blh); });
-          }
-          y += lines.length*blh;
-        }
-        if(r.systems){
-          doc.setFont('helvetica','italic'); doc.setFontSize(sf);
-          var sLines = doc.splitTextToSize(sysLabel + r.systems, w);
-          if(draw){
-            doc.setTextColor.apply(doc, sysColor);
-            sLines.forEach(function(line, li){ doc.text(line, x, y + slh*0.8 + li*slh); });
-          }
-          y += sLines.length*slh;
-        }
-        y += gap;
-      });
-      return y;
+      return layoutParagraph(margin, y, fullW, scale, spc, draw, claves, L.gamePlanClavesEmpty);
     }
 
     // Los 3 sets, uno DEBAJO del otro (pedido explícito de Marta, antes iban los 3 en la misma
@@ -5266,7 +5214,7 @@ if('serviceWorker' in navigator){
       var subColW = (colWL - subGap) / 2;
       var xFuentes = colXL, xSets = colXL + subColW + subGap;
       var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw);
-      yF = layoutSourceList(xFuentes, yF, subColW, scale, spc, draw, offSel, L.gamePlanFuentesEmpty, L.gamePlanSystemsPrefixOff, darkAccent);
+      yF = layoutParagraph(xFuentes, yF, subColW, scale, spc, draw, fuentes, L.gamePlanFuentesEmpty);
       var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw);
       yS = layoutSets(xSets, yS, subColW, scale, spc, draw, images);
       return Math.max(yF, yS);
@@ -5276,8 +5224,13 @@ if('serviceWorker' in navigator){
       var y = sectionLabel(colXR, y0, colWR, L.gamePlanAttackTitle, good, draw);
       y = subLabel(colXR, y+2, L.gamePlanWhoAttackTitle, good, draw);
       y = layoutAttackPills(colXR, y, colWR, scale, draw);
+      // La nota de "a quién atacar" es opcional (las jugadoras concretas ya se eligen con las
+      // píldoras de arriba) — si está vacía no reserva hueco de más.
+      if(attackNote && attackNote.trim()){
+        y = layoutParagraph(colXR, y+1.5, colWR, scale, spc, draw, attackNote, '');
+      }
       y = subLabel(colXR, y+3, L.gamePlanHowAttackTitle, good, draw);
-      y = layoutSourceList(colXR, y, colWR, scale, spc, draw, defSel, L.gamePlanHowAttackEmpty, L.gamePlanSystemsPrefixDef, shadeColor(good, 0.15));
+      y = layoutParagraph(colXR, y, colWR, scale, spc, draw, howAttack, L.gamePlanHowAttackEmpty);
       return y;
     }
 
@@ -5410,8 +5363,8 @@ if('serviceWorker' in navigator){
     });
   }
 
-  // Reúne TODAS las cadenas traducibles del contenido del plan (ideas clave, fuentes/notas/sistemas
-  // ofensivos y defensivos, nombre/notas de los 3 sets) en un único array ordenado, las traduce de
+  // Reúne TODAS las cadenas traducibles del contenido del plan (claves, fuentes, nota de a quién
+  // atacar, cómo atacarlas, nombre/notas de los 3 sets) en un único array ordenado, las traduce de
   // una sola vez (una llamada, no una por campo — más rápido y gasta menos cuota) y reconstruye un
   // `content` nuevo con esos campos sustituidos. Los nombres de jugadoras (attackJoined) NO se
   // traducen, son nombres propios.
@@ -5419,19 +5372,15 @@ if('serviceWorker' in navigator){
     var texts = [];
     var refs = [];
     function push(obj, field){ texts.push(obj[field]); refs.push({obj: obj, field: field}); }
-    var keysCopy = content.keys.map(function(k){ return {tag: k.tag, text: k.text}; });
-    keysCopy.forEach(function(k){ push(k, 'text'); });
-    var offSelCopy = content.offSel.map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
-    offSelCopy.forEach(function(r){ push(r, 'source'); push(r, 'notes'); push(r, 'systems'); });
-    var defSelCopy = content.defSel.map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
-    defSelCopy.forEach(function(r){ push(r, 'source'); push(r, 'notes'); push(r, 'systems'); });
+    var wrap = { claves: content.claves, fuentes: content.fuentes, attackNote: content.attackNote, howAttack: content.howAttack };
+    push(wrap, 'claves'); push(wrap, 'fuentes'); push(wrap, 'attackNote'); push(wrap, 'howAttack');
     var setsCopy = content.setsSorted.map(function(s){
       return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
     });
     setsCopy.forEach(function(s){ push(s, 'name'); push(s, 'notes'); });
     return translateTexts(texts).then(function(translated){
       refs.forEach(function(ref, i){ ref.obj[ref.field] = translated[i]; });
-      return {keys: keysCopy, offSel: offSelCopy, defSel: defSelCopy, setsSorted: setsCopy, attackJoined: content.attackJoined};
+      return {claves: wrap.claves, fuentes: wrap.fuentes, attackNote: wrap.attackNote, howAttack: wrap.howAttack, setsSorted: setsCopy, attackJoined: content.attackJoined};
     });
   }
 
