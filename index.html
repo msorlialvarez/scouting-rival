@@ -427,7 +427,9 @@ if('serviceWorker' in navigator){
   .player-detail{ display:none; flex-direction:column; gap:.65rem; padding-top:.65rem; border-top:1px dashed var(--border); }
   .player-detail.open{ display:flex; }
   .player-field label{ font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim); display:block; margin-bottom:.25rem; }
-  .player-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.45rem .5rem; font-size:.82rem; line-height:1.4; min-height:3rem; resize:vertical; }
+  /* Alto automático (ver autoGrowTextarea): sin resize manual ni scroll interno, la celda
+     crece sola según las líneas que hagan falta. */
+  .player-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.45rem .5rem; font-size:.82rem; line-height:1.4; min-height:3rem; resize:none; overflow:hidden; }
   .player-defend textarea{ border-color:var(--accent); }
   /* "Informe" es el único campo que ven las jugadoras en sus informes — se marca en verde
      (mismo tono que "calidad"/verde de la app) para distinguirlo de un vistazo del resto,
@@ -1365,6 +1367,10 @@ if('serviceWorker' in navigator){
     var sel = info.roster ? card.querySelector('[data-roster-number]') : (info.field ? card.querySelector('[' + info.fieldAttr + '="' + info.field + '"]') : null);
     if(!sel) return;
     if(info.liveValue !== null && 'value' in sel) sel.value = info.liveValue;
+    // Si es un <textarea> de alto automático (ver autoGrowTextarea), recalcula el alto con el
+    // valor recién restaurado -- si no, un repintado a media escritura podía dejar el recuadro
+    // con el alto de ANTES de lo tecleado hasta el siguiente input.
+    if(sel.tagName === 'TEXTAREA' && typeof autoGrowTextarea === 'function') autoGrowTextarea(sel);
     sel.focus();
     if(info.selStart !== null && typeof sel.setSelectionRange === 'function'){
       try{ sel.setSelectionRange(info.selStart, info.selEnd); }catch(e){}
@@ -4122,6 +4128,14 @@ if('serviceWorker' in navigator){
         updateWithFeedback(ref, patch, input, input.getAttribute('placeholder') || field);
         if(field === 'threat'){ input.closest('.total-chip').className = 'total-chip total-' + val; }
       });
+    });
+
+    // Fortalezas / Qué queremos que pase y cómo defenderla / Informe: alto automático según
+    // el contenido, para no tener que arrastrar el borde cada vez que se escribe más de lo
+    // que cabe en las líneas iniciales.
+    card.querySelectorAll('.player-field textarea[data-field]').forEach(function(ta){
+      autoGrowTextarea(ta);
+      ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
     });
 
     card.querySelectorAll('[data-shoot]').forEach(function(btn){
