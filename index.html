@@ -846,6 +846,7 @@ if('serviceWorker' in navigator){
         </div>
         <div class="players-pdf-actions">
           <button class="btn-export" id="btnExportGamePlanPdf" type="button">Generar Plan de Partido</button>
+          <button class="btn-export btn-export-secondary" id="btnExportGamePlanPdfEn" type="button" title="Traduce automáticamente el Plan de Partido al inglés (para jugadoras que no hablan español)">Generar en inglés (auto)</button>
           <span class="export-error" id="gamePlanExportError"></span>
         </div>
       </section>
@@ -1036,7 +1037,23 @@ if('serviceWorker' in navigator){
       noName: 'Sin nombre',
       threatLevels: {alta:'ALTA', media:'MEDIA', baja:'BAJA'},
       shootLevels: {rojo:'ROJO', amarillo:'AMARILLO', verde:'VERDE'},
-      statLabels: {pts:'Pts/p', fgPct:'% T2', threePct:'% T3', ftPct:'% TL', reb:'Reb/p', ast:'Ast/p', to:'Pérd/p'}
+      statLabels: {pts:'Pts/p', fgPct:'% T2', threePct:'% T3', ftPct:'% TL', reb:'Reb/p', ast:'Ast/p', to:'Pérd/p'},
+      gamePlanPdfTitle: 'PLAN DE PARTIDO',
+      gamePlanClavesTitle: 'CLAVES DEL PARTIDO',
+      gamePlanClavesEmpty: 'No hay claves marcadas para el plan de partido.',
+      gamePlanDefendTitle: 'CÓMO LES DEFENDEMOS',
+      gamePlanFuentesTitle: 'SUS FUENTES DE GENERACIÓN',
+      gamePlanFuentesEmpty: 'Ninguna marcada con "Plan" en Fuentes de generación.',
+      gamePlanSetsTitle: 'NUESTROS 3 SETS',
+      gamePlanSetLabel: 'SET ',
+      gamePlanSinRecorte: 'Sin recorte',
+      gamePlanAttackTitle: 'CÓMO LES ATACAMOS',
+      gamePlanWhoAttackTitle: 'A QUIÉN ATACAR',
+      gamePlanWhoAttackEmpty: 'No hay jugadoras marcadas para atacar.',
+      gamePlanHowAttackTitle: 'CÓMO ATACARLAS',
+      gamePlanHowAttackEmpty: 'Ninguna marcada con "Plan" en Cómo atacarlas.',
+      gamePlanSystemsPrefixOff: 'Sistema(s): ',
+      gamePlanSystemsPrefixDef: 'Sistema: '
     },
     en: {
       dateLocale: 'en-GB',
@@ -1081,7 +1098,23 @@ if('serviceWorker' in navigator){
       noName: 'No name',
       threatLevels: {alta:'HIGH', media:'MEDIUM', baja:'LOW'},
       shootLevels: {rojo:'RED', amarillo:'YELLOW', verde:'GREEN'},
-      statLabels: {pts:'Pts/g', fgPct:'FG%', threePct:'3P%', ftPct:'FT%', reb:'Reb/g', ast:'Ast/g', to:'TO/g'}
+      statLabels: {pts:'Pts/g', fgPct:'FG%', threePct:'3P%', ftPct:'FT%', reb:'Reb/g', ast:'Ast/g', to:'TO/g'},
+      gamePlanPdfTitle: 'GAME PLAN',
+      gamePlanClavesTitle: 'KEYS TO THE GAME',
+      gamePlanClavesEmpty: 'No keys marked for the game plan.',
+      gamePlanDefendTitle: 'HOW WE DEFEND THEM',
+      gamePlanFuentesTitle: 'THEIR SCORING SOURCES',
+      gamePlanFuentesEmpty: 'None marked "Plan" in Scoring sources.',
+      gamePlanSetsTitle: 'OUR 3 SETS',
+      gamePlanSetLabel: 'SET ',
+      gamePlanSinRecorte: 'No crop selected',
+      gamePlanAttackTitle: 'HOW WE ATTACK THEM',
+      gamePlanWhoAttackTitle: 'WHO TO ATTACK',
+      gamePlanWhoAttackEmpty: 'No players marked to attack.',
+      gamePlanHowAttackTitle: 'HOW TO ATTACK THEM',
+      gamePlanHowAttackEmpty: 'None marked "Plan" in How to attack them.',
+      gamePlanSystemsPrefixOff: 'System(s): ',
+      gamePlanSystemsPrefixDef: 'System: '
     }
   };
   function tr(lang){ return I18N[lang] || I18N.es; }
@@ -2738,6 +2771,7 @@ if('serviceWorker' in navigator){
     $('#btnAddOffSource').addEventListener('click', function(){ addSrcRow('off'); });
     $('#btnAddDefSource').addEventListener('click', function(){ addSrcRow('def'); });
     $('#btnExportGamePlanPdf').addEventListener('click', exportGamePlanPdf);
+    $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanPdfTranslated);
     wireGamePlanCropModal();
     $all('[data-toggle-options]').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -4833,13 +4867,33 @@ if('serviceWorker' in navigator){
   // jugadoras de Scout Individual, reutilizado tal cual (drawPlayerFacingReport). A diferencia del
   // resto de builders de PDF de este archivo, esta función es ASÍNCRONA (devuelve una promesa)
   // porque las imágenes de los 3 sets hay que descargarlas y recortarlas antes de poder dibujarse.
-  function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition){
+  // Reúne todo el contenido "traducible" del Plan de Partido en un único objeto, separado de
+  // buildGamePlanDoc, para poder pedir una versión traducida (translateGamePlanContent) SIN tocar
+  // los datos guardados en Supabase — el plan siempre se guarda/edita en español, y la traducción
+  // es solo una copia usada al exportar el PDF en inglés.
+  function gatherGamePlanContent(){
+    var keys = state.offEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'OFE', text: it.text}; })
+      .concat(state.defEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'DEF', text: it.text}; }));
+    var offSel = state.offSources.filter(function(r){ return r.inGamePlan; }).map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
+    var defSel = state.defSources.filter(function(r){ return r.inGamePlan; }).map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
+    var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); }).map(function(s){
+      return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
+    });
+    var attackJoined = state.attackPlayers.map(function(a){
+      var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
+      return p ? {player: p, category: a.category} : null;
+    }).filter(Boolean);
+    return {keys: keys, offSel: offSel, defSel: defSel, setsSorted: setsSorted, attackJoined: attackJoined};
+  }
+
+  function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition, content){
     var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
     var pageW = doc.internal.pageSize.getWidth();
     var margin = 12;
     var ink = [20,23,28], dim = [91,98,112];
     var good = [31,138,95], warnC = [245,166,35];
     var darkAccent = [58,62,70];
+    var L = tr(lang);
 
     function roundRect(x,y,w,h,r,color){
       doc.setFillColor.apply(doc, color);
@@ -4879,21 +4933,17 @@ if('serviceWorker' in navigator){
     doc.setFont('helvetica','italic'); doc.setFontSize(9);
     doc.text(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · ') || '', titleX, 17);
     doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    doc.text('PLAN DE PARTIDO', pageW - margin, 12, {align:'right'});
+    doc.text(L.gamePlanPdfTitle, pageW - margin, 12, {align:'right'});
 
     var pageH = doc.internal.pageSize.getHeight();
     var fullW = pageW - margin*2;
 
     // ---- Contenido (independiente de la escala de letra: se calcula una sola vez) ----
-    var keys = state.offEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'OFE', text: it.text}; })
-      .concat(state.defEssenceItems.filter(function(it){ return it.inGamePlan; }).map(function(it){ return {tag:'DEF', text: it.text}; }));
-    var offSel = state.offSources.filter(function(r){ return r.inGamePlan; });
-    var defSel = state.defSources.filter(function(r){ return r.inGamePlan; });
-    var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); });
-    var attackJoined = state.attackPlayers.map(function(a){
-      var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-      return p ? {player: p, category: a.category} : null;
-    }).filter(Boolean);
+    // Si se pasa `content` (por ejemplo, ya traducido al inglés) se usa tal cual; si no, se reúne
+    // aquí mismo desde el estado en español, como antes.
+    var gathered = content || gatherGamePlanContent();
+    var keys = gathered.keys, offSel = gathered.offSel, defSel = gathered.defSel,
+        setsSorted = gathered.setsSorted, attackJoined = gathered.attackJoined;
 
     // Columna izquierda (defensa) más ancha que la derecha (ataque) — a petición de Marta, porque
     // la defensa (fuentes de generación + 3 sets) suele llevar mucho más contenido.
@@ -4934,11 +4984,11 @@ if('serviceWorker' in navigator){
     }
 
     function layoutClaves(y0, scale, spc, draw){
-      var y = sectionLabel(margin, y0, fullW, 'CLAVES DEL PARTIDO', accent, draw);
+      var y = sectionLabel(margin, y0, fullW, L.gamePlanClavesTitle, accent, draw);
       if(!keys.length){
         if(draw){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.4*scale);
-          doc.text('Marca ideas clave con la casilla "Plan" en Idea ofensiva/defensiva para que aparezcan aquí.', margin, y+3);
+          doc.text(L.gamePlanClavesEmpty, margin, y+3);
         }
         return y + 6;
       }
@@ -5029,7 +5079,7 @@ if('serviceWorker' in navigator){
             doc.rect(x+1, y+1, w-2, imgMaxH-2);
             if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
             doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(6*scale);
-            doc.text('Sin recorte', x+w/2, y+imgMaxH/2, {align:'center'});
+            doc.text(L.gamePlanSinRecorte, x+w/2, y+imgMaxH/2, {align:'center'});
             imgH = imgMaxH;
           }
         } else if(!img){
@@ -5040,7 +5090,7 @@ if('serviceWorker' in navigator){
         // centrados — pedido de Marta, el centrado no encajaba con el resto del texto.
         if(draw){
           doc.setTextColor.apply(doc, ink); doc.setFont('helvetica','bold'); doc.setFontSize(nameFont);
-          doc.text((s.name || ('SET '+(i+1))).toUpperCase(), x, y);
+          doc.text((s.name || (L.gamePlanSetLabel+(i+1))).toUpperCase(), x, y);
         }
         y += 1.8*spc;
         if(s.notes){
@@ -5059,7 +5109,7 @@ if('serviceWorker' in navigator){
 
     function layoutAttackPills(x0, y0, w, scale, draw){
       if(!attackJoined.length){
-        if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7*scale); doc.text('Ninguna jugadora marcada en "Jugadoras a atacar".', x0, y0+3); }
+        if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7*scale); doc.text(L.gamePlanWhoAttackEmpty, x0, y0+3); }
         return y0 + 6;
       }
       var pf = Math.max(5.6, 7*scale), rowH = 6.2*scale;
@@ -5084,23 +5134,23 @@ if('serviceWorker' in navigator){
     // la otra) — pedido de Marta tras ver el primer PDF: apiladas dejaban demasiado hueco en
     // blanco y hacían el documento mucho más largo de lo necesario.
     function layoutLeftColumn(y0, scale, spc, draw, images){
-      var y = sectionLabel(colXL, y0, colWL, 'CÓMO LES DEFENDEMOS', darkAccent, draw);
+      var y = sectionLabel(colXL, y0, colWL, L.gamePlanDefendTitle, darkAccent, draw);
       var subGap = 6;
       var subColW = (colWL - subGap) / 2;
       var xFuentes = colXL, xSets = colXL + subColW + subGap;
-      var yF = subLabel(xFuentes, y+2, 'SUS FUENTES DE GENERACIÓN', darkAccent, draw);
-      yF = layoutSourceList(xFuentes, yF, subColW, scale, spc, draw, offSel, 'Ninguna marcada con "Plan" en Fuentes de generación.', 'Sistema(s): ', darkAccent);
-      var yS = subLabel(xSets, y+2, 'NUESTROS 3 SETS', darkAccent, draw);
+      var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw);
+      yF = layoutSourceList(xFuentes, yF, subColW, scale, spc, draw, offSel, L.gamePlanFuentesEmpty, L.gamePlanSystemsPrefixOff, darkAccent);
+      var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw);
       yS = layoutSets(xSets, yS, subColW, scale, spc, draw, images);
       return Math.max(yF, yS);
     }
 
     function layoutRightColumn(y0, scale, spc, draw){
-      var y = sectionLabel(colXR, y0, colWR, 'CÓMO LES ATACAMOS', good, draw);
-      y = subLabel(colXR, y+2, 'A QUIÉN ATACAR', good, draw);
+      var y = sectionLabel(colXR, y0, colWR, L.gamePlanAttackTitle, good, draw);
+      y = subLabel(colXR, y+2, L.gamePlanWhoAttackTitle, good, draw);
       y = layoutAttackPills(colXR, y, colWR, scale, draw);
-      y = subLabel(colXR, y+3, 'CÓMO ATACARLAS', good, draw);
-      y = layoutSourceList(colXR, y, colWR, scale, spc, draw, defSel, 'Ninguna marcada con "Plan" en Cómo atacarlas.', 'Sistema: ', shadeColor(good, 0.15));
+      y = subLabel(colXR, y+3, L.gamePlanHowAttackTitle, good, draw);
+      y = layoutSourceList(colXR, y, colWR, scale, spc, draw, defSel, L.gamePlanHowAttackEmpty, L.gamePlanSystemsPrefixDef, shadeColor(good, 0.15));
       return y;
     }
 
@@ -5202,6 +5252,95 @@ if('serviceWorker' in navigator){
       if(err && err.code === 'declined') return;
       showGamePlanExportMsg('No se pudo generar el Plan de Partido.');
       console.error('export game plan pdf', err);
+    });
+  }
+
+  // ---------------- Plan de Partido en inglés (traducción automática con DeepL) ----------------
+  // El plan se escribe y se guarda SIEMPRE en español; esto solo genera, bajo demanda, una COPIA
+  // traducida en memoria para el PDF en inglés — nunca se sobrescribe lo guardado en Supabase.
+  // DeepL no admite llamadas directas desde el navegador (rechaza con CORS), así que la traducción
+  // pasa por una Supabase Edge Function ("translate-game-plan") que guarda la clave de la API en
+  // un secreto del servidor — ver supabase_functions_translate_game_plan.ts y el HANDOFF para el
+  // despliegue. Si esa función no está desplegada, el botón avisa con un mensaje claro en vez de
+  // fallar en silencio.
+  function translateTexts(texts){
+    // Se filtran los huecos vacíos antes de mandarlos a traducir (ahorra cuota y evita mandar
+    // cadenas vacías a la API), pero se reconstruye el array completo en el mismo orden/posiciones
+    // de entrada para que el llamador pueda volcar cada traducción en su sitio sin tener que llevar
+    // la cuenta de qué índices se saltaron.
+    var indexMap = [], toSend = [];
+    texts.forEach(function(t, i){
+      if(t != null && String(t).trim() !== ''){ indexMap.push(i); toSend.push(String(t)); }
+    });
+    if(!toSend.length) return Promise.resolve(texts.slice());
+    return supabaseClient.functions.invoke('translate-game-plan', {body: {texts: toSend, target_lang: 'EN'}}).then(function(res){
+      if(res.error) throw res.error;
+      var translations = res.data && res.data.translations;
+      if(!translations || translations.length !== toSend.length) throw new Error('Respuesta de traducción inesperada.');
+      var out = texts.slice();
+      indexMap.forEach(function(origIdx, sendIdx){ out[origIdx] = translations[sendIdx]; });
+      return out;
+    });
+  }
+
+  // Reúne TODAS las cadenas traducibles del contenido del plan (ideas clave, fuentes/notas/sistemas
+  // ofensivos y defensivos, nombre/notas de los 3 sets) en un único array ordenado, las traduce de
+  // una sola vez (una llamada, no una por campo — más rápido y gasta menos cuota) y reconstruye un
+  // `content` nuevo con esos campos sustituidos. Los nombres de jugadoras (attackJoined) NO se
+  // traducen, son nombres propios.
+  function translateGamePlanContent(content){
+    var texts = [];
+    var refs = [];
+    function push(obj, field){ texts.push(obj[field]); refs.push({obj: obj, field: field}); }
+    var keysCopy = content.keys.map(function(k){ return {tag: k.tag, text: k.text}; });
+    keysCopy.forEach(function(k){ push(k, 'text'); });
+    var offSelCopy = content.offSel.map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
+    offSelCopy.forEach(function(r){ push(r, 'source'); push(r, 'notes'); push(r, 'systems'); });
+    var defSelCopy = content.defSel.map(function(r){ return {source: r.source, notes: r.notes, systems: r.systems}; });
+    defSelCopy.forEach(function(r){ push(r, 'source'); push(r, 'notes'); push(r, 'systems'); });
+    var setsCopy = content.setsSorted.map(function(s){
+      return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
+    });
+    setsCopy.forEach(function(s){ push(s, 'name'); push(s, 'notes'); });
+    return translateTexts(texts).then(function(translated){
+      refs.forEach(function(ref, i){ ref.obj[ref.field] = translated[i]; });
+      return {keys: keysCopy, offSel: offSelCopy, defSel: defSelCopy, setsSorted: setsCopy, attackJoined: content.attackJoined};
+    });
+  }
+
+  function exportGamePlanPdfTranslated(){
+    var btn = $('#btnExportGamePlanPdfEn');
+    if(!btn) return;
+    if(!downloadsCap){ showGamePlanExportMsg('La exportación a PDF no está disponible en esta vista.'); return; }
+    if(!window.jspdf || !window.jspdf.jsPDF){ showGamePlanExportMsg('No se pudo cargar el generador de PDF. Revisa tu conexión y prueba de nuevo.'); return; }
+    if(!state.rival){ return; }
+    if(!supabaseClient || !supabaseClient.functions){ showGamePlanExportMsg('La traducción no está disponible en esta vista.'); return; }
+    var rival = state.rival;
+    var original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Traduciendo…';
+    var competition = state.exportCompetition || rivalCompetitions(rival)[0];
+    var content = gatherGamePlanContent();
+    translateGamePlanContent(content).then(function(translatedContent){
+      btn.textContent = 'Generando…';
+      return gatherCollectiveRosterJoined().then(function(rosterJoined){
+        var accent = hexToRgb(rival.color);
+        return buildGamePlanDoc(rival, rosterJoined, accent, 'en', competition, translatedContent);
+      });
+    }).then(function(doc){
+      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.pdf', data: doc.output('blob')});
+    }).then(function(){
+      btn.disabled = false; btn.textContent = original;
+    }).catch(function(err){
+      btn.disabled = false; btn.textContent = original;
+      if(err && err.code === 'declined') return;
+      console.error('export game plan pdf translated', err);
+      var msg = 'No se pudo traducir el Plan de Partido.';
+      if(err && (err.message === 'Failed to send a request to the Edge Function' || /not found|404/i.test(err.message || ''))){
+        msg = 'La traducción automática todavía no está activada (falta desplegar la función de traducción). Consulta el manual (HANDOFF).';
+      } else if(err && err.message){
+        msg = 'No se pudo traducir el Plan de Partido: ' + err.message;
+      }
+      showGamePlanExportMsg(msg);
     });
   }
 
