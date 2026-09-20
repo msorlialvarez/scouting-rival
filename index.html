@@ -4191,6 +4191,12 @@ if('serviceWorker' in navigator){
         card.querySelector('[data-detail]').classList.toggle('open', willOpen);
         card.querySelector('[data-toggle-expand]').textContent = willOpen ? 'Ocultar detalle ▲' : 'Ver detalle y estadísticas ▼';
         if(willOpen) subscribePlayerStats(playerId); else unsubscribePlayerStats(playerId);
+        // El alto automático de Fortalezas/Cómo defenderla/Informe (ver autoGrowTextarea) no se
+        // pudo calcular bien mientras el detalle estaba plegado (scrollHeight da 0 con
+        // display:none) -- al abrirlo, ahora sí está visible, así que se recalcula aquí.
+        if(willOpen){
+          card.querySelectorAll('.player-field textarea[data-field]').forEach(function(ta){ autoGrowTextarea(ta); });
+        }
       });
 
       card.querySelector('[data-open-profile]').addEventListener('click', function(){
@@ -4494,6 +4500,13 @@ if('serviceWorker' in navigator){
   // atacarlas" y en las notas de "jugadoras a atacar", para que nunca recorten texto de varias
   // líneas.
   function autoGrowTextarea(el){
+    // Si el propio campo o alguno de sus contenedores está oculto (display:none -- p. ej. el
+    // detalle plegado de una ficha de jugadora en Scout Colectivo, antes de pulsar "Ver
+    // detalle"), scrollHeight siempre da 0: fijar el alto aquí lo dejaría "atascado" en el
+    // mínimo hasta que se volviera a teclear algo. En ese caso no se toca el alto ahora --
+    // quien vuelve a mostrar el campo debe llamar a autoGrowTextarea() otra vez (ver el propio
+    // botón "Ver detalle").
+    if(el.offsetParent === null) return;
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
   }
