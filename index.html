@@ -450,6 +450,16 @@ if('serviceWorker' in navigator){
   .btn-export:hover{ background:var(--accent); color:var(--accent-ink); }
   .btn-export:disabled{ opacity:.6; cursor:default; background:transparent; color:var(--accent); }
   .export-error{ display:none; color:var(--danger); font-size:.68rem; flex-basis:100%; }
+  /* Aviso de conexion/sesion: se muestra encima de la app (sin taparla del todo ni destruir
+     nada de lo que hubiera en pantalla) cuando un guardado falla o la sesion se ha caducado —
+     ver "guardado con aviso" mas abajo (wirePlayerCard) y la gestion de sesion (onAuthStateChange). */
+  .conn-banner{ display:flex; align-items:center; gap:.6rem; background:var(--danger-bg); color:var(--danger);
+    border-bottom:1px solid var(--danger); padding:.5rem .9rem; font-size:.82rem; font-weight:600; }
+  .conn-banner button{ border:1px solid var(--danger); background:transparent; color:var(--danger); font-size:.74rem;
+    cursor:pointer; padding:.25rem .55rem; border-radius:6px; font-weight:700; white-space:nowrap; }
+  .conn-banner button:hover{ background:var(--danger); color:#fff; }
+  #connBannerDismiss{ margin-left:auto; border:none; padding:.1rem .4rem; }
+  .field-save-error{ outline:2px solid var(--danger) !important; outline-offset:1px; }
   .btn-del{ border:none; background:transparent; color:var(--text-dim); font-size:.72rem; cursor:pointer; padding:.3rem .5rem; border-radius:6px; font-weight:600; }
   .btn-del:hover{ background:var(--danger-bg); color:var(--danger); }
   .btn-del.confirm{ background:var(--danger-bg); color:var(--danger); }
@@ -532,6 +542,11 @@ if('serviceWorker' in navigator){
 </div>
 
 <div class="app" id="appShell" hidden>
+  <div class="conn-banner" id="connBanner" hidden>
+    <span id="connBannerMsg"></span>
+    <button type="button" id="connBannerRetry" hidden>Volver a conectar</button>
+    <button type="button" id="connBannerDismiss" title="Cerrar aviso">✕</button>
+  </div>
   <aside class="sidebar">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 64 64"><use href="#srLogoMark"></use></svg>
@@ -1011,7 +1026,7 @@ if('serviceWorker' in navigator){
       templeBadge: 'MENTAL: ',
       playerTypesLabel: 'Tipo de jugadora',
       playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
-      strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Cómo defenderla',
+      strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Qué queremos que pase y cómo defenderla',
       informe: 'Informe',
       noNotes: 'Sin notas.',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
@@ -1072,7 +1087,7 @@ if('serviceWorker' in navigator){
       templeBadge: 'COMPOSURE: ',
       playerTypesLabel: 'Player type',
       playerTypeNames: {generadora:'Playmaker', shooter:'Shooter finisher', paint:'Paint finisher', energia:'Energy/hustle'},
-      strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'How to defend her',
+      strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'What we want to happen and how to defend her',
       informe: 'Report',
       noNotes: 'No notes.',
       statsTitle: 'STATS BY COMPETITION',
@@ -1911,6 +1926,62 @@ if('serviceWorker' in navigator){
   }
 
   // ============================================================
+  // Aviso de conexion/guardado (banner no destructivo) + "guardado con aviso"
+  // ============================================================
+  // Antes, si un guardado fallaba (`ref.update(...).catch(...)`) solo se veia en la consola del
+  // navegador — nadie del cuerpo tecnico mira eso, asi que un fallo pasaba totalmente
+  // desapercibido y el cambio se perdia sin que nadie lo supiera. Esto se detecto porque en
+  // Safari, si la pestaña lleva un rato en segundo plano, el refresco automatico de la sesion
+  // (un temporizador) puede llegar tarde — Safari limita mucho los temporizadores en pestañas no
+  // activas, mas que Chrome — y para cuando alguien vuelve a escribir, el guardado falla con un
+  // error de sesion caducada, silencioso, y ese texto no llega nunca a guardarse.
+  var connBannerTimer = null;
+  function showConnBanner(msg, opts){
+    opts = opts || {};
+    var banner = $('#connBanner'); if(!banner) return;
+    $('#connBannerMsg').textContent = msg;
+    var retryBtn = $('#connBannerRetry');
+    retryBtn.hidden = !opts.onRetry;
+    retryBtn.onclick = opts.onRetry || null;
+    banner.hidden = false;
+    if(connBannerTimer){ clearTimeout(connBannerTimer); connBannerTimer = null; }
+    // Los avisos de un guardado puntual que falla se ocultan solos; los de sesion caducada (con
+    // boton de "Volver a conectar") se quedan fijos hasta que la persona actue.
+    if(!opts.sticky){ connBannerTimer = setTimeout(hideConnBanner, 7000); }
+  }
+  function hideConnBanner(){
+    var banner = $('#connBanner'); if(!banner) return;
+    banner.hidden = true;
+    if(connBannerTimer){ clearTimeout(connBannerTimer); connBannerTimer = null; }
+  }
+
+  // Envuelve cualquier `ref.update(patch)` para que, si falla, se vea claramente (banner arriba +
+  // borde rojo en el propio campo, hasta que se guarde bien) en vez de perderse en silencio.
+  // Reintenta una vez sola, por si ha sido un corte de red puntual (muy tipico al volver a una
+  // pestaña de Safari que ha estado un rato en segundo plano).
+  function updateWithFeedback(ref, patch, fieldEl, label){
+    function attempt(isRetry){
+      return ref.update(patch).then(function(){
+        if(fieldEl) fieldEl.classList.remove('field-save-error');
+      }).catch(function(err){
+        console.error('save field', label, err);
+        if(isRetry){
+          if(fieldEl) fieldEl.classList.add('field-save-error');
+          showConnBanner('No se ha podido guardar "' + label + '". Comprueba tu conexión — el texto sigue aquí, pero no se ha guardado todavía.');
+        } else {
+          return new Promise(function(resolve){ setTimeout(resolve, 1200); }).then(function(){ return attempt(true); });
+        }
+      });
+    }
+    return attempt(false);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var dismissBtn = document.getElementById('connBannerDismiss');
+    if(dismissBtn) dismissBtn.addEventListener('click', hideConnBanner);
+  });
+
+  // ============================================================
   // Autenticacion
   // ============================================================
   function showLoginScreen(message){
@@ -1931,6 +2002,7 @@ if('serviceWorker' in navigator){
       var emailEl = $('#userEmail');
       if(emailEl) emailEl.textContent = (session && session.user && session.user.email) || '';
       hideLoginScreen();
+      hideConnBanner();
       if(appStarted) return;
       appStarted = true;
       db = createSupabaseDb(supabaseClient);
@@ -1983,14 +2055,42 @@ if('serviceWorker' in navigator){
     initDb();
   });
 
+  // Si la sesion se cae MIENTRAS ya se estaba trabajando (el caso tipico: Safari ha tenido la
+  // pestaña en segundo plano un rato y su temporizador de refresco de sesion ha llegado tarde —
+  // Safari limita mucho los temporizadores en pestañas no activas, mas que Chrome), antes se
+  // pasaba a la pantalla de login de golpe. La pantalla de login no BORRA lo que hubiera escrito
+  // (solo se oculta con `hidden`), pero sí interrumpe de golpe y resulta confuso, y cualquier
+  // guardado que hubiera fallado justo antes se quedaba sin reintentar. Ahora, si ya se habia
+  // arrancado la app, se intenta refrescar la sesion en silencio una vez antes de interrumpir;
+  // si eso tambien falla, se avisa con un mensaje claro en vez de pasar sin mas a login.
   function initDb(){
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     supabaseClient.auth.onAuthStateChange(function(event, session){
-      if(session) startApp(session); else showLoginScreen();
+      if(session){ startApp(session); return; }
+      if(appStarted){
+        supabaseClient.auth.refreshSession().then(function(res){
+          if(res.data && res.data.session){ startApp(res.data.session); return; }
+          showConnBanner('Se ha perdido la sesión (por inactividad). Vuelve a iniciar sesión — lo que tengas sin guardar sigue en pantalla.', {sticky: true});
+          showLoginScreen();
+        }).catch(function(){
+          showConnBanner('Se ha perdido la sesión (por inactividad). Vuelve a iniciar sesión — lo que tengas sin guardar sigue en pantalla.', {sticky: true});
+          showLoginScreen();
+        });
+        return;
+      }
+      showLoginScreen();
     });
     supabaseClient.auth.getSession().then(function(res){
       if(res.data && res.data.session) startApp(res.data.session); else showLoginScreen();
     }).catch(function(){ showLoginScreen('No se pudo conectar. Revisa tu conexion a internet.'); });
+    // Al volver a una pestaña que llevaba un rato en segundo plano, refresca la sesion de forma
+    // proactiva en vez de esperar al temporizador interno — es justo el momento en el que Safari
+    // mas la habia podido retrasar, y es tambien cuando la persona va a retomar la escritura.
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'visible' && appStarted){
+        supabaseClient.auth.getSession().catch(function(){});
+      }
+    });
   }
 
   function settingsRef(){ return db.collection('settings').doc('app'); }
@@ -3800,6 +3900,21 @@ if('serviceWorker' in navigator){
     restoreFocus(container, focus);
   }
 
+  // "Qué queremos que pase" y "Cómo defenderla" eran dos campos separados; a petición de Marta se
+  // fusionan en un único espacio ("Qué queremos que pase y cómo defenderla"). Se sigue guardando
+  // en la columna `defend` que ya existía (no hace falta ninguna migración de base de datos), y
+  // la columna vieja `weaknesses` se conserva sin usar por si hiciera falta consultarla — mismo
+  // patrón que con "Sistemas de juego" (ver 4.8/4.22). Esta función calcula el texto combinado
+  // que se muestra y se guarda: si una jugadora ya tenía algo escrito en los dos campos, junta
+  // ambos (weaknesses primero, luego defend, separados por una línea en blanco) para no perder
+  // nada de lo que ya hubiera.
+  function mergedDefendText(p){
+    var a = (p.weaknesses || '').trim();
+    var b = (p.defend || '').trim();
+    if(a && b) return a + '\n\n' + b;
+    return a || b || '';
+  }
+
   // ---------------- Shared player card (roster context or profile context) ----------------
   function playerCardHtml(p, ctx){
     var mode = ctx.mode, isProfile = mode === 'profile';
@@ -3883,8 +3998,7 @@ if('serviceWorker' in navigator){
 
       '<div class="player-detail' + (open ? ' open' : '') + '" data-detail>' +
         '<div class="player-field"><label>Fortalezas</label><textarea data-field="strengths" placeholder="Ej. tiradora exterior, transición">' + esc(p.strengths) + '</textarea></div>' +
-        '<div class="player-field"><label>Qué queremos que pase</label><textarea data-field="weaknesses" placeholder="Relacionado con sus fortalezas. Ej. si es tiradora: que bote y vaya para dentro">' + esc(p.weaknesses) + '</textarea></div>' +
-        '<div class="player-field player-defend"><label>Cómo defenderla</label><textarea data-field="defend" placeholder="Instrucción concreta para banquillo">' + esc(p.defend) + '</textarea></div>' +
+        '<div class="player-field player-defend"><label>Qué queremos que pase y cómo defenderla</label><textarea data-field="defend" placeholder="Relacionado con sus fortalezas y la instrucción concreta para banquillo. Ej. si es tiradora: que bote y vaya para dentro">' + esc(mergedDefendText(p)) + '</textarea></div>' +
         '<div class="player-field player-informe"><label>Informe</label><textarea data-field="informe" placeholder="Lo que verán las jugadoras: este texto es el único que aparece en los informes para jugadoras (Informe Jugadoras, Portadas Individuales, PDF para jugadoras). En los informes de staff aparece todo lo de arriba menos esto.">' + esc(p.informe) + '</textarea></div>' +
         '<div class="stats-section">' +
           '<div class="stats-head"><span>Estadísticas por competición</span><button type="button" class="btn-mini-add" data-add-stat>+ Añadir competición</button></div>' +
@@ -3905,6 +4019,18 @@ if('serviceWorker' in navigator){
     if(!card) return;
     var ref = playerRef(playerId);
 
+    // Migración silenciosa, una sola vez por jugadora: si todavía tiene algo guardado en el
+    // campo viejo "weaknesses" (antes "Qué queremos que pase", ahora fusionado con "Cómo
+    // defenderla" en un único campo — ver mergedDefendText), lo junta de verdad en `defend` y
+    // vacía `weaknesses`, para que quede guardado en el sitio nuevo y no solo mostrado en
+    // pantalla. Como se vacía `weaknesses` al hacerlo, no vuelve a dispararse para esa jugadora
+    // (es idempotente: la próxima vez `p.weaknesses` ya estará vacío).
+    var pForMigration = state.allPlayers.find(function(pl){ return pl.id === playerId; });
+    if(pForMigration && pForMigration.weaknesses && pForMigration.weaknesses.trim()){
+      ref.update({defend: mergedDefendText(pForMigration), weaknesses: '', updatedAt: nowIso()})
+        .catch(function(err){ console.error('migrar weaknesses a defend', err); });
+    }
+
     card.querySelectorAll('[data-field]').forEach(function(input){
       input.addEventListener('change', function(){
         var field = input.getAttribute('data-field');
@@ -3917,7 +4043,7 @@ if('serviceWorker' in navigator){
           patch[field] = val;
         }
         patch.updatedAt = nowIso();
-        ref.update(patch).catch(function(err){ console.error('save player field', err); });
+        updateWithFeedback(ref, patch, input, input.getAttribute('placeholder') || field);
         if(field === 'threat'){ input.closest('.total-chip').className = 'total-chip total-' + val; }
       });
     });
@@ -4160,7 +4286,7 @@ if('serviceWorker' in navigator){
         '<div class="tnum mono">' + esc(item.number != null ? item.number : '—') + '</div>' +
         '<div class="tinfo">' +
           '<div class="tname">' + esc(fullName(p) || 'Sin nombre') + (p.position ? ' · ' + esc(p.position) : '') + '</div>' +
-          '<div class="tnote">' + esc(p.defend || p.weaknesses || 'Sin notas todavía.') + '</div>' +
+          '<div class="tnote">' + esc(mergedDefendText(p) || 'Sin notas todavía.') + '</div>' +
         '</div>' +
         '<div class="tbadges">' +
           '<span class="badge ' + badgeClass + '">' + esc(THREAT_LABEL[p.threat] || 'Amenaza total: media') + '</span>' +
@@ -7361,8 +7487,7 @@ if('serviceWorker' in navigator){
       for(var i=1;i<lines.length;i++){ ensureSpace(4.3); doc.text(lines[i], margin, y); y += 4.3; }
     }
     section(L.strengths, p.strengths);
-    section(L.weaknesses, p.weaknesses);
-    section(L.defend, p.defend);
+    section(L.defend, mergedDefendText(p));
 
     if(statsBlocks && statsBlocks.length){
       statsBlocks.forEach(function(block){
