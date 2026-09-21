@@ -1758,6 +1758,9 @@ if('serviceWorker' in navigator){
 
   function queueOfflineOp(entry){
     entry.qid = genUuid();
+    entry.failCount = 0; // ver flushOfflineQueue / 4.36 del HANDOFF: cuenta intentos de
+    // sincronización fallidos DE VERDAD (no por falta de conexión, sino con conexión y aun así
+    // rechazado) para poder avisar si un cambio concreto lleva un rato sin poder subirse.
     offlineQueue.push(entry);
     persistOfflineQueue();
     updateSyncStatusUI();
@@ -1781,6 +1784,12 @@ if('serviceWorker' in navigator){
     return q.then(function(res){ if(res.error) throw res.error; });
   }
 
+  // Cuántas veces seguidas puede fallar UN cambio concreto (con conexión de verdad, no solo por
+  // estar offline) antes de avisar con un aviso fijo en pantalla -- ver 4.36 del HANDOFF. Antes
+  // de esto, un fallo repetido (p.ej. el mismo bug de order_index de patch11, u otro problema de
+  // verdad con ese cambio) solo se veía en la consola del navegador, así que podía llevar
+  // reintentando en silencio indefinidamente sin que nadie del cuerpo técnico se enterara nunca.
+  var OFFLINE_ENTRY_STUCK_THRESHOLD = 3;
   var offlineFlushInProgress = false;
   // Reproduce la cola en el mismo orden en que se creó. Cada entrada se intenta por su cuenta:
   // si una falla (p.ej. porque de verdad hay un problema con ese cambio en concreto, no solo de
@@ -1798,7 +1807,8 @@ if('serviceWorker' in navigator){
         return performRemoteOp(entry).then(function(){
           succeededQids.push(entry.qid);
         }).catch(function(err){
-          console.error('offline: no se pudo sincronizar, se reintentará más tarde', entry, err);
+          entry.failCount = (entry.failCount || 0) + 1;
+          console.error('offline: no se pudo sincronizar (intento ' + entry.failCount + '), se reintentará más tarde', entry, err);
         });
       });
     });
@@ -1807,6 +1817,7 @@ if('serviceWorker' in navigator){
       persistOfflineQueue();
       offlineFlushInProgress = false;
       updateSyncStatusUI();
+      warnAboutStuckOfflineEntries();
       if(succeededQids.length){
         // Tras sincronizar, se refresca todo lo que esté en pantalla ahora mismo para converger
         // con la verdad del servidor (por si, mientras tanto, alguien más también cambió algo).
@@ -1815,6 +1826,42 @@ if('serviceWorker' in navigator){
         Object.keys(tables).forEach(function(t){ notifyTableListeners(t); });
       }
     });
+  }
+
+  // Intenta describir una entrada de la cola offline en términos que Marta reconozca (nombre de
+  // jugadora/rival + qué campo), para el aviso de "cambio atascado" de abajo. Si no encuentra un
+  // nombre (p.ej. es una tabla interna del Plan de Partido) se queda con algo genérico -- mejor
+  // un aviso menos concreto que ninguno.
+  function describeQueueEntry(entry){
+    var who = null;
+    if(entry.table === 'players' && entry.idValue){
+      var p = state.allPlayers.find(function(x){ return x.id === entry.idValue; });
+      if(p) who = ((p.firstName || '') + ' ' + (p.lastName || '')).trim() || 'una jugadora';
+    } else if(entry.table === 'rivals' && entry.idValue){
+      var r = state.rivals.find(function(x){ return x.id === entry.idValue; });
+      if(r) who = r.name || 'un rival';
+    }
+    var fieldsTxt = '';
+    if(entry.op === 'update' && entry.patch){
+      var names = Object.keys(entry.patch).filter(function(k){ return k !== 'updated_at'; }).map(toJsField);
+      if(names.length) fieldsTxt = ' (' + names.join(', ') + ')';
+    }
+    if(who) return who + fieldsTxt;
+    return (entry.op === 'delete' ? 'un borrado' : 'un cambio') + ' en ' + entry.table;
+  }
+
+  // Ver 4.36 del HANDOFF: si algún cambio de la cola offline lleva OFFLINE_ENTRY_STUCK_THRESHOLD
+  // intentos seguidos fallando con conexión de verdad (no por estar sin wifi -- eso ya lo cubre
+  // el aviso normal de "Sin conexión"), es que hay un problema real con ese cambio concreto y
+  // podría quedarse reintentando en silencio para siempre. Se avisa con un aviso fijo (no se
+  // oculta solo) en vez de dejarlo solo en la consola.
+  function warnAboutStuckOfflineEntries(){
+    var stuck = offlineQueue.filter(function(e){ return (e.failCount || 0) >= OFFLINE_ENTRY_STUCK_THRESHOLD; });
+    if(!stuck.length) return;
+    var msg = stuck.length === 1
+      ? ('Hay un cambio que no se consigue guardar en el servidor (sigue guardado en este dispositivo): ' + describeQueueEntry(stuck[0]) + '. Comprueba tu conexión y pulsa "Reintentar"; si sigue sin poder ser, avisa a IT.')
+      : ('Hay ' + stuck.length + ' cambios que no se consiguen guardar en el servidor (siguen guardados en este dispositivo). Comprueba tu conexión y pulsa "Reintentar"; si sigue sin poder ser, avisa a IT.');
+    showConnBanner(msg, { sticky: true, retryLabel: 'Reintentar', onRetry: function(){ hideConnBanner(); flushOfflineQueue(); } });
   }
 
   function updateSyncStatusUI(){
