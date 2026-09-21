@@ -805,6 +805,20 @@ if('serviceWorker' in navigator){
       <section class="essence-block">
         <div class="essence-title offense"><span class="essence-bar"></span><h2>Esencia ofensiva</h2></div>
 
+        <div class="essence-sub">
+          <h3>Quintetos iniciales de los últimos partidos</h3>
+          <span class="empty-hint" id="startingFivesNoRosterHint" hidden style="padding:0 0 .5rem;">Añade jugadoras a la plantilla de este rival para poder marcar sus quintetos.</span>
+        </div>
+        <div class="starting-fives" id="startingFivesList"></div>
+        <button type="button" class="link-btn" id="btnAddStartingFive">+ Añadir partido</button>
+
+        <div class="essence-sub">
+          <h3>Notas</h3>
+        </div>
+        <div class="essence-card">
+          <textarea data-teamfield="offEssenceNotes" rows="3" placeholder="Notas libres sobre la esencia ofensiva…"></textarea>
+        </div>
+
         <div class="essence-card">
           <div class="essence-items" id="offEssenceItems"></div>
           <div class="essence-items-add"><input type="text" placeholder="Añadir item…" data-essence-new="off"><button type="button" class="link-btn" data-essence-add="off">Añadir</button></div>
@@ -827,20 +841,6 @@ if('serviceWorker' in navigator){
         </div>
         <div class="advanced-stats-panel">
           <div id="offSystemsPdfFileBox"></div>
-        </div>
-
-        <div class="essence-sub">
-          <h3>Quintetos iniciales de los últimos partidos</h3>
-          <span class="empty-hint" id="startingFivesNoRosterHint" hidden style="padding:0 0 .5rem;">Añade jugadoras a la plantilla de este rival para poder marcar sus quintetos.</span>
-        </div>
-        <div class="starting-fives" id="startingFivesList"></div>
-        <button type="button" class="link-btn" id="btnAddStartingFive">+ Añadir partido</button>
-
-        <div class="essence-sub">
-          <h3>Notas</h3>
-        </div>
-        <div class="essence-card">
-          <textarea data-teamfield="offEssenceNotes" rows="3" placeholder="Notas libres sobre la esencia ofensiva…"></textarea>
         </div>
       </section>
 
@@ -6422,6 +6422,22 @@ if('serviceWorker' in navigator){
     var offAny = cfg.offItems || cfg.offSources || cfg.offSystems;
     if(offAny){
       drawSectionHeader(doc, cursor, accent, lang, L.offEssenceTitle, true);
+      // Quintetos iniciales de los últimos partidos + Notas (ver 4.39/4.40 del HANDOFF): van los
+      // primeros, justo debajo del título de Esencia ofensiva (a petición de Marta -- no después de
+      // Sistemas de juego). Siempre se imprimen junto al resto de Esencia ofensiva, sin casilla
+      // propia en "PDF para jugadoras" -- son apuntes internos del cuerpo técnico, no para las
+      // jugadoras (ese informe usa buildCollectivePlayersDoc, una función completamente aparte, así
+      // que esto no le afecta).
+      var startingFivesForPdf = state.startingFives.map(function(sf){
+        var names = (Array.isArray(sf.playerIds) ? sf.playerIds : []).map(function(pid){
+          var p = state.allPlayers.find(function(pl){ return pl.id === pid; });
+          return p ? fullName(p) : null;
+        }).filter(Boolean);
+        var head = (sf.label && sf.label.trim()) ? sf.label.trim() : L.noName;
+        return { text: names.length ? (head + ':  ' + names.join(', ')) : head };
+      });
+      drawItemsList(doc, cursor, accent, lang, L.startingFivesLabel, startingFivesForPdf);
+      drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes);
       if(cfg.offItems) drawItemsList(doc, cursor, accent, lang, L.keyItemsLabel, state.offEssenceItems);
       if(cfg.offSources){
         drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colOffSystemsCol]);
@@ -6443,20 +6459,6 @@ if('serviceWorker' in navigator){
         // página automático (ensureSpace) al no caber ahí, dejando una página en blanco de más.
         drawPageHeaderLabel(doc, cursor);
       }
-      // Quintetos iniciales de los últimos partidos + Notas (ver 4.39/4.40 del HANDOFF): siempre
-      // se imprimen junto al resto de Esencia ofensiva, sin casilla propia en "PDF para jugadoras"
-      // -- son apuntes internos del cuerpo técnico, no para las jugadoras (ese informe usa
-      // buildCollectivePlayersDoc, una función completamente aparte, así que esto no le afecta).
-      var startingFivesForPdf = state.startingFives.map(function(sf){
-        var names = (Array.isArray(sf.playerIds) ? sf.playerIds : []).map(function(pid){
-          var p = state.allPlayers.find(function(pl){ return pl.id === pid; });
-          return p ? fullName(p) : null;
-        }).filter(Boolean);
-        var head = (sf.label && sf.label.trim()) ? sf.label.trim() : L.noName;
-        return { text: names.length ? (head + ':  ' + names.join(', ')) : head };
-      });
-      drawItemsList(doc, cursor, accent, lang, L.startingFivesLabel, startingFivesForPdf);
-      drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes);
       drewAnySection = true;
     }
 
