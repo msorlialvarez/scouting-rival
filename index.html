@@ -313,6 +313,14 @@ if('serviceWorker' in navigator){
   .game-plan-claves-col h5{ font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin:0 0 .5rem; }
   .game-plan-claves-col.attack h5{ color:var(--accent); }
   .game-plan-claves-col.defense h5{ color:var(--good); }
+  /* Lista de jugadoras seleccionables en "A quién atacar" del Plan de Partido (ver 4.34 del
+     HANDOFF) -- misma info que Jugadoras a atacar de Esencia defensiva, en formato compacto. */
+  .game-plan-attack-players-list{ display:flex; flex-wrap:wrap; gap:.5rem; }
+  .game-plan-attack-player-chip{ display:flex; align-items:center; gap:.4rem; background:var(--surface-2); border:1px solid var(--border); border-radius:20px; padding:.3rem .7rem .3rem .4rem; font-size:.82rem; cursor:pointer; }
+  .game-plan-attack-player-chip .gpap-avatar{ width:1.4rem; height:1.4rem; border-radius:50%; background:var(--surface); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:.6rem; font-weight:700; color:var(--text-dim); flex:none; }
+  .game-plan-attack-player-chip .gpap-avatar img{ width:100%; height:100%; object-fit:cover; }
+  .game-plan-attack-player-chip.checked{ border-color:var(--accent); background:rgba(244,119,33,.08); }
+  .game-plan-attack-player-chip input{ margin:0; }
   /* "Sus fuentes de generación" y "Cómo atacarlas" del Plan de Partido (ver 4.27 del HANDOFF):
      lista de conceptos que se resaltan en el PDF + notas extra, mismo patrón de fila fantasma
      que .src-row pero con solo 2 campos (concepto, notas) en vez de 3. */
@@ -905,8 +913,10 @@ if('serviceWorker' in navigator){
 
           <div class="game-plan-text-field">
             <h4>A quién atacar</h4>
-            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">Las jugadoras concretas se eligen marcando "Plan" en "Jugadoras a atacar" (arriba, en Esencia defensiva). Aquí solo la nota que las acompaña.</p>
-            <textarea data-teamfield="gamePlanAttackNote" rows="3" placeholder="Nota para las jugadoras sobre a quién atacar."></textarea>
+            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">Marca aquí directamente qué jugadoras de "Jugadoras a atacar" (Esencia defensiva) entran en el Plan de Partido — es la misma casilla "Plan" de allí, solo que editable también desde aquí.</p>
+            <div id="gamePlanAttackPlayersList" class="game-plan-attack-players-list"></div>
+            <span class="empty-hint" id="gamePlanAttackPlayersEmpty" hidden>Todavía no hay jugadoras en "Jugadoras a atacar" (arriba, en Esencia defensiva). Añade alguna ahí primero.</span>
+            <textarea data-teamfield="gamePlanAttackNote" rows="3" placeholder="Nota para las jugadoras sobre a quién atacar." style="margin-top:.6rem;"></textarea>
           </div>
 
           <div class="game-plan-text-field">
@@ -4966,12 +4976,57 @@ if('serviceWorker' in navigator){
       }).join('');
       sel.value = '';
     });
+
+    renderGamePlanAttackPlayersList(joined);
   }
 
   function addAttackPlayer(playerId, category){
     var ref = currentRivalRef();
     if(!ref || !playerId) return;
     ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, notes: '', order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
+  }
+
+  // "A quién atacar" del Plan de Partido (ver 4.34 del HANDOFF): antes solo tenía una nota de
+  // texto libre y había que ir a Esencia defensiva a marcar la casilla "Plan" de cada jugadora en
+  // "Jugadoras a atacar" -- pedido de Marta, ahora esas mismas jugadoras (con la misma casilla
+  // "Plan", el mismo dato `inGamePlan`) se pueden marcar también aquí mismo, como chips
+  // seleccionables, sin tener que subir a Esencia defensiva. Recibe la lista `joined` ya calculada
+  // por renderAttackLists (jugadoras de attack_players con su ficha de jugadora resuelta) para no
+  // repetir esa consulta.
+  function renderGamePlanAttackPlayersList(joined){
+    var list = $('#gamePlanAttackPlayersList');
+    if(!list) return;
+    var emptyHint = $('#gamePlanAttackPlayersEmpty');
+    if(emptyHint) emptyHint.hidden = joined.length > 0;
+
+    var focus = document.activeElement;
+    var focusId = (focus && focus.closest && focus.closest('[data-gpap-id]')) ? focus.closest('[data-gpap-id]').getAttribute('data-gpap-id') : null;
+
+    list.innerHTML = joined.map(function(item){
+      var p = item.player;
+      var avatarInner = p.photo ? ('<img src="' + p.photo + '" alt="">') : esc(initialsFor(p));
+      return '<label class="game-plan-attack-player-chip' + (item.inGamePlan ? ' checked' : '') + '" data-gpap-id="' + esc(item.id) + '">' +
+        '<input type="checkbox" data-gpap-check' + (item.inGamePlan ? ' checked' : '') + '>' +
+        '<span class="gpap-avatar">' + avatarInner + '</span>' +
+        '<span>' + esc(fullName(p) || 'Sin nombre') + '</span>' +
+      '</label>';
+    }).join('');
+
+    list.querySelectorAll('[data-gpap-check]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var chip = cb.closest('[data-gpap-id]');
+        var id = chip.getAttribute('data-gpap-id');
+        chip.classList.toggle('checked', cb.checked);
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('defPlayersToAttack').doc(id).update({inGamePlan: cb.checked}).catch(function(err){ showGamePlanDataError(err, 'guardar la casilla "Plan"'); });
+      });
+    });
+
+    if(focusId){
+      var restored = list.querySelector('[data-gpap-id="' + CSS.escape(focusId) + '"] input');
+      if(restored) restored.focus();
+    }
   }
 
   // ---------------- Scout Colectivo: cuadro inicial de esencia ofensiva/defensiva (lista visual) ----------------
