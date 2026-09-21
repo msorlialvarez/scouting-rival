@@ -2854,11 +2854,24 @@ if('serviceWorker' in navigator){
 
   function createGlobalPlayerStandalone(){
     if(!db) return;
-    db.collection('players').add({
+    var newPlayerData = {
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
       threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
       strengths: '', weaknesses: '', defend: '', informe: '', updatedAt: nowIso()
-    }).then(function(ref){
+    };
+    db.collection('players').add(newPlayerData).then(function(ref){
+      // Bug reportado por Marta ("a un compañero se le queda en 'esta jugadora ya no existe'"):
+      // selectPlayerProfile busca la jugadora en state.allPlayers, que solo se actualiza cuando
+      // llega el aviso de la suscripción en tiempo real -- un round-trip aparte, que puede tardar
+      // (o con mala conexión, no llegar a tiempo). Sin esto, la ficha recién creada dependía por
+      // completo de esa carrera: a veces llegaba a tiempo (y aparecía después de un instante) y a
+      // veces no (y se quedaba en el aviso de "ya no existe" para siempre, aunque sí se hubiera
+      // creado bien en Supabase). Añadiéndola aquí mismo a la caché local, el perfil se pinta ya
+      // en el momento sin depender de esa notificación -- cuando la suscripción real llegue más
+      // tarde, sustituye el array entero por el real, así que no hay riesgo de duplicados.
+      if(!state.allPlayers.some(function(p){ return p.id === ref.id; })){
+        state.allPlayers.push(Object.assign({id: ref.id}, newPlayerData));
+      }
       selectPlayerProfile(ref.id);
       setTimeout(function(){ var i = $('#profileView [data-field="firstName"]'); if(i){ i.focus(); i.select(); } }, 150);
     }).catch(function(err){ console.error('create player', err); });
@@ -3139,11 +3152,20 @@ if('serviceWorker' in navigator){
     if(!db) return;
     var rivalRef = currentRivalRef();
     if(!rivalRef) return;
-    db.collection('players').add({
+    var newPlayerData = {
       firstName: 'Nueva', lastName: 'Jugadora', photo: '', position: '', hand: '', height: null,
       threat: 'media', shootThreat: 'amarillo', clutch: 'amarillo', temple: 'amarillo', playerTypes: [],
       strengths: '', weaknesses: '', defend: '', informe: '', updatedAt: nowIso()
-    }).then(function(ref){
+    };
+    db.collection('players').add(newPlayerData).then(function(ref){
+      // Inyectamos la jugadora en la caché local de inmediato: el .add() no
+      // actualiza state.allPlayers (eso lo hace el canal realtime aparte,
+      // de forma asíncrona e independiente), así que sin esto el perfil
+      // podía mostrar "Esta jugadora ya no existe." hasta que llegara el
+      // evento realtime.
+      if(!state.allPlayers.some(function(p){ return p.id === ref.id; })){
+        state.allPlayers.push(Object.assign({id: ref.id}, newPlayerData));
+      }
       return rivalRef.collection('roster').add({ playerId: ref.id, number: 0, addedAt: nowIso() }).then(function(){ return ref.id; });
     }).then(function(newId){
       closeAddPicker();
@@ -6002,7 +6024,15 @@ if('serviceWorker' in navigator){
 
     var defAny = cfg.defItems || cfg.defSources || cfg.defSpecial || cfg.attackPlayers;
     if(defAny){
-      if(drewAnySection) cursor.y += SECTION_GAP_MAIN;
+      // Si la página ya viene "en blanco" (cursor.y todavía en el valor que deja
+      // drawPageHeaderLabel justo tras un salto de página -- p. ej. justo después del salto
+      // reservado para el PDF de sistemas de juego, ver arriba), no se añade el hueco extra -- si
+      // no, "Esencia defensiva" empezaba con un espacio en blanco de sobra antes del recuadro rojo
+      // (pedido de Marta: la página tiene que empezar con el recuadro). Se mira la posición del
+      // cursor en vez de guardar un "recién empezada" aparte, porque así sigue siendo correcto
+      // aunque la página ya tuviera algo dibujado encima (un salto de página a mitad de una tabla,
+      // por ejemplo, sí necesita el hueco normal).
+      if(drewAnySection && cursor.y > 22) cursor.y += SECTION_GAP_MAIN;
       drawSectionHeader(doc, cursor, accent, lang, L.defEssenceTitle, true);
       if(cfg.defItems) drawItemsList(doc, cursor, accent, lang, L.keyItemsLabel, state.defEssenceItems);
       if(cfg.defSources){
@@ -6011,24 +6041,37 @@ if('serviceWorker' in navigator){
       }
       if(cfg.defSpecial) drawNotesBox(doc, cursor, accent, lang, L.defSpecialDefensesLabel, rival.defSpecialDefenses);
       if(cfg.attackPlayers){
-        var qualityPlayers = state.attackPlayers.filter(function(a){ return a.category === 'calidad'; })
-          .map(function(a){ return state.allPlayers.find(function(pl){ return pl.id === a.playerId; }); }).filter(Boolean);
-        var wearPlayers = state.attackPlayers.filter(function(a){ return a.category === 'desgaste'; })
-          .map(function(a){ return state.allPlayers.find(function(pl){ return pl.id === a.playerId; }); }).filter(Boolean);
-        drawAttackPlayersSection(doc, cursor, lang, qualityPlayers, wearPlayers);
+        // Se lleva también la nota de cada jugadora (a.notes), no solo su nombre -- pedido de
+        // Marta, antes se perdía al quedarse solo con el objeto `player`.
+        var attackItemsFor = function(category){
+          return state.attackPlayers.filter(function(a){ return a.category === category; })
+            .map(function(a){
+              var pl = state.allPlayers.find(function(p){ return p.id === a.playerId; });
+              return pl ? { player: pl, notes: a.notes } : null;
+            }).filter(Boolean);
+        };
+        drawAttackPlayersSection(doc, cursor, lang, attackItemsFor('calidad'), attackItemsFor('desgaste'));
       }
       drewAnySection = true;
     }
 
     if(cfg.playerSheets){
-      if(drewAnySection) cursor.y += SECTION_GAP_MAIN;
+      // La plantilla siempre empieza en página nueva (pedido de Marta), venga de donde venga --
+      // antes solo saltaba de página si hacía falta por espacio, y a veces "Plantilla" quedaba a
+      // mitad de la misma página que "Esencia defensiva".
+      if(drewAnySection){ doc.addPage(); drawPageHeaderLabel(doc, cursor); }
       drawSectionHeader(doc, cursor, accent, lang, L.roster, true);
       drawRosterTable(doc, cursor, rosterJoined, accent, lang);
+      // Espacio de separación extra antes de las fichas de jugadora (pedido de Marta: que no
+      // parezca que la tabla-resumen y la primera ficha están pegadas). SUBSECTION_GAP ya se
+      // añadió al final de drawRosterTable; esto es aire de más, solo aquí.
+      cursor.y += SECTION_GAP_MAIN - SUBSECTION_GAP;
 
-      // Justo al acabar la tabla-resumen, las jugadoras completas con toda la info, con el mismo
-      // estilo que el informe jugadoras de Scout Individual (drawPlayerFacingCard, más abajo) —
-      // sin empezar en una hoja nueva: se sigue rellenando la página actual y solo se salta de
-      // página cuando ya no cabe una fila más, igual que el resto de tablas de este informe.
+      // Justo al acabar la tabla-resumen (+ el hueco de arriba), las jugadoras completas con toda
+      // la info, con el mismo estilo que el informe jugadoras de Scout Individual
+      // (drawPlayerFacingCard, más abajo) — sin empezar en una hoja nueva: se sigue rellenando la
+      // página actual y solo se salta de página cuando ya no cabe una fila más, igual que el resto
+      // de tablas de este informe.
       if(rosterJoined.length){
         cursor.headerLabel = baseHeaderLabel + '  —  ' + L.playerSheetsLabel;
         var sortedForCards = rosterJoined.slice().sort(function(a,b){
@@ -6040,9 +6083,10 @@ if('serviceWorker' in navigator){
         var cardMargin = 16, cardColGap = 8;
         var cardColW = (210 - cardMargin*2 - cardColGap) / 2;
         var cardColX = [cardMargin, cardMargin + cardColW + cardColGap];
-        // 32 (antes 28): el nombre pasó a tener su propia línea (ver drawPlayerFacingCard), así
-        // que la tarjeta necesita 4mm más de alto para no perder ninguna línea del párrafo.
-        var cardRowH = 32;
+        // 36 (antes 32): el párrafo de fortalezas/cómo defenderla pasó de 3 a 4 líneas (pedido de
+        // Marta -- es para el staff, no pasa nada si hay más letra), así que la tarjeta necesita
+        // más alto para no perder ninguna línea ni pisar la tabla de estadísticas de debajo.
+        var cardRowH = 36;
         var cardY = [cursor.y, cursor.y];
         sortedForCards.forEach(function(item, idx){
           var col = idx % 2;
@@ -7152,14 +7196,12 @@ if('serviceWorker' in navigator){
       // (antes iban aquí fortalezas / qué queremos que pase / cómo defenderla — esos tres campos
       // son ahora solo para los informes de staff, pedido explícito de Marta). Se muestra como
       // lista (un punto por idea, ver splitReportItems) en vez de un párrafo seguido -- más fácil
-      // de leer de un vistazo (pedido de Marta). ----
-      var noteAreaTop = statsY + statsLineH + (statsBlock && statsBlock.competition ? 0.36 : 0.18);
+      // de leer de un vistazo (pedido de Marta). Sin etiqueta ("REPORT") y con menos hueco antes
+      // del recuadro -- a petición de Marta, que veía ahí un espacio en blanco de sobra. ----
+      var noteAreaTop = statsY + statsLineH + (statsBlock && statsBlock.competition ? 0.22 : 0.1);
       var noteAreaBottom = Hin - 0.16;
       var noteAvail = Math.max(noteAreaBottom - noteAreaTop, 0.6);
-      // Etiqueta ("REPORT") más discreta -- menos alto reservado para ella (CARD_LABEL_H) y letra
-      // más pequeña (ver LABEL_FONT_SIZE) -- para dejar más hueco a la letra de la lista, que
-      // sale más grande, y más separación entre puntos (BULLET_GAP), a petición de Marta.
-      var CARD_CHROME = 0.24, CARD_LABEL_H = 0.15, LABEL_FONT_SIZE = 9.5;
+      var CARD_CHROME = 0.18, CARD_LABEL_H = 0.1;
       var BULLET_INDENT = 0.2, BULLET_GAP = 0.11;
       var noteFullWidthPx = IN(cW - 0.28);
       var reportItems = splitReportItems(p.informe);
@@ -7188,12 +7230,9 @@ if('serviceWorker' in navigator){
       if(!fitted) fitted = bestSoFar;
       var noteSlack = Math.max(noteAvail - fitted.total, 0);
       var noteY = noteAreaTop + Math.min(noteSlack / 2, 0.5);
-      function drawNoteCard(x, y, w, h, label, color, wrappedItems){
+      function drawNoteCard(x, y, w, h, color, wrappedItems){
         roundRect(ctx, x, y, w, h, 0.08, '#FAFAFA');
         rect(ctx, x, y, 0.06, h, color);
-        ctx.fillStyle = color;
-        setFont(ctx, PT(LABEL_FONT_SIZE), {bold:true, italic:false});
-        ctx.fillText(label.toUpperCase(), IN(x + 0.2), IN(y + 0.08));
         setFont(ctx, PT(fitted.fontSize), {italic:false});
         var ly = y + CARD_LABEL_H + 0.05;
         var textX = x + 0.2 + (hasBullets ? BULLET_INDENT : 0);
@@ -7207,7 +7246,7 @@ if('serviceWorker' in navigator){
           if(hasBullets && idx < wrappedItems.length - 1) ly += BULLET_GAP;
         });
       }
-      drawNoteCard(cx0, noteY, cW, fitted.fullCardH, L.informe, accentDeepHex, fitted.wrappedItems);
+      drawNoteCard(cx0, noteY, cW, fitted.fullCardH, accentDeepHex, fitted.wrappedItems);
     }
 
     var sorted = rosterJoined.slice().sort(function(a,b){
@@ -7559,7 +7598,10 @@ if('serviceWorker' in navigator){
     cursor.y += 6;
   }
 
-  // "Jugadoras a atacar": two simple columns, calidad defensiva / desgaste.
+  // "Jugadoras a atacar": calidad defensiva / desgaste, cada jugadora con su nota (pedido de
+  // Marta -- antes solo salía el nombre). Al llevar notas de longitud variable, cada grupo se
+  // dibuja como una lista de un único ancho (en vez de las dos columnas de antes, donde una fila
+  // con nota larga en una jugadora habría desajustado la fila vecina de la otra columna).
   function drawAttackPlayersSection(doc, cursor, lang, qualityList, wearList){
     var L = tr(lang);
     var pageW = 210, margin = 16;
@@ -7570,13 +7612,6 @@ if('serviceWorker' in navigator){
     doc.text(L.attackPlayersLabel.toUpperCase(), margin, cursor.y);
     cursor.y += 6;
 
-    var colW = (pageW - margin*2 - 8) / 2;
-    ensureSpace(doc, cursor, 6);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
-    doc.setTextColor.apply(doc, good); doc.text(L.attackQualityLabel.toUpperCase(), margin, cursor.y);
-    doc.setTextColor.apply(doc, warn); doc.text(L.attackWearLabel.toUpperCase(), margin + colW + 8, cursor.y);
-    cursor.y += 5.5;
-
     if(!qualityList.length && !wearList.length){
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, dim);
       doc.text(L.noNotes, margin, cursor.y);
@@ -7584,16 +7619,39 @@ if('serviceWorker' in navigator){
       return;
     }
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    var rowH = 5.5, maxRows = Math.max(qualityList.length, wearList.length);
-    for(var i = 0; i < maxRows; i++){
-      ensureSpace(doc, cursor, rowH);
-      doc.setTextColor.apply(doc, ink);
-      if(qualityList[i]) doc.text('• ' + (fullName(qualityList[i]) || L.noName), margin, cursor.y);
-      if(wearList[i]) doc.text('• ' + (fullName(wearList[i]) || L.noName), margin + colW + 8, cursor.y);
-      cursor.y += rowH;
+    var maxW = pageW - margin*2 - 6;
+    function drawGroup(label, color, list){
+      if(!list.length) return;
+      ensureSpace(doc, cursor, 6);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+      doc.setTextColor.apply(doc, color);
+      doc.text(label.toUpperCase(), margin, cursor.y);
+      cursor.y += 5.5;
+
+      list.forEach(function(it){
+        var name = fullName(it.player) || L.noName;
+        var notes = (it.notes || '').trim();
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+        var nameLines = doc.splitTextToSize(name, maxW);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        var noteLines = notes ? doc.splitTextToSize(notes, maxW) : [];
+        var rowH = Math.max(6, (nameLines.length * 4.6) + (noteLines.length * 4.2) + 1.5);
+        ensureSpace(doc, cursor, rowH);
+        doc.setFillColor.apply(doc, color);
+        doc.circle(margin + 1, cursor.y - 1.3, 1, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor.apply(doc, ink);
+        nameLines.forEach(function(line, li){ doc.text(line, margin + 5, cursor.y + li*4.6); });
+        var noteY = cursor.y + nameLines.length*4.6;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, dim);
+        noteLines.forEach(function(line, li){ doc.text(line, margin + 5, noteY + li*4.2); });
+        cursor.y += rowH;
+      });
+      cursor.y += SUBSECTION_GAP * 0.6;
     }
-    cursor.y += SUBSECTION_GAP;
+
+    drawGroup(L.attackQualityLabel, good, qualityList);
+    drawGroup(L.attackWearLabel, warn, wearList);
+    cursor.y += SUBSECTION_GAP * 0.4;
   }
 
   // Layout-only box for a "one PDF per rival" section (Estadística avanzada, y ahora también
@@ -7725,6 +7783,12 @@ if('serviceWorker' in navigator){
     doc.setDrawColor(224,224,224);
     doc.line(margin, 15, pageW - margin, 15);
     cursor.y = 20;
+    // Sin este reset, todo lo que se dibujara justo después de un salto de página heredaba la
+    // negrita de esta etiqueta (jsPDF no restaura la fuente sola al cambiar de página) -- se veía
+    // sobre todo en tablas que siguen escribiendo fila a fila tras el salto (fuentes de
+    // generación, cómo atacarlas, jugadoras a atacar): la parte de arriba salía en letra normal y,
+    // justo tras el salto de página, se pasaba a negrita sin que nadie la hubiera pedido.
+    doc.setFont('helvetica', 'normal');
   }
 
   // Compact per-player block: photo + name/badges on one row, then the three notes and any
@@ -8201,10 +8265,10 @@ if('serviceWorker' in navigator){
     var contentW = pageW - margin*2;
     // Lista de puntos (un punto por idea, ver splitReportItems) en vez de un párrafo seguido —
     // más fácil de leer de un vistazo (pedido de Marta).
-    // Etiqueta ("INFORME") más discreta y letra de la lista más grande y con más separación
-    // entre puntos, a petición de Marta.
-    var CONTENT_LABEL_SIZE = 8, CONTENT_BODY_SIZE = 10, CONTENT_LINE_H = 5;
-    function contentCard(title, color, body){
+    // Sin etiqueta ("INFORME") -- a petición de Marta, que veía ahí un espacio en blanco de
+    // sobra -- letra de la lista grande y con separación entre puntos.
+    var CONTENT_BODY_SIZE = 10, CONTENT_LINE_H = 5;
+    function contentCard(color, body){
       doc.setFont('helvetica', 'normal'); doc.setFontSize(CONTENT_BODY_SIZE);
       var items = splitReportItems(body);
       var hasBullets = items.length > 0;
@@ -8214,17 +8278,14 @@ if('serviceWorker' in navigator){
       var bulletGap = hasBullets ? 2.6 : 0;
       var totalLines = 0;
       wrappedItems.forEach(function(ls){ totalLines += ls.length; });
-      var cardH = 10.5 + totalLines*CONTENT_LINE_H + Math.max(wrappedItems.length - 1, 0) * bulletGap;
+      var cardH = 6.5 + totalLines*CONTENT_LINE_H + Math.max(wrappedItems.length - 1, 0) * bulletGap;
       if(y + cardH > pageH - 16){ doc.addPage(); y = 20; }
       doc.setFillColor.apply(doc, tintColor(color, 0.92));
       doc.roundedRect(margin, y, contentW, cardH, 3, 3, 'F');
       doc.setFillColor.apply(doc, color);
       doc.roundedRect(margin, y, 3.4, cardH, 1.7, 1.7, 'F');
-      doc.setTextColor.apply(doc, shadeColor(color, 0.3));
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(CONTENT_LABEL_SIZE);
-      doc.text(title.toUpperCase(), margin + 9, y + 6);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(CONTENT_BODY_SIZE);
-      var ly = y + 12.5;
+      var ly = y + 6.5;
       wrappedItems.forEach(function(lines, idx){
         lines.forEach(function(line, li){
           if(hasBullets && li === 0){
@@ -8242,7 +8303,7 @@ if('serviceWorker' in navigator){
     // "PDF para jugadoras": solo el apartado "Informe" (texto pensado para que lo lean las
     // jugadoras), nunca fortalezas/qué queremos que pase/cómo defenderla — esos son para staff
     // (pedido explícito de Marta). Antes se mostraban esos tres campos en vez de este.
-    contentCard(L.informe, accent, p.informe);
+    contentCard(accent, p.informe);
 
     if(statsBlocks && statsBlocks.length){
       if(y + 10 > pageH - 16){ doc.addPage(); y = 20; }
@@ -8782,19 +8843,21 @@ if('serviceWorker' in navigator){
     rx -= starsW;
     importanceMarks(rx, badgeY - 0.3, p.threat);
 
+    // 4 líneas (antes 3) y letra más pequeña -- pedido de Marta: es para el staff, mejor que
+    // quepa más texto de fortalezas/cómo defenderla aunque la letra sea más chica.
     var paraText = [(p.strengths || '').trim(), (p.defend || '').trim()].filter(Boolean).join('  ·  ') || '—';
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8);
     doc.setTextColor.apply(doc, textDim);
-    var paraLines = wrapCapped(paraText, rowW, 3);
+    var paraLines = wrapCapped(paraText, rowW, 4);
     paraLines.forEach(function(line, li){
       var isLast = li === paraLines.length - 1;
-      var ly = rowY + 11.8 + li * 3.3;
+      var ly = rowY + 11.8 + li * 2.9;
       if(isLast) doc.text(line, tx, ly);
       else doc.text(line, tx, ly, {maxWidth: rowW, align: 'justify'});
     });
 
     var statsBlock = pickStatsForExport(item.stats, competition);
-    var tableY = rowY + 21.3;
+    var tableY = rowY + 23.5;
     var tableHeaderH = 3.0, tableValueH = 5.2;
     var tableX = tx, tableW = rowW;
     var colW2 = tableW / STAT_COLS.length;
@@ -8812,7 +8875,10 @@ if('serviceWorker' in navigator){
     if(statsBlock){
       STAT_COLS.forEach(function(c, i){
         var v = c.get(statsBlock);
-        var txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v));
+        // Sin decimales (pedido de Marta): redondeado al entero más cercano, incluidos los
+        // porcentajes.
+        var num = (v === undefined || v === null || v === '') ? null : Number(v);
+        var txt = (num === null || isNaN(num)) ? '—' : (Math.round(num) + (c.pct ? '%' : ''));
         doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
       });
     } else {
