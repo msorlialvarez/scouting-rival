@@ -237,6 +237,7 @@ if('serviceWorker' in navigator){
   .game-plan-sets-list{ display:grid; grid-template-columns:repeat(3, 1fr); gap:.8rem; }
   @media (max-width: 900px){ .game-plan-sets-list{ grid-template-columns:1fr; } }
   .game-plan-set-card{ background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:.7rem; display:flex; flex-direction:column; gap:.5rem; }
+  .game-plan-set-stale{ margin:0; font-size:.74rem; line-height:1.35; color:var(--warn); background:rgba(245,166,35,.12); border-radius:6px; padding:.35rem .5rem; }
   .game-plan-set-card input[type="text"]{ background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; font-weight:700; }
   .game-plan-set-card textarea{ background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:.4rem .5rem; font-size:.8rem; color:var(--text); width:100%; min-height:3.4rem; resize:vertical; }
   .game-plan-set-thumb{ width:100%; aspect-ratio:16/10; background:var(--surface); border:1px dashed var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--text-dim); font-size:.72rem; text-align:center; padding:.3rem; }
@@ -306,6 +307,12 @@ if('serviceWorker' in navigator){
   .game-plan-text-field h4{ font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin-bottom:.4rem; }
   .game-plan-text-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.5rem .6rem; font-size:.85rem; color:var(--text); line-height:1.45; resize:vertical; }
   .game-plan-text-field .empty-hint{ font-size:.78rem; padding:.2rem 0; }
+  /* "Claves del partido" en 2 columnas Ataque/Defensa -- mismo patrón de grid que .attack-players. */
+  .game-plan-claves-cols{ display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  @media (max-width: 800px){ .game-plan-claves-cols{ grid-template-columns:1fr; } }
+  .game-plan-claves-col h5{ font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin:0 0 .5rem; }
+  .game-plan-claves-col.attack h5{ color:var(--accent); }
+  .game-plan-claves-col.defense h5{ color:var(--good); }
   /* "Sus fuentes de generación" y "Cómo atacarlas" del Plan de Partido (ver 4.27 del HANDOFF):
      lista de conceptos que se resaltan en el PDF + notas extra, mismo patrón de fila fantasma
      que .src-row pero con solo 2 campos (concepto, notas) en vez de 3. */
@@ -860,6 +867,7 @@ if('serviceWorker' in navigator){
       <section class="essence-block">
         <div class="essence-title offense"><span class="essence-bar"></span><h2>Plan de Partido</h2></div>
         <p class="game-plan-hint">Texto propio para las jugadoras, con su propio tono — independiente de las notas de trabajo del cuerpo técnico de arriba.</p>
+        <span class="export-error" id="gamePlanDataError" style="display:none;"></span>
         <div class="essence-card">
           <label class="game-plan-date-field"><span class="tb-label">Fecha / jornada del partido</span>
             <input type="text" data-teamfield="gamePlanDate" placeholder="Ej. Jornada 14 · 21/09/2026 · Pabellón Fuente de San Luis">
@@ -867,8 +875,18 @@ if('serviceWorker' in navigator){
 
           <div class="game-plan-text-field">
             <h4>Claves del partido</h4>
-            <div class="essence-items" id="gamePlanClavesItemsList"></div>
-            <div class="essence-items-add"><input type="text" placeholder="Añadir clave…" id="gamePlanClavesNewInput"><button type="button" class="link-btn" id="gamePlanClavesAddBtn">Añadir</button></div>
+            <div class="game-plan-claves-cols">
+              <div class="game-plan-claves-col attack">
+                <h5>Ataque</h5>
+                <div class="essence-items" id="gamePlanClavesAtaqueList"></div>
+                <div class="essence-items-add"><input type="text" placeholder="Añadir clave de ataque…" data-claves-input="ataque"><button type="button" class="link-btn" data-claves-add="ataque">Añadir</button></div>
+              </div>
+              <div class="game-plan-claves-col defense">
+                <h5>Defensa</h5>
+                <div class="essence-items" id="gamePlanClavesDefensaList"></div>
+                <div class="essence-items-add"><input type="text" placeholder="Añadir clave de defensa…" data-claves-input="defensa"><button type="button" class="link-btn" data-claves-add="defensa">Añadir</button></div>
+              </div>
+            </div>
           </div>
 
           <div class="game-plan-sets-head">
@@ -1066,6 +1084,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Tipo de jugadora',
       playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
       strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Qué queremos que pase y cómo defenderla',
+      cardStrengthsLabel: 'Fortalezas:', cardDefendLabel: 'Cómo defenderla:',
       informe: 'Informe',
       noNotes: 'Sin notas.',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
@@ -1095,6 +1114,7 @@ if('serviceWorker' in navigator){
       gamePlanPdfTitle: 'PLAN DE PARTIDO',
       gamePlanClavesTitle: 'CLAVES DEL PARTIDO',
       gamePlanClavesEmpty: 'No hay claves marcadas para el plan de partido.',
+      gamePlanClavesAttackLabel: 'ATAQUE', gamePlanClavesDefenseLabel: 'DEFENSA',
       gamePlanDefendTitle: 'CÓMO LES DEFENDEMOS',
       gamePlanFuentesTitle: 'SUS FUENTES DE GENERACIÓN',
       gamePlanFuentesEmpty: 'Ninguna marcada con "Plan" en Fuentes de generación.',
@@ -1127,6 +1147,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Player type',
       playerTypeNames: {generadora:'Playmaker', shooter:'Shooter finisher', paint:'Paint finisher', energia:'Energy/hustle'},
       strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'What we want to happen and how to defend her',
+      cardStrengthsLabel: 'Strengths:', cardDefendLabel: 'How to defend her:',
       informe: 'Report',
       noNotes: 'No notes.',
       statsTitle: 'STATS BY COMPETITION',
@@ -1156,6 +1177,7 @@ if('serviceWorker' in navigator){
       gamePlanPdfTitle: 'GAME PLAN',
       gamePlanClavesTitle: 'KEYS TO THE GAME',
       gamePlanClavesEmpty: 'No keys marked for the game plan.',
+      gamePlanClavesAttackLabel: 'OFFENSE', gamePlanClavesDefenseLabel: 'DEFENSE',
       gamePlanDefendTitle: 'HOW WE DEFEND THEM',
       gamePlanFuentesTitle: 'THEIR SCORING SOURCES',
       gamePlanFuentesEmpty: 'None marked "Plan" in Scoring sources.',
@@ -2983,19 +3005,21 @@ if('serviceWorker' in navigator){
     $('#btnAddDefSource').addEventListener('click', function(){ addSrcRow('def'); });
     $('#btnAddGamePlanFuentes').addEventListener('click', function(){ addGamePlanConceptRow('gamePlanFuentesItems'); });
     $('#btnAddGamePlanHowAttack').addEventListener('click', function(){ addGamePlanConceptRow('gamePlanHowAttackItems'); });
-    (function(){
-      var input = $('#gamePlanClavesNewInput'), btn = $('#gamePlanClavesAddBtn');
-      if(input && btn){
-        function doAdd(){
-          var val = (input.value || '').trim();
-          if(!val) return;
-          addGamePlanClaveItem(val);
-          input.value = '';
-        }
-        input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); doAdd(); } });
-        btn.addEventListener('click', doAdd);
+    // "Claves del partido" en 2 columnas Ataque/Defensa (ver 4.33 del HANDOFF): un input + botón
+    // por columna, cada uno guarda con su propia category.
+    ['ataque', 'defensa'].forEach(function(category){
+      var input = document.querySelector('[data-claves-input="' + category + '"]');
+      var btn = document.querySelector('[data-claves-add="' + category + '"]');
+      if(!input || !btn) return;
+      function doAdd(){
+        var val = (input.value || '').trim();
+        if(!val) return;
+        addGamePlanClaveItem(val, category);
+        input.value = '';
       }
-    })();
+      input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); doAdd(); } });
+      btn.addEventListener('click', doAdd);
+    });
     $('#btnExportGamePlanPdf').addEventListener('click', exportGamePlanPdf);
     $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanPdfTranslated);
     wireGamePlanCropModal();
@@ -4681,6 +4705,22 @@ if('serviceWorker' in navigator){
     ref.collection(kind + 'Sources').add({source: '', notes: '', systems: '', order: Date.now()}).catch(function(err){ console.error('add src row', err); });
   }
 
+  // Antes, si guardar/añadir/borrar algo del Plan de Partido fallaba (por ejemplo porque a la
+  // base de datos todavía le faltaba alguna tabla o columna de las que añade
+  // supabase_schema_patch11.sql / patch12.sql) el error solo se veía en la consola del navegador
+  // -- nadie del cuerpo técnico mira eso, así que el intento de guardar parecía "no hacer nada" y
+  // no había forma de saber por qué. Mismo patrón que attackNotesError (más abajo, en Jugadoras a
+  // atacar) pero compartido por todo el Plan de Partido.
+  function showGamePlanDataError(err, action){
+    console.error('game plan data error (' + action + ')', err);
+    var el = $('#gamePlanDataError');
+    if(!el) return;
+    el.textContent = 'No se pudo ' + action + '. Si el problema persiste, puede que falte ejecutar en Supabase supabase_schema_patch11.sql y/o supabase_schema_patch12.sql (revisa con IT).';
+    el.style.display = 'block';
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(function(){ el.style.display = 'none'; }, 9000);
+  }
+
   // ---------------- Plan de Partido: "Sus fuentes de generación" y "Cómo atacarlas" ----------------
   // Mismo patrón de fila fantasma que renderSrcTable (una fila vacía y editable cuando todavía no
   // hay ninguna, que se crea de verdad al primer campo tocado), pero con solo 2 campos: un
@@ -4730,12 +4770,12 @@ if('serviceWorker' in navigator){
         if(!id){
           var data = { concept: '', notes: '', order: Date.now() };
           row.querySelectorAll('[data-cn-field]').forEach(function(f){ data[f.getAttribute('data-cn-field')] = f.value; });
-          ref.collection(collKey).add(data).catch(function(err){ console.error('add game plan concept row', err); });
+          ref.collection(collKey).add(data).catch(function(err){ showGamePlanDataError(err, 'añadir el concepto'); });
           return;
         }
         var field = el.getAttribute('data-cn-field');
         var patch = {}; patch[field] = el.value;
-        ref.collection(collKey).doc(id).update(patch).catch(function(err){ console.error('save game plan concept field', err); });
+        ref.collection(collKey).doc(id).update(patch).catch(function(err){ showGamePlanDataError(err, 'guardar el concepto'); });
       });
     });
     container.querySelectorAll('[data-cn-del]').forEach(function(btn){
@@ -4749,7 +4789,7 @@ if('serviceWorker' in navigator){
         }
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection(collKey).doc(id).delete().catch(function(err){ console.error('delete game plan concept row', err); });
+        ref.collection(collKey).doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'eliminar el concepto'); });
       });
     });
     restoreFocus(container, focus);
@@ -4760,17 +4800,25 @@ if('serviceWorker' in navigator){
   function addGamePlanConceptRow(collKey){
     var ref = currentRivalRef();
     if(!ref) return;
-    ref.collection(collKey).add({concept: '', notes: '', order: Date.now()}).catch(function(err){ console.error('add game plan concept row', err); });
+    ref.collection(collKey).add({concept: '', notes: '', order: Date.now()}).catch(function(err){ showGamePlanDataError(err, 'añadir el concepto'); });
   }
 
   // ---------------- Plan de Partido: "Claves del partido" ----------------
-  // Lista de items que van sumándose, igual que Ideas clave (renderEssenceItems) pero SIN
-  // distinción ofensiva/defensiva — a petición de Marta, ambas van juntas en un único apartado
-  // (el reparto en 2 columnas es solo visual, al construir el PDF, ver layoutClaves).
-  function renderGamePlanClavesItems(){
-    var list = $('#gamePlanClavesItemsList');
+  // Lista de items que van sumándose, igual que Ideas clave (renderEssenceItems), pero repartidos
+  // en 2 columnas de verdad -- Ataque / Defensa -- según pidió Marta (antes había un único
+  // apartado y el reparto en 2 columnas del PDF era solo visual/por cantidad, sin distinguir
+  // ataque de defensa; ver 4.33 del HANDOFF). El campo nuevo `category` ('ataque'|'defensa') se
+  // guarda en game_plan_claves_items (supabase_schema_patch12.sql) -- los items antiguos, creados
+  // antes de este cambio, no tienen `category` todavía: se tratan como 'ataque' por defecto (ver
+  // claveCategory) para que no desaparezcan de la vista.
+  function claveCategory(it){
+    return it.category === 'defensa' ? 'defensa' : 'ataque';
+  }
+
+  function renderGamePlanClaveColumn(category, containerId){
+    var list = $('#' + containerId);
     if(!list) return;
-    var items = state.gamePlanClavesItems;
+    var items = state.gamePlanClavesItems.filter(function(it){ return claveCategory(it) === category; });
     if(!items.length){ list.innerHTML = ''; return; }
 
     var focus = captureFocus(list);
@@ -4791,7 +4839,7 @@ if('serviceWorker' in navigator){
         var id = el.closest('[data-id]').getAttribute('data-id');
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection('gamePlanClavesItems').doc(id).update({text: el.value}).catch(function(err){ console.error('save game plan clave item', err); });
+        ref.collection('gamePlanClavesItems').doc(id).update({text: el.value}).catch(function(err){ showGamePlanDataError(err, 'guardar la clave'); });
       });
     });
     list.querySelectorAll('[data-item-del]').forEach(function(btn){
@@ -4799,7 +4847,7 @@ if('serviceWorker' in navigator){
         var id = btn.closest('[data-id]').getAttribute('data-id');
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection('gamePlanClavesItems').doc(id).delete().catch(function(err){ console.error('delete game plan clave item', err); });
+        ref.collection('gamePlanClavesItems').doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'quitar la clave'); });
       });
     });
     list.querySelectorAll('[data-item-up]').forEach(function(btn, idx){
@@ -4811,10 +4859,16 @@ if('serviceWorker' in navigator){
     restoreFocus(list, focus);
   }
 
-  function addGamePlanClaveItem(text){
+  function renderGamePlanClavesItems(){
+    renderGamePlanClaveColumn('ataque', 'gamePlanClavesAtaqueList');
+    renderGamePlanClaveColumn('defensa', 'gamePlanClavesDefensaList');
+  }
+
+  function addGamePlanClaveItem(text, category){
     var ref = currentRivalRef();
     if(!ref || !text) return;
-    ref.collection('gamePlanClavesItems').add({text: text, order: Date.now()}).catch(function(err){ console.error('add game plan clave item', err); });
+    ref.collection('gamePlanClavesItems').add({text: text, category: (category === 'defensa' ? 'defensa' : 'ataque'), order: Date.now()})
+      .catch(function(err){ showGamePlanDataError(err, 'añadir la clave'); });
   }
 
   function renderAttackLists(){
@@ -4869,7 +4923,7 @@ if('serviceWorker' in navigator){
         var id = cb.closest('[data-attack-id]').getAttribute('data-attack-id');
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection('defPlayersToAttack').doc(id).update({inGamePlan: cb.checked}).catch(function(err){ console.error('save attack inGamePlan', err); });
+        ref.collection('defPlayersToAttack').doc(id).update({inGamePlan: cb.checked}).catch(function(err){ showGamePlanDataError(err, 'guardar la casilla "Plan"'); });
       });
     });
     $all('#collectiveView [data-attack-field]').forEach(function(ta){
@@ -5011,13 +5065,23 @@ if('serviceWorker' in navigator){
     var sets = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0) - (b.orderIndex||0); });
     if(!sets.length){ list.innerHTML = ''; return; }
 
+    // Aviso si el PDF de "Sistemas de juego" se ha reemplazado por otro DESPUÉS de haberse hecho
+    // este recorte (pedido de Marta: "si cambiamos el pdf se puede liar ahí" -- ver 4.33 del
+    // HANDOFF). El recorte sigue siendo el mismo rectángulo de página que antes, pero ese
+    // rectángulo puede corresponder ahora a contenido distinto si el PDF nuevo tiene las páginas
+    // en otro orden -- mejor avisar que mostrarlo en silencio como si nada hubiera cambiado.
+    var currentPdfUpdatedAt = (state.offSystemsPdfMeta && state.offSystemsPdfMeta.updatedAt) || null;
+
     var focus = captureFocus(list);
     list.innerHTML = sets.map(function(s){
       var hasCrop = s.pdfPage != null && s.cropW != null;
+      var isStale = hasCrop && s.pdfSourceUpdatedAt && currentPdfUpdatedAt && s.pdfSourceUpdatedAt !== currentPdfUpdatedAt;
       var thumbHtml = hasCrop ? '<span>Página ' + esc(s.pdfPage) + ' · recorte guardado</span>' : '<span>Sin recorte todavía.</span>';
+      var staleHtml = isStale ? '<p class="game-plan-set-stale">⚠ El PDF de Sistemas de juego ha cambiado desde que se hizo este recorte — revísalo.</p>' : '';
       return '<div class="game-plan-set-card" data-set-id="' + esc(s.id) + '">' +
         '<input type="text" data-set-field="name" value="' + esc(s.name || '') + '" placeholder="Nombre del set">' +
         '<div class="game-plan-set-thumb" data-set-thumb>' + thumbHtml + '</div>' +
+        staleHtml +
         '<textarea data-set-field="notes" rows="2" placeholder="Notas">' + esc(s.notes || '') + '</textarea>' +
         '<div class="game-plan-set-actions">' +
           '<button type="button" class="btn-mini-add" data-set-crop-btn' + (hasSystemsPdf ? '' : ' disabled') + '>' + (hasCrop ? 'Cambiar recorte' : 'Elegir recorte') + '</button>' +
@@ -5035,7 +5099,7 @@ if('serviceWorker' in navigator){
         var ref = currentRivalRef();
         if(!ref) return;
         var patch = {}; patch[el.getAttribute('data-set-field')] = el.value;
-        ref.collection('gamePlanSets').doc(id).update(patch).catch(function(err){ console.error('save game plan set', err); });
+        ref.collection('gamePlanSets').doc(id).update(patch).catch(function(err){ showGamePlanDataError(err, 'guardar el set'); });
       });
     });
     list.querySelectorAll('[data-set-crop-btn]').forEach(function(btn){
@@ -5238,7 +5302,7 @@ if('serviceWorker' in navigator){
       var ref = currentRivalRef();
       if(!ref || !id) return;
       ref.collection('gamePlanSets').doc(id).update({pdfPage: null, cropX: null, cropY: null, cropW: null, cropH: null})
-        .catch(function(err){ console.error('clear game plan crop', err); });
+        .catch(function(err){ showGamePlanDataError(err, 'quitar el recorte'); });
       closeGamePlanCrop();
     });
     $('#btnCropSave').addEventListener('click', function(){
@@ -5251,8 +5315,13 @@ if('serviceWorker' in navigator){
       var id = st.setId;
       var ref = currentRivalRef();
       if(!ref || !id) return;
-      ref.collection('gamePlanSets').doc(id).update({pdfPage: st.pageNum, cropX: frac.x, cropY: frac.y, cropW: frac.w, cropH: frac.h})
-        .catch(function(err){ console.error('save game plan crop', err); });
+      // Se guarda con qué versión del PDF de "Sistemas de juego" se hizo este recorte (ver 4.33
+      // del HANDOFF) -- si ese PDF se reemplaza más adelante, renderGamePlanSets lo detecta
+      // comparando este valor con state.offSystemsPdfMeta.updatedAt y avisa en pantalla, en vez de
+      // mostrar en silencio un recorte que ya no corresponde a la página/contenido de antes.
+      var pdfSourceUpdatedAt = (state.offSystemsPdfMeta && state.offSystemsPdfMeta.updatedAt) || null;
+      ref.collection('gamePlanSets').doc(id).update({pdfPage: st.pageNum, cropX: frac.x, cropY: frac.y, cropW: frac.w, cropH: frac.h, pdfSourceUpdatedAt: pdfSourceUpdatedAt})
+        .catch(function(err){ showGamePlanDataError(err, 'guardar el recorte'); });
       closeGamePlanCrop();
     });
   }
@@ -5281,7 +5350,7 @@ if('serviceWorker' in navigator){
     // clave); "Sus fuentes de generación" y "Cómo atacarlas" son listas de concepto+notas; "A
     // quién atacar" son las jugadoras de "Jugadoras a atacar" marcadas con "Plan" + una nota.
     var r = state.rival || {};
-    var clavesItems = state.gamePlanClavesItems.map(function(it){ return {text: it.text}; });
+    var clavesItems = state.gamePlanClavesItems.map(function(it){ return {text: it.text, category: claveCategory(it)}; });
     var fuentesItems = state.gamePlanFuentesItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
     var howAttackItems = state.gamePlanHowAttackItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
     var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); }).map(function(s){
@@ -5395,13 +5464,19 @@ if('serviceWorker' in navigator){
       return y0 + lines.length*blh + 2*spc;
     }
 
-    // "Claves del partido" en 2 columnas, como una lista de items que van sumándose (mismo
-    // espíritu visual que Ideas clave) — a petición de Marta, ya sin distinción ofensiva/
-    // defensiva, un único apartado; el reparto en 2 columnas es solo para aprovechar el ancho, la
-    // mitad de los items en cada una, en el orden en que se han ido añadiendo.
-    function layoutClaveColumn(x, y0, w, list, scale, spc, draw){
+    // "Claves del partido" en 2 columnas Ataque/Defensa DE VERDAD (pedido de Marta -- ver 4.33 del
+    // HANDOFF; antes el reparto en 2 columnas era solo para aprovechar el ancho, la mitad de los
+    // items en cada una según orden de alta, sin distinguir ataque de defensa).
+    function layoutClaveColumn(x, y0, w, list, emptyMsg, scale, spc, draw){
       var y = y0;
       var kf = 7.6*scale, klh = 3.4*scale, indent = 4, gap = 2.2*spc;
+      if(!list.length){
+        if(draw){
+          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(kf);
+          doc.text(emptyMsg, x, y+3);
+        }
+        return y + 6;
+      }
       list.forEach(function(k){
         doc.setFont('helvetica','normal'); doc.setFontSize(kf);
         var lines = doc.splitTextToSize(k.text || '', w - indent);
@@ -5418,20 +5493,16 @@ if('serviceWorker' in navigator){
 
     function layoutClaves(y0, scale, spc, draw){
       var y = sectionLabel(margin, y0, fullW, L.gamePlanClavesTitle, accent, draw);
-      if(!clavesItems.length){
-        if(draw){
-          doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7.4*scale);
-          doc.text(L.gamePlanClavesEmpty, margin, y+3);
-        }
-        return y + 6;
-      }
       var clavesGap = 6;
       var clavesColW = fullW/2 - clavesGap/2;
       var clavesXL = margin, clavesXR = margin + clavesColW + clavesGap;
-      var half = Math.ceil(clavesItems.length / 2);
-      var colL = clavesItems.slice(0, half), colR = clavesItems.slice(half);
-      var yL = layoutClaveColumn(clavesXL, y, clavesColW, colL, scale, spc, draw);
-      var yR = layoutClaveColumn(clavesXR, y, clavesColW, colR, scale, spc, draw);
+      var attackList = clavesItems.filter(function(k){ return k.category !== 'defensa'; });
+      var defenseList = clavesItems.filter(function(k){ return k.category === 'defensa'; });
+      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesAttackLabel, accent, draw);
+      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesDefenseLabel, good, draw);
+      var yTop = Math.max(yLabelL, yLabelR);
+      var yL = layoutClaveColumn(clavesXL, yTop, clavesColW, attackList, L.gamePlanClavesEmpty, scale, spc, draw);
+      var yR = layoutClaveColumn(clavesXR, yTop, clavesColW, defenseList, L.gamePlanClavesEmpty, scale, spc, draw);
       return Math.max(yL, yR);
     }
 
@@ -5725,7 +5796,7 @@ if('serviceWorker' in navigator){
     var texts = [];
     var refs = [];
     function push(obj, field){ texts.push(obj[field]); refs.push({obj: obj, field: field}); }
-    var clavesCopy = content.clavesItems.map(function(k){ return {text: k.text}; });
+    var clavesCopy = content.clavesItems.map(function(k){ return {text: k.text, category: k.category}; });
     clavesCopy.forEach(function(k){ push(k, 'text'); });
     var fuentesCopy = content.fuentesItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
     fuentesCopy.forEach(function(it){ push(it, 'concept'); push(it, 'notes'); });
@@ -6083,24 +6154,31 @@ if('serviceWorker' in navigator){
         var cardMargin = 16, cardColGap = 8;
         var cardColW = (210 - cardMargin*2 - cardColGap) / 2;
         var cardColX = [cardMargin, cardMargin + cardColW + cardColGap];
-        // 36 (antes 32): el párrafo de fortalezas/cómo defenderla pasó de 3 a 4 líneas (pedido de
-        // Marta -- es para el staff, no pasa nada si hay más letra), así que la tarjeta necesita
-        // más alto para no perder ninguna línea ni pisar la tabla de estadísticas de debajo.
-        var cardRowH = 36;
-        var cardY = [cursor.y, cursor.y];
-        sortedForCards.forEach(function(item, idx){
-          var col = idx % 2;
-          if(cardY[col] + cardRowH > 297 - 14){
-            // Un salto de página aquí afecta a las dos columnas por igual (jsPDF no tiene flujo
-            // multi-columna nativo), igual que en el informe jugadoras de Scout Individual.
+        var CARDS_PAGE_BOTTOM = 297 - 14;
+        // Pedido de Marta: el texto de fortalezas/cómo defenderla ya no se corta -- cada ficha
+        // crece lo alto que haga falta. Como jsPDF no tiene flujo multi-columna nativo, para que
+        // las dos fichas de una misma fila queden alineadas (misma línea divisoria abajo) primero
+        // se miden las dos SIN pintar (drawPlayerFacingCard con draw=false devuelve el alto
+        // natural que necesita cada una) y se usa la más alta como alto compartido de la fila;
+        // solo entonces se pintan las dos con ese alto.
+        var cardY = cursor.y;
+        for(var cardIdx = 0; cardIdx < sortedForCards.length; cardIdx += 2){
+          var itemA = sortedForCards[cardIdx];
+          var itemB = sortedForCards[cardIdx + 1];
+          var heightA = drawPlayerFacingCard(doc, itemA, cardColX[0], cardY, cardColW, null, lang, accent, competition, false);
+          var heightB = itemB ? drawPlayerFacingCard(doc, itemB, cardColX[1], cardY, cardColW, null, lang, accent, competition, false) : 0;
+          var rowCardH = Math.max(heightA, heightB);
+          if(cardY + rowCardH > CARDS_PAGE_BOTTOM){
+            // Un salto de página aquí afecta a las dos columnas por igual.
             doc.addPage();
             drawPageHeaderLabel(doc, cursor);
-            cardY[0] = cursor.y; cardY[1] = cursor.y;
+            cardY = cursor.y;
           }
-          drawPlayerFacingCard(doc, item, cardColX[col], cardY[col], cardColW, cardRowH, lang, accent, competition);
-          cardY[col] += cardRowH;
-        });
-        cursor.y = Math.max(cardY[0], cardY[1]);
+          drawPlayerFacingCard(doc, itemA, cardColX[0], cardY, cardColW, rowCardH, lang, accent, competition, true);
+          if(itemB) drawPlayerFacingCard(doc, itemB, cardColX[1], cardY, cardColW, rowCardH, lang, accent, competition, true);
+          cardY += rowCardH;
+        }
+        cursor.y = cardY;
       }
       drewAnySection = true;
     }
@@ -8683,7 +8761,13 @@ if('serviceWorker' in navigator){
   // jugadoras" sin tener que generar un documento aparte. Duplica a propósito la lógica de
   // dibujado de drawPlayerFacingReport en vez de compartirla, para no arriesgar ningún cambio de
   // comportamiento en el informe de Scout Individual ya aprobado por Marta.
-  function drawPlayerFacingCard(doc, item, x, rowY, colW, rowH, lang, accent, competition){
+  function drawPlayerFacingCard(doc, item, x, rowY, colW, rowH, lang, accent, competition, draw){
+    // draw=false: pasada de "solo medir" (patrón usado en el resto de constructores de PDF de la
+    // app) -- no pinta nada, solo calcula y devuelve el alto natural que necesita la ficha (según
+    // cuánto ocupe el texto de fortalezas/cómo defenderla, ahora sin límite de líneas). El
+    // llamador mide las 2 fichas de una fila, se queda con la más alta como rowH compartido, y
+    // solo entonces vuelve a llamar con draw=true para pintar las dos con ese rowH.
+    if(draw === undefined) draw = true;
     lang = lang || 'es';
     var L = tr(lang);
     var textInk = [20,23,28], textDim = [91,98,112];
@@ -8710,16 +8794,20 @@ if('serviceWorker' in navigator){
       h = h || 4.3;
       doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
       var w = doc.getTextWidth(text) + 4;
-      doc.setFillColor(235,236,238);
-      doc.roundedRect(x0, rectTop, w, h, 1.2, 1.2, 'F');
-      doc.setTextColor.apply(doc, textDim);
-      doc.text(text, x0 + w / 2, rectTop + h * 0.68, {align: 'center'});
+      if(draw){
+        doc.setFillColor(235,236,238);
+        doc.roundedRect(x0, rectTop, w, h, 1.2, 1.2, 'F');
+        doc.setTextColor.apply(doc, textDim);
+        doc.text(text, x0 + w / 2, rectTop + h * 0.68, {align: 'center'});
+      }
       return w;
     }
     function importanceMarks(x0, y0, level){
-      var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
-      for(var i = 0; i < 3; i++){
-        drawGlyphIcon(doc, '★', x0 + i * 2.5 + 1.0, y0 - 1.6, 2.6, i < filled ? numberInk : [212,212,212]);
+      if(draw){
+        var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
+        for(var i = 0; i < 3; i++){
+          drawGlyphIcon(doc, '★', x0 + i * 2.5 + 1.0, y0 - 1.6, 2.6, i < filled ? numberInk : [212,212,212]);
+        }
       }
       return 3 * 2.5;
     }
@@ -8727,41 +8815,39 @@ if('serviceWorker' in navigator){
       return v === 'rojo' ? danger : (v === 'verde' ? good : warn);
     }
     function statusDot(x0, w, labelY, label, colorRgb){
+      if(!draw) return;
       doc.setFont('helvetica', 'bold'); doc.setFontSize(3.6);
       doc.setTextColor.apply(doc, textDim);
       doc.text(label, x0 + w / 2, labelY, {align: 'center'});
       doc.setFillColor.apply(doc, colorRgb);
       doc.circle(x0 + w / 2, labelY + 1.9, 1.15, 'F');
     }
-    function wrapCapped(text, maxWidth, maxLines){
-      var lines = doc.splitTextToSize(text || '', maxWidth);
-      if(lines.length <= maxLines) return lines;
-      var kept = lines.slice(0, maxLines);
-      var last = kept[maxLines - 1].replace(/[.,;:\s]+$/, '');
-      var withEllipsis = last + '…';
-      kept[maxLines - 1] = (doc.getTextWidth(withEllipsis) <= maxWidth) ? withEllipsis : truncateForWidth(doc, last, maxWidth);
-      return kept;
-    }
 
     var stripeW = 2.2;
     var photoW = 17, photoH = 20;
 
-    doc.setFillColor.apply(doc, colorForThreat(p.shootThreat));
-    doc.rect(x, rowY, stripeW, rowH - 1.5, 'F');
+    if(draw){
+      doc.setFillColor.apply(doc, colorForThreat(p.shootThreat));
+      doc.rect(x, rowY, stripeW, rowH - 1.5, 'F');
+    }
 
     var px = x + stripeW + 1.3;
-    if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', px, rowY, photoW, photoH); }catch(e){} }
-    else {
-      doc.setFillColor(232,232,232);
-      doc.rect(px, rowY, photoW, photoH, 'F');
-      doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6, {align:'center'});
+    if(draw){
+      if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', px, rowY, photoW, photoH); }catch(e){} }
+      else {
+        doc.setFillColor(232,232,232);
+        doc.rect(px, rowY, photoW, photoH, 'F');
+        doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+        doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6, {align:'center'});
+      }
     }
 
     var dotLabelY = rowY + photoH + 2.8;
     var dotHalf = photoW / 2;
     statusDot(px, dotHalf, dotLabelY, semLabels[0], colorForThreat(p.clutch));
     statusDot(px + dotHalf, dotHalf, dotLabelY, semLabels[1], colorForThreat(p.temple));
+    // Alto que ocupa la columna de foto+dots (fijo, no depende del texto).
+    var photoBlockBottom = photoH + 2.8 + 1.9 + 1.15;
 
     var tx = px + photoW + 3;
     var rowW = colW - stripeW - 1.3 - photoW - 3;
@@ -8774,7 +8860,7 @@ if('serviceWorker' in navigator){
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
     doc.setTextColor.apply(doc, numberInk);
     var numStr = String(item.number != null ? item.number : '-');
-    doc.text(numStr, tx, rowY + 4.3);
+    if(draw) doc.text(numStr, tx, rowY + 4.3);
     var numW = doc.getTextWidth(numStr) + 2.2;
     doc.setTextColor.apply(doc, textInk);
     var nameStr = (fullName(p) || L.noName).toUpperCase();
@@ -8806,7 +8892,7 @@ if('serviceWorker' in navigator){
       // Todo cabe: nombre y badges comparten la misma línea, como en el diseño original.
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
       doc.setTextColor.apply(doc, textInk);
-      doc.text(nameStr, tx + numW, rowY + 4.3);
+      if(draw) doc.text(nameStr, tx + numW, rowY + 4.3);
       badgeY = rowY + 4.3;
     } else {
       // No cabe: el nombre se queda solo en su línea (encogiendo la letra si hace falta, nunca
@@ -8819,7 +8905,7 @@ if('serviceWorker' in navigator){
         doc.setFontSize(nameFontSize);
       }
       doc.setTextColor.apply(doc, textInk);
-      doc.text(nameStr, tx + numW, rowY + 4.3);
+      if(draw) doc.text(nameStr, tx + numW, rowY + 4.3);
       badgeY = rowY + 8.3;
     }
 
@@ -8827,12 +8913,12 @@ if('serviceWorker' in navigator){
     if(rightInfo){
       doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
       doc.setTextColor.apply(doc, textInk);
-      doc.text(rightInfo, rx, badgeY - 0.2, {align: 'right'});
+      if(draw) doc.text(rightInfo, rx, badgeY - 0.2, {align: 'right'});
       rx -= rightInfoW + 2.0;
     }
     typesArr.slice().reverse().forEach(function(t){
       rx -= 3.8;
-      drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9, badgeY - 1.2, 3.2);
+      if(draw) drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9, badgeY - 1.2, 3.2);
     });
     if(typesArr.length) rx -= 1.6;
     if(handTxt){
@@ -8843,52 +8929,99 @@ if('serviceWorker' in navigator){
     rx -= starsW;
     importanceMarks(rx, badgeY - 0.3, p.threat);
 
-    // 4 líneas (antes 3) y letra más pequeña -- pedido de Marta: es para el staff, mejor que
-    // quepa más texto de fortalezas/cómo defenderla aunque la letra sea más chica.
-    var paraText = [(p.strengths || '').trim(), (p.defend || '').trim()].filter(Boolean).join('  ·  ') || '—';
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8);
-    doc.setTextColor.apply(doc, textDim);
-    var paraLines = wrapCapped(paraText, rowW, 4);
-    paraLines.forEach(function(line, li){
-      var isLast = li === paraLines.length - 1;
-      var ly = rowY + 11.8 + li * 2.9;
-      if(isLast) doc.text(line, tx, ly);
-      else doc.text(line, tx, ly, {maxWidth: rowW, align: 'justify'});
-    });
+    // Pedido de Marta: fortalezas y cómo defenderla ya no van seguidos en el mismo párrafo --
+    // cada apartado empieza en su propia línea, con su etiqueta en negrita, y sin límite de
+    // líneas (antes se cortaba con "…" a las 4 líneas; ahora la ficha crece lo que haga falta).
+    var labelFontSize = 5.8, bodyFontSize = 5.8, lineH = 2.9;
+    var curY = rowY + 11.8;
+
+    function drawParaBlock(label, text){
+      text = (text || '').trim();
+      if(!text) return;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(labelFontSize);
+      var labelW = doc.getTextWidth(label) + 1.2;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(bodyFontSize);
+      // Primera línea: ancho reducido por la etiqueta; el resto del texto se envuelve con el
+      // ancho completo (splitTextToSize de jsPDF, fiable para eso).
+      var maxW1 = rowW - labelW;
+      var words = text.split(/\s+/).filter(Boolean);
+      var line0 = '', i = 0;
+      while(i < words.length){
+        var test = line0 ? line0 + ' ' + words[i] : words[i];
+        if(doc.getTextWidth(test) <= maxW1){ line0 = test; i++; }
+        else break;
+      }
+      if(!line0 && words.length){ line0 = words[0]; i = 1; }
+      var restText = words.slice(i).join(' ');
+      var restLines = restText ? doc.splitTextToSize(restText, rowW) : [];
+      var lines = [line0].concat(restLines);
+
+      if(draw){
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(labelFontSize);
+        doc.setTextColor.apply(doc, textInk);
+        doc.text(label, tx, curY);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(bodyFontSize);
+        doc.setTextColor.apply(doc, textDim);
+        lines.forEach(function(line, li){
+          doc.text(line, li === 0 ? tx + labelW : tx, curY + li * lineH);
+        });
+      }
+      curY += lines.length * lineH + 0.7; // pequeño respiro antes del siguiente apartado
+    }
+
+    if(!(p.strengths||'').trim() && !(p.defend||'').trim()){
+      if(draw){
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(bodyFontSize);
+        doc.setTextColor.apply(doc, textDim);
+        doc.text('—', tx, curY);
+      }
+      curY += lineH;
+    } else {
+      drawParaBlock(L.cardStrengthsLabel || 'Fortalezas:', p.strengths);
+      drawParaBlock(L.cardDefendLabel || 'Cómo defenderla:', p.defend);
+    }
 
     var statsBlock = pickStatsForExport(item.stats, competition);
-    var tableY = rowY + 23.5;
+    var tableY = curY + 0.8;
     var tableHeaderH = 3.0, tableValueH = 5.2;
     var tableX = tx, tableW = rowW;
     var colW2 = tableW / STAT_COLS.length;
-    doc.setFillColor.apply(doc, shadeColor(accent, 0.15));
-    doc.rect(tableX, tableY, tableW, tableHeaderH, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4);
-    doc.setTextColor.apply(doc, contrastInk(shadeColor(accent, 0.15)));
-    STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05, {align:'center'}); });
+    if(draw){
+      doc.setFillColor.apply(doc, shadeColor(accent, 0.15));
+      doc.rect(tableX, tableY, tableW, tableHeaderH, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4);
+      doc.setTextColor.apply(doc, contrastInk(shadeColor(accent, 0.15)));
+      STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05, {align:'center'}); });
 
-    doc.setFillColor.apply(doc, tintColor(accent, 0.92));
-    doc.rect(tableX, tableY + tableHeaderH, tableW, tableValueH, 'F');
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6);
-    doc.setTextColor.apply(doc, textInk);
-    var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
-    if(statsBlock){
-      STAT_COLS.forEach(function(c, i){
-        var v = c.get(statsBlock);
-        // Sin decimales (pedido de Marta): redondeado al entero más cercano, incluidos los
-        // porcentajes.
-        var num = (v === undefined || v === null || v === '') ? null : Number(v);
-        var txt = (num === null || isNaN(num)) ? '—' : (Math.round(num) + (c.pct ? '%' : ''));
-        doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
-      });
-    } else {
-      doc.setTextColor.apply(doc, textDim);
-      doc.text(L.noStats, tableX + tableW/2, valueTextY, {align:'center'});
+      doc.setFillColor.apply(doc, tintColor(accent, 0.92));
+      doc.rect(tableX, tableY + tableHeaderH, tableW, tableValueH, 'F');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6);
+      doc.setTextColor.apply(doc, textInk);
+      var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
+      if(statsBlock){
+        STAT_COLS.forEach(function(c, i){
+          var v = c.get(statsBlock);
+          // Sin decimales (pedido de Marta): redondeado al entero más cercano, incluidos los
+          // porcentajes.
+          var num = (v === undefined || v === null || v === '') ? null : Number(v);
+          var txt = (num === null || isNaN(num)) ? '—' : (Math.round(num) + (c.pct ? '%' : ''));
+          doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
+        });
+      } else {
+        doc.setTextColor.apply(doc, textDim);
+        doc.text(L.noStats, tableX + tableW/2, valueTextY, {align:'center'});
+      }
     }
+
+    var statsBottomOffset = (tableY - rowY) + tableHeaderH + tableValueH;
+    var naturalHeight = Math.max(photoBlockBottom, statsBottomOffset) + 4.3;
+
+    if(!draw) return naturalHeight;
 
     doc.setDrawColor(225,225,225);
     doc.setLineWidth(0.15);
     doc.line(x, rowY + rowH - 1.5, x + colW, rowY + rowH - 1.5);
+    return naturalHeight;
   }
 
   function addFooters(doc){
