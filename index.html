@@ -37,9 +37,6 @@ if('serviceWorker' in navigator){
 <!-- Fallback for that same attach step, only exercised if pdf-lib's page-copying ever fails
      on a given PDF: rasterizes its pages to images instead so something still gets attached. -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<!-- Genera el Word (.docx) del Plan de Partido traducido al inglés (ver exportGamePlanWordTranslated /
-     4.38 del HANDOFF) -- expone la librería como window.docx. -->
-<script src="https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.min.js"></script>
 <!-- Cliente de Supabase: sustituye a la capacidad `db` de Claude. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -953,7 +950,7 @@ if('serviceWorker' in navigator){
         </div>
         <div class="players-pdf-actions">
           <button class="btn-export" id="btnExportGamePlanPdf" type="button">Generar Plan de Partido</button>
-          <button class="btn-export btn-export-secondary" id="btnExportGamePlanPdfEn" type="button" title="Traduce automáticamente el Plan de Partido al inglés y lo descarga como Word, para poder corregir la traducción antes de dársela a las jugadoras">Generar en inglés (Word)</button>
+          <button class="btn-export btn-export-secondary" id="btnExportGamePlanPdfEn" type="button" title="Traduce automáticamente el Plan de Partido al inglés y lo descarga como PowerPoint, con el mismo formato visual que el PDF, para poder corregir la traducción antes de dársela a las jugadoras">Generar en inglés (PowerPoint)</button>
           <span class="export-error" id="gamePlanExportError"></span>
         </div>
       </section>
@@ -3139,7 +3136,7 @@ if('serviceWorker' in navigator){
       btn.addEventListener('click', doAdd);
     });
     $('#btnExportGamePlanPdf').addEventListener('click', exportGamePlanPdf);
-    $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanWordTranslated);
+    $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanPptxTranslated);
     wireGamePlanCropModal();
     $all('[data-toggle-options]').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -5636,6 +5633,36 @@ if('serviceWorker' in navigator){
     };
   }
 
+  // Descarga el PDF de Sistemas de juego subido (si hay uno) y recorta la imagen de cada uno de
+  // los 3 sets que tenga guardado un recorte -- compartido entre el Plan de Partido en PDF
+  // (buildGamePlanDoc, más abajo) y en PowerPoint/inglés (buildGamePlanTranslatedPptx, ver 4.41
+  // del HANDOFF), para no tener dos copias de esta lógica que puedan desincronizarse. Devuelve
+  // una promesa con un array del mismo largo que setsSorted, cada hueco `null` o
+  // {dataUrl, width, height} (ver renderCroppedPageToDataUrl).
+  function loadGamePlanSetImages(setsSorted){
+    var chain = Promise.resolve();
+    var setImages = [];
+    setsSorted.forEach(function(s, i){
+      chain = chain.then(function(){
+        if(s.pdfPage == null || s.cropW == null) return null;
+        return loadPdfJs().then(function(pdfjsLib){
+          return loadGamePlanSystemsPdfBytes().then(function(bytes){
+            return pdfjsLib.getDocument({data: bytes.slice()}).promise;
+          });
+        }).then(function(pdfDoc){
+          var pageNum = Math.min(Math.max(1, s.pdfPage), pdfDoc.numPages);
+          return pdfDoc.getPage(pageNum);
+        }).then(function(page){
+          return renderCroppedPageToDataUrl(page, s.cropX, s.cropY, s.cropW, s.cropH, 3);
+        }).catch(function(err){
+          console.error('crop set image for export', err);
+          return null;
+        });
+      }).then(function(result){ setImages[i] = result; });
+    });
+    return chain.then(function(){ return setImages; });
+  }
+
   function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition, content){
     var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
     var pageW = doc.internal.pageSize.getWidth();
@@ -5963,29 +5990,10 @@ if('serviceWorker' in navigator){
     }
 
     // ---- Recortes de los 3 sets: se descargan/generan en paralelo a haber calculado `scale`
-    // (no dependen de ella, solo de qué recorte tenga guardado cada set) ----
-    var chain = Promise.resolve();
-    var setImages = [];
-    setsSorted.forEach(function(s, i){
-      chain = chain.then(function(){
-        if(s.pdfPage == null || s.cropW == null) return null;
-        return loadPdfJs().then(function(pdfjsLib){
-          return loadGamePlanSystemsPdfBytes().then(function(bytes){
-            return pdfjsLib.getDocument({data: bytes.slice()}).promise;
-          });
-        }).then(function(pdfDoc){
-          var pageNum = Math.min(Math.max(1, s.pdfPage), pdfDoc.numPages);
-          return pdfDoc.getPage(pageNum);
-        }).then(function(page){
-          return renderCroppedPageToDataUrl(page, s.cropX, s.cropY, s.cropW, s.cropH, 3);
-        }).catch(function(err){
-          console.error('crop set image for export', err);
-          return null;
-        });
-      }).then(function(result){ setImages[i] = result; });
-    });
-
-    return chain.then(function(){
+    // (no dependen de ella, solo de qué recorte tenga guardado cada set) -- factorizado en
+    // loadGamePlanSetImages (ver 4.41 del HANDOFF) para poder reutilizarlo tal cual desde el
+    // PowerPoint en inglés, sin duplicar esta lógica.
+    return loadGamePlanSetImages(setsSorted).then(function(setImages){
       // ---- Pasada real de dibujo, ya con `scale`/`spc` definitivos ----
       var yAfterClaves = layoutClaves(startY, scale, spc, true);
       var yTop = yAfterClaves + 3;
@@ -6083,97 +6091,350 @@ if('serviceWorker' in navigator){
     });
   }
 
-  // Construye el Word (.docx) del Plan de Partido YA TRADUCIDO -- ver 4.38 del HANDOFF. A
-  // petición de Marta, sustituye al PDF en inglés que había antes: quiere poder corregir a mano
-  // la traducción automática (DeepL puede fallar con jerga de baloncesto muy concreta) antes de
-  // dársela a las jugadoras, y eso es mucho más cómodo en Word que en un PDF. Por eso mismo, y
-  // porque Marta lo pidió explícitamente así, es SOLO el texto traducible, organizado por
-  // apartado igual que el PDF -- sin las imágenes recortadas de los 3 sets (no tiene sentido
-  // "traducirlas", y así el documento se puede editar de verdad de principio a fin) ni ninguna
-  // otra maquetación de las fichas de jugadoras.
-  function buildGamePlanTranslatedDocx(rival, content, competition){
-    var d = window.docx;
-    var L = tr('en');
-    var HL = d.HeadingLevel;
-    var children = [];
-
-    function h1(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_1 })); }
-    function h2(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_2, spacing: {before: 240} })); }
-    function h3(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_3, spacing: {before: 160} })); }
-    function normal(text, opts){
-      opts = opts || {};
-      children.push(new d.Paragraph(Object.assign({ text: text, italics: !!opts.italic }, opts.para || {})));
-    }
-    function bullet(text){ children.push(new d.Paragraph({ text: text, bullet: {level: 0} })); }
-    // Concepto (negrita) + notas, como una única línea -- igual que las tablas de "Sus fuentes de
-    // generación" / "Cómo atacarlas" del PDF (concepto resaltado + notas como explicación extra).
-    function conceptBullet(concept, notes){
-      var runs = [new d.TextRun({ text: concept || L.noName, bold: true })];
-      if(notes) runs.push(new d.TextRun({ text: '  —  ' + notes }));
-      children.push(new d.Paragraph({ children: runs, bullet: {level: 0} }));
-    }
-
-    h1(L.gamePlanPdfTitle + ' — ' + (rival.name || '').toUpperCase());
-    normal(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · '), {italic: true});
-
-    // Claves del partido (ataque/defensa) -- ver 4.33/4.34 del HANDOFF sobre la distinción real
-    // entre las dos columnas.
-    h2(L.gamePlanClavesTitle);
-    var clavesAtaque = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; });
-    var clavesDefensa = content.clavesItems.filter(function(k){ return k.category === 'defensa'; });
-    if(!content.clavesItems.length){
-      normal(L.gamePlanClavesEmpty, {italic: true});
-    } else {
-      h3(L.gamePlanClavesAttackLabel);
-      if(clavesAtaque.length) clavesAtaque.forEach(function(k){ bullet(k.text); }); else normal(L.gamePlanClavesEmpty, {italic: true});
-      h3(L.gamePlanClavesDefenseLabel);
-      if(clavesDefensa.length) clavesDefensa.forEach(function(k){ bullet(k.text); }); else normal(L.gamePlanClavesEmpty, {italic: true});
-    }
-
-    // Cómo les defendemos: sus fuentes de generación marcadas + notas de los 3 sets (sin las
-    // imágenes recortadas -- ver comentario de la función).
-    h2(L.gamePlanDefendTitle);
-    h3(L.gamePlanFuentesTitle);
-    if(content.fuentesItems.length) content.fuentesItems.forEach(function(it){ conceptBullet(it.concept, it.notes); });
-    else normal(L.gamePlanFuentesEmpty, {italic: true});
-    h3(L.gamePlanSetsTitle);
-    var setsWithNotes = content.setsSorted.filter(function(s){ return (s.notes || '').trim(); });
-    if(setsWithNotes.length){
-      setsWithNotes.forEach(function(s, i){
-        var label = L.gamePlanSetLabel + (i + 1) + (s.name ? ' — ' + s.name : '');
-        conceptBullet(label, s.notes);
-      });
-    } else {
-      normal(L.noNotes, {italic: true});
-    }
-
-    // Cómo les atacamos: a quién atacar (nota + jugadoras marcadas, agrupadas por calidad
-    // defensiva/desgaste) + cómo atacarlas marcado.
-    h2(L.gamePlanAttackTitle);
-    h3(L.gamePlanWhoAttackTitle);
-    if(content.attackNote) normal(content.attackNote);
-    if(content.attackJoined.length){
-      ['calidad', 'desgaste'].forEach(function(cat){
-        var names = content.attackJoined.filter(function(it){ return it.category === cat; }).map(function(it){
-          return (it.player.number != null && it.player.number !== '' ? it.player.number + ' ' : '') + (fullName(it.player) || '');
-        });
-        if(names.length) conceptBullet(cat === 'calidad' ? L.attackQualityLabel : L.attackWearLabel, names.join(', '));
-      });
-    } else if(!content.attackNote){
-      normal(L.gamePlanWhoAttackEmpty, {italic: true});
-    }
-    h3(L.gamePlanHowAttackTitle);
-    if(content.howAttackItems.length) content.howAttackItems.forEach(function(it){ conceptBullet(it.concept, it.notes); });
-    else normal(L.gamePlanHowAttackEmpty, {italic: true});
-
-    return new d.Document({ sections: [{ properties: {}, children: children }] });
+  // Estima cuántas líneas ocupará un texto dentro de un cuadro de ancho `boxWidthIn` (pulgadas)
+  // con letra `fontPt` -- pptxgenjs (a diferencia de jsPDF) no puede medir texto de verdad, así
+  // que se aproxima por caracteres/línea (mismo tipo de heurística por longitud que ya usaba
+  // buildScoutingPptx para el tamaño del apellido). Solo se usa para reservar hueco vertical
+  // suficiente, nunca para partir el texto de verdad (pptxgenjs ya envuelve el texto solo).
+  function estPptxLines(text, boxWidthIn, fontPt){
+    text = (text || '').trim();
+    if(!text) return 0;
+    var charW = fontPt * 0.52 / 72;
+    var perLine = Math.max(6, Math.floor(boxWidthIn / charW));
+    return Math.max(1, Math.ceil(text.length / perLine));
+  }
+  // Igual que wrapCapped del PDF (drawPlayerFacingReport): recorta con "…" si no cabe en
+  // maxLines, para que el párrafo de informe nunca desborde el hueco reservado de la ficha.
+  function truncatePptxText(text, boxWidthIn, fontPt, maxLines){
+    text = (text || '').trim();
+    if(!text) return '';
+    var charW = fontPt * 0.52 / 72;
+    var perLine = Math.max(6, Math.floor(boxWidthIn / charW));
+    var maxChars = perLine * maxLines;
+    if(text.length <= maxChars) return text;
+    return text.slice(0, Math.max(0, maxChars - 1)).replace(/\s+\S*$/, '') + '…';
   }
 
-  function exportGamePlanWordTranslated(){
+  // Construye el PowerPoint (.pptx) del Plan de Partido YA TRADUCIDO -- ver 4.41 del HANDOFF.
+  // Sustituye al Word de texto plano (4.38): a Marta no le convenció y pidió en su lugar el
+  // MISMO formato visual que el PDF (buildGamePlanDoc) -- banners de color, columnas, tarjetas
+  // de jugadora -- pero en PowerPoint, editable. Usa pptxgenjs (ya cargado en la app para el
+  // PowerPoint de vídeo-scouting, buildScoutingPptx -- mismo `window.PptxGenJS`).
+  //
+  // A diferencia del PDF (que encoge la letra automáticamente -- `scale`/`spc` -- para
+  // garantizar que todo quepa en una sola página), pptxgenjs no puede medir texto de verdad, así
+  // que en vez de arriesgarse a que un Plan de Partido largo desborde una única diapositiva, el
+  // contenido se reparte en VARIAS diapositivas con más aire cada una (Claves del partido aparte
+  // de Cómo les defendemos/atacamos), y las fichas de jugadora van 2x3 por diapositiva (6, no las
+  // 12 del PDF) para dejar más margen de sobra. Se avisa de esto en el HANDOFF.
+  function buildGamePlanTranslatedPptx(rival, content, rosterJoined, competition, setImages){
+    var L = tr('en');
+    var pptx = new window.PptxGenJS();
+    var PAGE_W = 11.69, PAGE_H = 8.27, MARGIN = 0.47; // misma proporción A4 apaisado que el PDF
+    pptx.defineLayout({ name: 'GAME_PLAN_EN', width: PAGE_W, height: PAGE_H });
+    pptx.layout = 'GAME_PLAN_EN';
+
+    var ACCENT = hexNoHash(rival.color);
+    var GOOD = '1F8A5F', WARN = 'F5A623', DANGER = 'C73434', DARK = '3A3E46', INK = '14171C', DIM = '5B6270', WHITE = 'FFFFFF';
+    var fullW = PAGE_W - MARGIN * 2;
+    function shootHex(v){ return v === 'rojo' ? DANGER : (v === 'verde' ? GOOD : WARN); }
+
+    function pageHeader(slide, subtitle){
+      var headerH = 0.72;
+      slide.addShape('rect', { x: 0, y: 0, w: PAGE_W, h: headerH, fill: {color: ACCENT}, line: {type: 'none'} });
+      var titleX = MARGIN;
+      if(rival.logo){
+        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 0.09, w: 0.54, h: 0.54 }); titleX = MARGIN + 0.68; }
+        catch(e){ console.error('pptx game plan logo', e); }
+      }
+      slide.addText((rival.name || 'Rival').toUpperCase(), {
+        x: titleX, y: 0.07, w: PAGE_W - titleX - 3.6, h: 0.38, fontFace: 'Arial', fontSize: 19, bold: true,
+        color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
+      });
+      slide.addText([rival.season, competition].filter(Boolean).join('  ·  '), {
+        x: titleX, y: 0.42, w: PAGE_W - titleX - 3.6, h: 0.24, fontFace: 'Arial', fontSize: 10, italic: true,
+        color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
+      });
+      slide.addText(subtitle, {
+        x: PAGE_W - MARGIN - 4, y: 0.14, w: 4, h: 0.3, fontFace: 'Arial', fontSize: 13, bold: true,
+        color: WHITE, align: 'right', valign: 'top', margin: 0, isTextBox: true
+      });
+      return headerH;
+    }
+    function footer(slide){
+      slide.addText('Scouting Rival — Valencia Basket', {
+        x: MARGIN, y: PAGE_H - 0.32, w: fullW, h: 0.22, fontFace: 'Arial', fontSize: 7.5, italic: true,
+        color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true
+      });
+    }
+    function sectionBanner(slide, x, w, yPos, text, colorHex){
+      var bannerH = 0.30;
+      slide.addShape('roundRect', { x: x, y: yPos, w: w, h: bannerH, rectRadius: 0.055, fill: {color: colorHex}, line: {type: 'none'} });
+      slide.addText(text, {
+        x: x + 0.1, y: yPos, w: w - 0.2, h: bannerH, fontFace: 'Arial', fontSize: 11, bold: true,
+        color: WHITE, align: 'left', valign: 'middle', margin: 0, isTextBox: true
+      });
+      return yPos + bannerH + 0.14;
+    }
+    function subLabel(slide, x, w, text, colorHex, yPos){
+      slide.addText(text, { x: x, y: yPos, w: w, h: 0.2, fontFace: 'Arial', fontSize: 9.5, bold: true, color: colorHex, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      return yPos + 0.24;
+    }
+    function bulletList(slide, x, w, items, yPos, emptyMsg){
+      if(!items.length){
+        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: 9, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        return yPos + 0.35;
+      }
+      var totalLines = 0;
+      var paras = items.map(function(t, i){
+        totalLines += estPptxLines(t, w - 0.16, 9.5);
+        return { text: t, options: { bullet: {code: '2022', indent: 14}, color: INK, fontFace: 'Arial', fontSize: 9.5, breakLine: i < items.length - 1, paraSpaceAfter: 6 } };
+      });
+      var h = totalLines * 0.16 + items.length * 0.08 + 0.1;
+      slide.addText(paras, { x: x, y: yPos, w: w, h: h, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      return yPos + h;
+    }
+    function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg){
+      if(!items.length){
+        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        return yPos + 0.35;
+      }
+      var y = yPos;
+      items.forEach(function(item){
+        if(item.concept){
+          slide.addText(item.concept, { x: x, y: y, w: w, h: 0.18, fontFace: 'Arial', fontSize: 9, bold: true, color: conceptColor, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          y += 0.20;
+        }
+        if(item.notes){
+          var lines = estPptxLines(item.notes, w, 8.3);
+          var h = lines * 0.145 + 0.05;
+          slide.addText(item.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: 8.3, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          y += h;
+        }
+        y += 0.13;
+      });
+      return y;
+    }
+
+    // ---- Diapositiva 1: Claves del partido + Cómo les defendemos/atacamos, TODO junto -- a
+    // petición de Marta ("quiero solo 2 páginas"), igual que la página 1 del PDF, no repartido
+    // en 2 diapositivas como en el primer intento. Letra más pequeña que aquel primer intento
+    // (más parecida a la del PDF) para maximizar las posibilidades de que quepa todo sin
+    // solaparse -- pero OJO, a diferencia del PDF esto NO encoge la letra automáticamente si el
+    // contenido es más largo de lo normal (ver comentario de la función); si a Marta le queda
+    // apretado con un Plan de Partido largo, hay que ajustar tamaños a mano.
+    var s2 = pptx.addSlide();
+    s2.background = { color: WHITE };
+    var y = pageHeader(s2, L.gamePlanPdfTitle) + 0.16;
+    y = sectionBanner(s2, MARGIN, fullW, y, L.gamePlanClavesTitle, ACCENT);
+    var clavesGap = 0.3, clavesColW = (fullW - clavesGap) / 2;
+    var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
+    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y);
+    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y);
+    var clavesTop = Math.max(yL, yR);
+    var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
+    var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
+    var clavesBottomL = bulletList(s2, clavesXL, clavesColW, attackList, clavesTop, L.gamePlanClavesEmpty);
+    var clavesBottomR = bulletList(s2, clavesXR, clavesColW, defenseList, clavesTop, L.gamePlanClavesEmpty);
+    y = Math.max(clavesBottomL, clavesBottomR) + 0.16;
+
+    var colGap = 0.32, colWL = fullW * 0.58 - colGap / 2, colWR = fullW * 0.42 - colGap / 2;
+    var colXL = MARGIN, colXR = MARGIN + colWL + colGap;
+
+    var yLeft = sectionBanner(s2, colXL, colWL, y, L.gamePlanDefendTitle, DARK);
+    var subGap = 0.26, subColW = (colWL - subGap) / 2;
+    var xFuentes = colXL, xSets = colXL + subColW + subGap;
+    var yF = subLabel(s2, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, yLeft);
+    conceptList(s2, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty);
+
+    var yS = subLabel(s2, xSets, subColW, L.gamePlanSetsTitle, DARK, yLeft);
+    var setMaxH = 0.92;
+    content.setsSorted.forEach(function(s, i){
+      var img = setImages && setImages[i];
+      var imgH = setMaxH, imgW = subColW;
+      if(img && img.width && img.height){
+        var aspect = img.width / img.height;
+        imgH = subColW / aspect;
+        if(imgH > setMaxH){ imgH = setMaxH; imgW = imgH * aspect; }
+      }
+      var imgX = xSets + (subColW - imgW) / 2;
+      if(img){
+        try{ s2.addImage({ data: img.dataUrl, x: imgX, y: yS, w: imgW, h: imgH }); }
+        catch(e){
+          console.error('pptx set crop', e);
+          s2.addShape('roundRect', { x: xSets, y: yS, w: subColW, h: setMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
+          imgH = setMaxH;
+        }
+      } else {
+        s2.addShape('roundRect', { x: xSets, y: yS, w: subColW, h: setMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
+        s2.addText(L.gamePlanSinRecorte, { x: xSets, y: yS, w: subColW, h: setMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        imgH = setMaxH;
+      }
+      yS += imgH + 0.08;
+      if(s.notes){
+        var lines = estPptxLines(s.notes, subColW, 7.6);
+        var h = lines * 0.13 + 0.05;
+        s2.addText(s.notes, { x: xSets, y: yS, w: subColW, h: h, fontFace: 'Arial', fontSize: 7.6, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        yS += h;
+      }
+      yS += 0.12;
+    });
+
+    var yRight = sectionBanner(s2, colXR, colWR, y, L.gamePlanAttackTitle, GOOD);
+    yRight = subLabel(s2, colXR, colWR, L.gamePlanHowAttackTitle, GOOD, yRight);
+    yRight = conceptList(s2, colXR, colWR, content.howAttackItems, yRight, '17573F', L.gamePlanHowAttackEmpty);
+
+    yRight = subLabel(s2, colXR, colWR, L.gamePlanWhoAttackTitle, GOOD, yRight + 0.06);
+    if(content.attackNote && content.attackNote.trim()){
+      var noteLines = estPptxLines(content.attackNote, colWR, 8.3);
+      var noteH = noteLines * 0.145 + 0.05;
+      s2.addText(content.attackNote, { x: colXR, y: yRight, w: colWR, h: noteH, fontFace: 'Arial', fontSize: 8.3, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      yRight += noteH + 0.10;
+    }
+    if(!content.attackJoined.length && !(content.attackNote && content.attackNote.trim())){
+      s2.addText(L.gamePlanWhoAttackEmpty, { x: colXR, y: yRight, w: colWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+    } else {
+      var px = colXR, py = yRight, rowHPill = 0.30;
+      content.attackJoined.forEach(function(p){
+        var label = (p.player.number != null && p.player.number !== '' ? p.player.number + '  ' : '') + (fullName(p.player) || L.noName);
+        var w = 0.075 * label.length + 0.26;
+        if(px > colXR && px + w > colXR + colWR){ px = colXR; py += rowHPill + 0.08; }
+        var isQuality = p.category === 'calidad';
+        s2.addShape('roundRect', { x: px, y: py, w: w, h: rowHPill, rectRadius: 0.15, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
+        s2.addText(label, { x: px, y: py, w: w, h: rowHPill, fontFace: 'Arial', fontSize: 8.5, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        px += w + 0.09;
+      });
+    }
+    footer(s2);
+
+    // ---- Diapositiva 2: fichas de jugadora, 2 columnas x 6 filas (12 por diapositiva) -- a
+    // petición de Marta, la MISMA densidad que la página 2 del PDF (drawPlayerFacingReport), no
+    // repartidas en varias diapositivas como en el primer intento. Las medidas de cada fila
+    // (28mm de alto, foto 17x20mm, etc.) están tomadas literalmente de drawPlayerFacingReport y
+    // convertidas a pulgadas (÷25.4) -- es el mismo diseño, ya probado ahí para 12 jugadoras en
+    // una sola página, así que se reutiliza tal cual en vez de inventar proporciones nuevas.
+    // Los tamaños de letra también son los mismos (jsPDF y pptxgenjs miden `fontSize` en puntos
+    // en los dos casos, así que los números de drawPlayerFacingReport valen sin conversión).
+    var MM = 1 / 25.4;
+    var STAT_COLS = [
+      {label:'MIN', get:function(s){ return s.minutes; }}, {label:'PTS', get:function(s){ return s.pts; }},
+      {label:'FG', get:function(s){ return s.fga; }}, {label:'3PA', get:function(s){ return s.threeAtt; }},
+      {label:'3P%', pct:true, get:function(s){ return s.threePct; }}, {label:'FTA', get:function(s){ return s.ftAtt; }},
+      {label:'FT%', pct:true, get:function(s){ return s.ftPct; }}, {label:'OR', get:function(s){ return s.offReb; }},
+      {label:'DR', get:function(s){ return (s.reb != null && s.offReb != null) ? (s.reb - s.offReb) : null; }},
+      {label:'AS', get:function(s){ return s.ast; }}, {label:'TO', get:function(s){ return s.to; }}
+    ];
+    function drawPlayerCard(slide, item, x, yTop, w, h){
+      var p = item.player;
+      var stripeW = 2.2 * MM;
+      slide.addShape('rect', { x: x, y: yTop, w: stripeW, h: h - 1.5 * MM, fill: {color: shootHex(p.shootThreat)}, line: {type: 'none'} });
+
+      var photoX = x + stripeW + 1.3 * MM, photoW = 17 * MM, photoH = 20 * MM;
+      if(p.photo){
+        try{ slide.addImage({ data: p.photo, x: photoX, y: yTop, w: photoW, h: photoH, sizing: {type: 'cover', w: photoW, h: photoH} }); }
+        catch(e){ console.error('pptx player photo', e); }
+      } else {
+        slide.addShape('rect', { x: photoX, y: yTop, w: photoW, h: photoH, fill: {color: 'E8E8E8'}, line: {type: 'none'} });
+        slide.addText(initialsFor(p), { x: photoX, y: yTop, w: photoW, h: photoH, fontFace: 'Arial', fontSize: 9, bold: true, color: '969696', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+      }
+      var dotLabelY = yTop + photoH + 1.4 * MM;
+      ['CLUTCH', 'MENTAL'].forEach(function(lab, i){
+        var dx = photoX + i * (photoW / 2);
+        slide.addText(lab, { x: dx, y: dotLabelY, w: photoW / 2, h: 2.6 * MM, fontFace: 'Arial', fontSize: 3.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
+        var val = i === 0 ? p.clutch : p.temple;
+        var c = val === 'alta' ? DANGER : (val === 'baja' ? GOOD : WARN);
+        slide.addShape('ellipse', { x: dx + photoW / 4 - 1.15 * MM, y: dotLabelY + 2.6 * MM, w: 2.3 * MM, h: 2.3 * MM, fill: {color: c}, line: {type: 'none'} });
+      });
+
+      var tx = photoX + photoW + 3 * MM;
+      var rowW = x + w - tx;
+      var numLabel = String(item.number != null ? item.number : '-');
+      slide.addText([
+        { text: numLabel + '  ', options: {bold: true, color: shadeColorHex(ACCENT, 0.15)} },
+        { text: (fullName(p) || L.noName).toUpperCase(), options: {bold: true, color: INK} }
+      ], { x: tx, y: yTop - 0.02, w: rowW - 8 * MM, h: 3.6 * MM, fontFace: 'Arial', fontSize: 8.2, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+
+      // "Jugadora clave" (importancia): 3 puntos llenos/vacíos, NO el carácter ★ -- ver comentario
+      // más abajo sobre por qué (glifos de estrella no fiables junto a emoji en la misma línea).
+      var filled = p.threat === 'alta' ? 3 : (p.threat === 'baja' ? 1 : 2);
+      var starsW = 2.6 * MM, starsX0 = x + w - starsW * 3 - 1 * MM;
+      for(var si = 0; si < 3; si++){
+        slide.addShape('ellipse', { x: starsX0 + si * starsW, y: yTop + 0.4 * MM, w: 1.9 * MM, h: 1.9 * MM, fill: {color: si < filled ? shadeColorHex(ACCENT, 0.15) : 'D9D9D9'}, line: {type: 'none'} });
+      }
+
+      var rightInfo = [positionAbbr(p.position), formatHeight(p.height)].filter(Boolean).join('  ·  ');
+      var handTxt = translateHand('en', p.hand);
+      var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
+      var typeIcons = typesArr.map(function(t){ return PLAYER_TYPE_ICONS[t] || ''; }).join(' ');
+      var subLine = [rightInfo, handTxt, typeIcons].filter(Boolean).join('   ');
+      slide.addText(subLine, { x: tx, y: yTop + 3.9 * MM, w: rowW, h: 3 * MM, fontFace: 'Arial', fontSize: 6.4, bold: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+
+      // Párrafo de "Informe" -- máx. 3 líneas, igual que wrapCapped en drawPlayerFacingReport
+      // (mismo hueco vertical disponible: de aquí a que empieza la tabla de stats).
+      var paraText = truncatePptxText(p.informe, rowW, 6.6, 3);
+      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 9.5 * MM, fontFace: 'Arial', fontSize: 6.6, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+
+      var tableY = yTop + 17.3 * MM, tableH1 = 3.0 * MM, tableH2 = 5.2 * MM;
+      var colW2 = rowW / STAT_COLS.length;
+      var statsBlock = pickStatsForExport(item.stats, competition);
+      slide.addShape('rect', { x: tx, y: tableY, w: rowW, h: tableH1, fill: {color: ACCENT}, line: {type: 'none'} });
+      STAT_COLS.forEach(function(c, i){
+        slide.addText(c.label, { x: tx + i * colW2, y: tableY, w: colW2, h: tableH1, fontFace: 'Arial', fontSize: 4.4, bold: true, color: WHITE, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+      });
+      slide.addShape('rect', { x: tx, y: tableY + tableH1, w: rowW, h: tableH2, fill: {color: tintColorHex(ACCENT, 0.9)}, line: {type: 'none'} });
+      STAT_COLS.forEach(function(c, i){
+        var txt = '—';
+        if(statsBlock){ var v = c.get(statsBlock); txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v)); }
+        slide.addText(txt, { x: tx + i * colW2, y: tableY + tableH1, w: colW2, h: tableH2, fontFace: 'Arial', fontSize: 5.6, color: INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+      });
+    }
+
+    var sorted = rosterJoined.slice().sort(function(a, b){
+      var ta = THREAT_ORDER[a.player.threat] != null ? THREAT_ORDER[a.player.threat] : 1;
+      var tb = THREAT_ORDER[b.player.threat] != null ? THREAT_ORDER[b.player.threat] : 1;
+      if(ta !== tb) return ta - tb;
+      return (Number(a.number) || 0) - (Number(b.number) || 0);
+    });
+    // 2 columnas x 6 filas = 12 por diapositiva, la MISMA densidad que la página 2 del PDF -- si
+    // algún día una plantilla tuviera más de 12 (no es lo habitual, el PDF tampoco lo contempla
+    // salvo por una red de seguridad que añade página), aquí se añaden diapositivas de más en
+    // vez de perder jugadoras silenciosamente.
+    var PER_SLIDE = 12;
+    if(!sorted.length){
+      var sEmpty = pptx.addSlide();
+      sEmpty.background = { color: WHITE };
+      var hyEmpty = pageHeader(sEmpty, L.reportFallback);
+      sEmpty.addText(L.noRosterYet, { x: MARGIN, y: hyEmpty + 0.3, w: fullW, h: 0.3, fontFace: 'Arial', fontSize: 11, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+    }
+    for(var i = 0; i < sorted.length; i += PER_SLIDE){
+      var chunk = sorted.slice(i, i + PER_SLIDE);
+      var slide = pptx.addSlide();
+      slide.background = { color: WHITE };
+      var hy = pageHeader(slide, L.reportFallback);
+      var gridTop = hy + 0.16;
+      var rowH = 28 * MM;
+      var colGapP = 8 * MM, colWP = (fullW - colGapP) / 2;
+      chunk.forEach(function(item, idx){
+        var col = idx % 2, row = Math.floor(idx / 2);
+        var cx = MARGIN + col * (colWP + colGapP);
+        var cy = gridTop + row * rowH;
+        drawPlayerCard(slide, item, cx, cy, colWP, rowH);
+      });
+    }
+
+    return pptx;
+  }
+
+  // shade/tint sobre un hex "RRGGBB" (sin #) -- misma fórmula que shadeColor/tintColor (que
+  // trabajan en RGB array, para jsPDF) pero para pptxgenjs, que quiere hex.
+  function shadeColorHex(hex, amt){ return rgbToHexNoHash(shadeColor(hexToRgb(hex), amt)); }
+  function tintColorHex(hex, amt){ return rgbToHexNoHash(tintColor(hexToRgb(hex), amt)); }
+
+  function exportGamePlanPptxTranslated(){
     var btn = $('#btnExportGamePlanPdfEn');
     if(!btn) return;
     if(!downloadsCap){ showGamePlanExportMsg('La exportación no está disponible en esta vista.'); return; }
-    if(!window.docx || !window.docx.Document){ showGamePlanExportMsg('No se pudo cargar el generador de Word. Revisa tu conexión y prueba de nuevo.'); return; }
+    if(!window.PptxGenJS){ showGamePlanExportMsg('No se pudo cargar el generador de PowerPoint. Revisa tu conexión y prueba de nuevo.'); return; }
     if(!state.rival){ return; }
     if(!supabaseClient || !supabaseClient.functions){ showGamePlanExportMsg('La traducción no está disponible en esta vista.'); return; }
     var rival = state.rival;
@@ -6181,18 +6442,22 @@ if('serviceWorker' in navigator){
     btn.disabled = true; btn.textContent = 'Traduciendo…';
     var competition = state.exportCompetition || rivalCompetitions(rival)[0];
     var content = gatherGamePlanContent();
-    translateGamePlanContent(content).then(function(translatedContent){
+    var translatedContent;
+    translateGamePlanContent(content).then(function(tc){
+      translatedContent = tc;
       btn.textContent = 'Generando…';
-      var doc = buildGamePlanTranslatedDocx(rival, translatedContent, competition);
-      return window.docx.Packer.toBlob(doc);
+      return Promise.all([gatherCollectiveRosterJoined(), loadGamePlanSetImages(translatedContent.setsSorted)]);
+    }).then(function(results){
+      var pptx = buildGamePlanTranslatedPptx(rival, translatedContent, results[0], competition, results[1]);
+      return pptx.write({outputType: 'blob'});
     }).then(function(blob){
-      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.docx', data: blob});
+      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.pptx', data: blob});
     }).then(function(){
       btn.disabled = false; btn.textContent = original;
     }).catch(function(err){
       btn.disabled = false; btn.textContent = original;
       if(err && err.code === 'declined') return;
-      console.error('export game plan word translated', err);
+      console.error('export game plan pptx translated', err);
       var msg = 'No se pudo traducir el Plan de Partido.';
       if(err && (err.message === 'Failed to send a request to the Edge Function' || /not found|404/i.test(err.message || ''))){
         msg = 'La traducción automática todavía no está activada (falta desplegar la función de traducción). Consulta el manual (HANDOFF).';
