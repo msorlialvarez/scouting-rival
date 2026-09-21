@@ -37,6 +37,9 @@ if('serviceWorker' in navigator){
 <!-- Fallback for that same attach step, only exercised if pdf-lib's page-copying ever fails
      on a given PDF: rasterizes its pages to images instead so something still gets attached. -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<!-- Genera el Word (.docx) del Plan de Partido traducido al inglés (ver exportGamePlanWordTranslated /
+     4.38 del HANDOFF) -- expone la librería como window.docx. -->
+<script src="https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.min.js"></script>
 <!-- Cliente de Supabase: sustituye a la capacidad `db` de Claude. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -370,6 +373,14 @@ if('serviceWorker' in navigator){
   .attack-notes{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.35rem .5rem; font-size:.78rem; color:var(--text); width:100%; resize:vertical; min-height:1.8rem; line-height:1.3; overflow:hidden; }
   .attack-add-row{ display:flex; gap:.5rem; align-items:center; }
   .attack-add-row select{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.35rem .5rem; font-size:.8rem; }
+
+  .starting-fives{ display:flex; flex-direction:column; gap:.5rem; margin-bottom:.5rem; }
+  .starting-five-row{ background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:.55rem .7rem; display:flex; flex-direction:column; gap:.45rem; }
+  .sf-head{ display:flex; gap:.5rem; align-items:center; }
+  .sf-head .sf-label{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.35rem .5rem; font-size:.82rem; font-weight:600; }
+  .sf-players{ display:grid; grid-template-columns:repeat(5, 1fr); gap:.4rem; }
+  @media (max-width: 900px){ .sf-players{ grid-template-columns:repeat(2, 1fr); } }
+  .sf-players select{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.32rem .4rem; font-size:.76rem; }
 
   .advanced-stats-placeholder{ border:1.5px dashed var(--border); border-radius:12px; padding:2.2rem 1rem; text-align:center; color:var(--text-dim); font-size:.85rem; background:var(--surface-2); }
   .advanced-stats-placeholder strong{ display:block; color:var(--text); font-size:.92rem; margin-bottom:.3rem; }
@@ -817,6 +828,20 @@ if('serviceWorker' in navigator){
         <div class="advanced-stats-panel">
           <div id="offSystemsPdfFileBox"></div>
         </div>
+
+        <div class="essence-sub">
+          <h3>Quintetos iniciales de los últimos partidos</h3>
+          <span class="empty-hint" id="startingFivesNoRosterHint" hidden style="padding:0 0 .5rem;">Añade jugadoras a la plantilla de este rival para poder marcar sus quintetos.</span>
+        </div>
+        <div class="starting-fives" id="startingFivesList"></div>
+        <button type="button" class="link-btn" id="btnAddStartingFive">+ Añadir partido</button>
+
+        <div class="essence-sub">
+          <h3>Notas</h3>
+        </div>
+        <div class="essence-card">
+          <textarea data-teamfield="offEssenceNotes" rows="3" placeholder="Notas libres sobre la esencia ofensiva…"></textarea>
+        </div>
       </section>
 
       <section class="essence-block">
@@ -928,7 +953,7 @@ if('serviceWorker' in navigator){
         </div>
         <div class="players-pdf-actions">
           <button class="btn-export" id="btnExportGamePlanPdf" type="button">Generar Plan de Partido</button>
-          <button class="btn-export btn-export-secondary" id="btnExportGamePlanPdfEn" type="button" title="Traduce automáticamente el Plan de Partido al inglés (para jugadoras que no hablan español)">Generar en inglés (auto)</button>
+          <button class="btn-export btn-export-secondary" id="btnExportGamePlanPdfEn" type="button" title="Traduce automáticamente el Plan de Partido al inglés y lo descarga como Word, para poder corregir la traducción antes de dársela a las jugadoras">Generar en inglés (Word)</button>
           <span class="export-error" id="gamePlanExportError"></span>
         </div>
       </section>
@@ -1111,6 +1136,7 @@ if('serviceWorker' in navigator){
       teamWeaknessesLabel: 'Puntos débiles del equipo', teamKeyPlaysLabel: 'Jugadas a vigilar',
       offEssenceTitle: 'ESENCIA OFENSIVA', keyItemsLabel: 'Ideas clave', offSourcesLabel: 'Principales fuentes de generación',
       offSystemsLabel: 'Sistemas de juego',
+      startingFivesLabel: 'Quintetos iniciales de los últimos partidos', offEssenceNotesLabel: 'Notas',
       defEssenceTitle: 'ESENCIA DEFENSIVA', defSpecialDefensesLabel: 'Defensas especiales', defSourcesLabel: 'Cómo atacarlas',
       attackPlayersLabel: 'Jugadoras a atacar', attackQualityLabel: 'Calidad defensiva', attackWearLabel: 'Desgaste',
       advancedStatsLabel: 'Estadística avanzada', advancedStatsSoon: 'Próximamente',
@@ -1174,6 +1200,7 @@ if('serviceWorker' in navigator){
       teamWeaknessesLabel: 'Team weaknesses', teamKeyPlaysLabel: 'Plays to watch',
       offEssenceTitle: 'OFFENSIVE ESSENCE', keyItemsLabel: 'Key points', offSourcesLabel: 'Main scoring sources',
       offSystemsLabel: 'Systems of play',
+      startingFivesLabel: 'Recent starting lineups', offEssenceNotesLabel: 'Notes',
       defEssenceTitle: 'DEFENSIVE ESSENCE', defSpecialDefensesLabel: 'Special defenses', defSourcesLabel: 'How to attack them',
       attackPlayersLabel: 'Players to attack', attackQualityLabel: 'Defensive quality', attackWearLabel: 'Attrition',
       advancedStatsLabel: 'Advanced stats', advancedStatsSoon: 'Coming soon',
@@ -1234,6 +1261,7 @@ if('serviceWorker' in navigator){
     offSourceOptions: [], defSourceOptions: [],
     offSources: [], defSources: [], attackPlayers: [],
     offEssenceItems: [], defEssenceItems: [],
+    startingFives: [],
     gamePlanSets: [], gamePlanSeeding: false,
     gamePlanClavesItems: [], gamePlanFuentesItems: [], gamePlanHowAttackItems: [],
     advancedStatsMeta: null, advancedStatsFileData: null, advancedStatsFileDataFor: null, advancedStatsLoading: false,
@@ -1491,6 +1519,7 @@ if('serviceWorker' in navigator){
     defPlayersToAttack: { table: 'attack_players', parentKey: 'rival_id' },
     offEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'off' } },
     defEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'def' } },
+    startingFives:      { table: 'starting_fives', parentKey: 'rival_id' },
     gamePlanSets:       { table: 'game_plan_sets', parentKey: 'rival_id' },
     gamePlanClavesItems:    { table: 'game_plan_claves_items', parentKey: 'rival_id' },
     gamePlanFuentesItems:   { table: 'game_plan_fuentes_items', parentKey: 'rival_id' },
@@ -2430,7 +2459,7 @@ if('serviceWorker' in navigator){
     state.rivalId = null; state.rival = null; state.roster = [];
     state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.gamePlanClavesItems = []; state.gamePlanFuentesItems = []; state.gamePlanHowAttackItems = [];
-    state.offEssenceItems = []; state.defEssenceItems = [];
+    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = null;
@@ -2744,6 +2773,7 @@ if('serviceWorker' in navigator){
       renderGameView();
       renderCollectiveChecklist();
       renderAttackLists();
+      renderStartingFives();
     }, function(err){ console.error('roster onSnapshot', err); });
 
     var unsubOffSources = rivalRef.collection('offSources').orderBy('order', 'asc').onSnapshot(function(snap){
@@ -2770,6 +2800,13 @@ if('serviceWorker' in navigator){
       state.defEssenceItems = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
       renderEssenceItems('def');
     }, function(err){ console.error('defEssenceItems onSnapshot', err); });
+
+    // Quintetos iniciales de los últimos partidos (ver 4.39 del HANDOFF): un item por partido,
+    // con una etiqueta libre (rival/fecha) y hasta 5 jugadoras de la plantilla de este rival.
+    var unsubStartingFives = rivalRef.collection('startingFives').orderBy('order', 'asc').onSnapshot(function(snap){
+      state.startingFives = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      renderStartingFives();
+    }, function(err){ console.error('startingFives onSnapshot', err); });
 
     // Solo el pequeño documento "meta" (nombre/tamaño/ruta) se mantiene sincronizado en vivo,
     // así cualquiera del cuerpo técnico ve al momento si hay un informe subido sin tener que
@@ -2803,7 +2840,7 @@ if('serviceWorker' in navigator){
       renderGamePlanConceptList('gamePlanHowAttackItems');
     }, function(err){ console.error('gamePlanHowAttackItems onSnapshot', err); });
 
-    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta, unsubGamePlanSets, unsubGamePlanClaves, unsubGamePlanFuentes, unsubGamePlanHowAttack);
+    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubStartingFives, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta, unsubGamePlanSets, unsubGamePlanClaves, unsubGamePlanFuentes, unsubGamePlanHowAttack);
   }
 
   // Botón "Refrescar": vuelve a suscribirse a todo lo del rival actual (mismo mecanismo que abrir
@@ -2985,7 +3022,7 @@ if('serviceWorker' in navigator){
     state.rivalId = null; state.rival = null; state.roster = [];
     state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.gamePlanClavesItems = []; state.gamePlanFuentesItems = []; state.gamePlanHowAttackItems = [];
-    state.offEssenceItems = []; state.defEssenceItems = [];
+    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = id;
@@ -3085,6 +3122,7 @@ if('serviceWorker' in navigator){
     $('#btnAddDefSource').addEventListener('click', function(){ addSrcRow('def'); });
     $('#btnAddGamePlanFuentes').addEventListener('click', function(){ addGamePlanConceptRow('gamePlanFuentesItems'); });
     $('#btnAddGamePlanHowAttack').addEventListener('click', function(){ addGamePlanConceptRow('gamePlanHowAttackItems'); });
+    $('#btnAddStartingFive').addEventListener('click', addStartingFive);
     // "Claves del partido" en 2 columnas Ataque/Defensa (ver 4.33 del HANDOFF): un input + botón
     // por columna, cada uno guarda con su propia category.
     ['ataque', 'defensa'].forEach(function(category){
@@ -3101,7 +3139,7 @@ if('serviceWorker' in navigator){
       btn.addEventListener('click', doAdd);
     });
     $('#btnExportGamePlanPdf').addEventListener('click', exportGamePlanPdf);
-    $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanPdfTranslated);
+    $('#btnExportGamePlanPdfEn').addEventListener('click', exportGamePlanWordTranslated);
     wireGamePlanCropModal();
     $all('[data-toggle-options]').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -5084,6 +5122,84 @@ if('serviceWorker' in navigator){
     ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, notes: '', order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
   }
 
+  // "Quintetos iniciales de los últimos partidos" (Esencia ofensiva, ver 4.39 del HANDOFF): un
+  // item por partido, con una etiqueta libre (rival/fecha, la escribe Marta) y hasta 5 jugadoras
+  // elegidas de la plantilla de ESTE rival (no texto libre, a petición suya). `playerIds` se
+  // guarda como array de hasta 5 ids (huecos vacíos como '' si un partido no tiene las 5
+  // apuntadas todavía) en una columna jsonb -- mismo patrón que `playerTypes` en jugadoras.
+  function renderStartingFives(){
+    var list = $('#startingFivesList');
+    if(!list) return;
+    var hint = $('#startingFivesNoRosterHint');
+    if(hint) hint.hidden = state.roster.length > 0;
+
+    var rosterOptions = state.roster.map(function(r){
+      var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
+      return p ? {id: p.id, name: fullName(p) || 'Sin nombre'} : null;
+    }).filter(Boolean);
+
+    function optionsHtml(selectedId){
+      return rosterOptions.map(function(p){
+        return '<option value="' + esc(p.id) + '"' + (p.id === selectedId ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      }).join('');
+    }
+
+    var sfRoot = $('#collectiveView');
+    var sfFocus = captureFocus(sfRoot, 'data-sf-id', 'data-sf-field');
+
+    var items = state.startingFives;
+    list.innerHTML = items.length ? items.map(function(item){
+      var playerIds = Array.isArray(item.playerIds) ? item.playerIds : [];
+      var slots = [0,1,2,3,4].map(function(i){
+        var sel = playerIds[i] || '';
+        return '<select data-sf-slot="' + i + '"><option value="">Jugadora ' + (i+1) + '…</option>' + optionsHtml(sel) + '</select>';
+      }).join('');
+      return '<div class="starting-five-row" data-sf-id="' + esc(item.id) + '">' +
+        '<div class="sf-head">' +
+          '<input type="text" class="sf-label" data-sf-field="label" placeholder="Ej. vs Zaragoza · 14/09/26" value="' + esc(item.label || '') + '">' +
+          '<button type="button" class="btn-del" data-sf-del title="Quitar">✕</button>' +
+        '</div>' +
+        '<div class="sf-players">' + slots + '</div>' +
+      '</div>';
+    }).join('') : '<p class="empty-hint" style="padding:.2rem 0;">Todavía no hay quintetos apuntados.</p>';
+
+    $all('#collectiveView [data-sf-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.closest('[data-sf-id]').getAttribute('data-sf-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('startingFives').doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'quitar el quinteto'); });
+      });
+    });
+    $all('#collectiveView [data-sf-field="label"]').forEach(function(input){
+      input.addEventListener('change', function(){
+        var id = input.closest('[data-sf-id]').getAttribute('data-sf-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('startingFives').doc(id).update({label: input.value}).catch(function(err){ showGamePlanDataError(err, 'guardar el partido'); });
+      });
+    });
+    $all('#collectiveView .starting-five-row').forEach(function(row){
+      var rowId = row.getAttribute('data-sf-id');
+      row.querySelectorAll('[data-sf-slot]').forEach(function(sel){
+        sel.addEventListener('change', function(){
+          var slots = row.querySelectorAll('[data-sf-slot]');
+          var newIds = Array.prototype.map.call(slots, function(s){ return s.value; });
+          var ref = currentRivalRef();
+          if(!ref) return;
+          ref.collection('startingFives').doc(rowId).update({playerIds: newIds}).catch(function(err){ showGamePlanDataError(err, 'guardar el quinteto'); });
+        });
+      });
+    });
+    restoreFocus(sfRoot, sfFocus);
+  }
+
+  function addStartingFive(){
+    var ref = currentRivalRef();
+    if(!ref) return;
+    ref.collection('startingFives').add({label: '', playerIds: [], order: Date.now()}).catch(function(err){ showGamePlanDataError(err, 'añadir el partido'); });
+  }
+
   // "A quién atacar" del Plan de Partido (ver 4.34 del HANDOFF): antes solo tenía una nota de
   // texto libre y había que ir a Esencia defensiva a marcar la casilla "Plan" de cada jugadora en
   // "Jugadoras a atacar" -- pedido de Marta, ahora esas mismas jugadoras (con la misma casilla
@@ -5967,11 +6083,97 @@ if('serviceWorker' in navigator){
     });
   }
 
-  function exportGamePlanPdfTranslated(){
+  // Construye el Word (.docx) del Plan de Partido YA TRADUCIDO -- ver 4.38 del HANDOFF. A
+  // petición de Marta, sustituye al PDF en inglés que había antes: quiere poder corregir a mano
+  // la traducción automática (DeepL puede fallar con jerga de baloncesto muy concreta) antes de
+  // dársela a las jugadoras, y eso es mucho más cómodo en Word que en un PDF. Por eso mismo, y
+  // porque Marta lo pidió explícitamente así, es SOLO el texto traducible, organizado por
+  // apartado igual que el PDF -- sin las imágenes recortadas de los 3 sets (no tiene sentido
+  // "traducirlas", y así el documento se puede editar de verdad de principio a fin) ni ninguna
+  // otra maquetación de las fichas de jugadoras.
+  function buildGamePlanTranslatedDocx(rival, content, competition){
+    var d = window.docx;
+    var L = tr('en');
+    var HL = d.HeadingLevel;
+    var children = [];
+
+    function h1(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_1 })); }
+    function h2(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_2, spacing: {before: 240} })); }
+    function h3(text){ children.push(new d.Paragraph({ text: text, heading: HL.HEADING_3, spacing: {before: 160} })); }
+    function normal(text, opts){
+      opts = opts || {};
+      children.push(new d.Paragraph(Object.assign({ text: text, italics: !!opts.italic }, opts.para || {})));
+    }
+    function bullet(text){ children.push(new d.Paragraph({ text: text, bullet: {level: 0} })); }
+    // Concepto (negrita) + notas, como una única línea -- igual que las tablas de "Sus fuentes de
+    // generación" / "Cómo atacarlas" del PDF (concepto resaltado + notas como explicación extra).
+    function conceptBullet(concept, notes){
+      var runs = [new d.TextRun({ text: concept || L.noName, bold: true })];
+      if(notes) runs.push(new d.TextRun({ text: '  —  ' + notes }));
+      children.push(new d.Paragraph({ children: runs, bullet: {level: 0} }));
+    }
+
+    h1(L.gamePlanPdfTitle + ' — ' + (rival.name || '').toUpperCase());
+    normal(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · '), {italic: true});
+
+    // Claves del partido (ataque/defensa) -- ver 4.33/4.34 del HANDOFF sobre la distinción real
+    // entre las dos columnas.
+    h2(L.gamePlanClavesTitle);
+    var clavesAtaque = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; });
+    var clavesDefensa = content.clavesItems.filter(function(k){ return k.category === 'defensa'; });
+    if(!content.clavesItems.length){
+      normal(L.gamePlanClavesEmpty, {italic: true});
+    } else {
+      h3(L.gamePlanClavesAttackLabel);
+      if(clavesAtaque.length) clavesAtaque.forEach(function(k){ bullet(k.text); }); else normal(L.gamePlanClavesEmpty, {italic: true});
+      h3(L.gamePlanClavesDefenseLabel);
+      if(clavesDefensa.length) clavesDefensa.forEach(function(k){ bullet(k.text); }); else normal(L.gamePlanClavesEmpty, {italic: true});
+    }
+
+    // Cómo les defendemos: sus fuentes de generación marcadas + notas de los 3 sets (sin las
+    // imágenes recortadas -- ver comentario de la función).
+    h2(L.gamePlanDefendTitle);
+    h3(L.gamePlanFuentesTitle);
+    if(content.fuentesItems.length) content.fuentesItems.forEach(function(it){ conceptBullet(it.concept, it.notes); });
+    else normal(L.gamePlanFuentesEmpty, {italic: true});
+    h3(L.gamePlanSetsTitle);
+    var setsWithNotes = content.setsSorted.filter(function(s){ return (s.notes || '').trim(); });
+    if(setsWithNotes.length){
+      setsWithNotes.forEach(function(s, i){
+        var label = L.gamePlanSetLabel + (i + 1) + (s.name ? ' — ' + s.name : '');
+        conceptBullet(label, s.notes);
+      });
+    } else {
+      normal(L.noNotes, {italic: true});
+    }
+
+    // Cómo les atacamos: a quién atacar (nota + jugadoras marcadas, agrupadas por calidad
+    // defensiva/desgaste) + cómo atacarlas marcado.
+    h2(L.gamePlanAttackTitle);
+    h3(L.gamePlanWhoAttackTitle);
+    if(content.attackNote) normal(content.attackNote);
+    if(content.attackJoined.length){
+      ['calidad', 'desgaste'].forEach(function(cat){
+        var names = content.attackJoined.filter(function(it){ return it.category === cat; }).map(function(it){
+          return (it.player.number != null && it.player.number !== '' ? it.player.number + ' ' : '') + (fullName(it.player) || '');
+        });
+        if(names.length) conceptBullet(cat === 'calidad' ? L.attackQualityLabel : L.attackWearLabel, names.join(', '));
+      });
+    } else if(!content.attackNote){
+      normal(L.gamePlanWhoAttackEmpty, {italic: true});
+    }
+    h3(L.gamePlanHowAttackTitle);
+    if(content.howAttackItems.length) content.howAttackItems.forEach(function(it){ conceptBullet(it.concept, it.notes); });
+    else normal(L.gamePlanHowAttackEmpty, {italic: true});
+
+    return new d.Document({ sections: [{ properties: {}, children: children }] });
+  }
+
+  function exportGamePlanWordTranslated(){
     var btn = $('#btnExportGamePlanPdfEn');
     if(!btn) return;
-    if(!downloadsCap){ showGamePlanExportMsg('La exportación a PDF no está disponible en esta vista.'); return; }
-    if(!window.jspdf || !window.jspdf.jsPDF){ showGamePlanExportMsg('No se pudo cargar el generador de PDF. Revisa tu conexión y prueba de nuevo.'); return; }
+    if(!downloadsCap){ showGamePlanExportMsg('La exportación no está disponible en esta vista.'); return; }
+    if(!window.docx || !window.docx.Document){ showGamePlanExportMsg('No se pudo cargar el generador de Word. Revisa tu conexión y prueba de nuevo.'); return; }
     if(!state.rival){ return; }
     if(!supabaseClient || !supabaseClient.functions){ showGamePlanExportMsg('La traducción no está disponible en esta vista.'); return; }
     var rival = state.rival;
@@ -5981,18 +6183,16 @@ if('serviceWorker' in navigator){
     var content = gatherGamePlanContent();
     translateGamePlanContent(content).then(function(translatedContent){
       btn.textContent = 'Generando…';
-      return gatherCollectiveRosterJoined().then(function(rosterJoined){
-        var accent = hexToRgb(rival.color);
-        return buildGamePlanDoc(rival, rosterJoined, accent, 'en', competition, translatedContent);
-      });
-    }).then(function(doc){
-      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.pdf', data: doc.output('blob')});
+      var doc = buildGamePlanTranslatedDocx(rival, translatedContent, competition);
+      return window.docx.Packer.toBlob(doc);
+    }).then(function(blob){
+      return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.docx', data: blob});
     }).then(function(){
       btn.disabled = false; btn.textContent = original;
     }).catch(function(err){
       btn.disabled = false; btn.textContent = original;
       if(err && err.code === 'declined') return;
-      console.error('export game plan pdf translated', err);
+      console.error('export game plan word translated', err);
       var msg = 'No se pudo traducir el Plan de Partido.';
       if(err && (err.message === 'Failed to send a request to the Edge Function' || /not found|404/i.test(err.message || ''))){
         msg = 'La traducción automática todavía no está activada (falta desplegar la función de traducción). Consulta el manual (HANDOFF).';
@@ -6243,6 +6443,20 @@ if('serviceWorker' in navigator){
         // página automático (ensureSpace) al no caber ahí, dejando una página en blanco de más.
         drawPageHeaderLabel(doc, cursor);
       }
+      // Quintetos iniciales de los últimos partidos + Notas (ver 4.39/4.40 del HANDOFF): siempre
+      // se imprimen junto al resto de Esencia ofensiva, sin casilla propia en "PDF para jugadoras"
+      // -- son apuntes internos del cuerpo técnico, no para las jugadoras (ese informe usa
+      // buildCollectivePlayersDoc, una función completamente aparte, así que esto no le afecta).
+      var startingFivesForPdf = state.startingFives.map(function(sf){
+        var names = (Array.isArray(sf.playerIds) ? sf.playerIds : []).map(function(pid){
+          var p = state.allPlayers.find(function(pl){ return pl.id === pid; });
+          return p ? fullName(p) : null;
+        }).filter(Boolean);
+        var head = (sf.label && sf.label.trim()) ? sf.label.trim() : L.noName;
+        return { text: names.length ? (head + ':  ' + names.join(', ')) : head };
+      });
+      drawItemsList(doc, cursor, accent, lang, L.startingFivesLabel, startingFivesForPdf);
+      drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes);
       drewAnySection = true;
     }
 
@@ -8636,7 +8850,7 @@ if('serviceWorker' in navigator){
       drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], lx + (legendBoxW - 3) / 2, headY + 4.6, 5.4);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(4.6);
       doc.setTextColor.apply(doc, textDim);
-      doc.text(PLAYER_TYPE_LABELS_ES[t].toUpperCase(), lx + (legendBoxW - 3) / 2, headY + legendBoxH + 3, {align: 'center', maxWidth: legendBoxW - 2});
+      doc.text((L.playerTypeNames[t] || PLAYER_TYPE_LABELS_ES[t]).toUpperCase(), lx + (legendBoxW - 3) / 2, headY + legendBoxH + 3, {align: 'center', maxWidth: legendBoxW - 2});
     });
 
     doc.setDrawColor.apply(doc, accent);
