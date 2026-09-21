@@ -1239,7 +1239,15 @@ if('serviceWorker' in navigator){
     advancedStatsMeta: null, advancedStatsFileData: null, advancedStatsFileDataFor: null, advancedStatsLoading: false,
     advancedStatsUploading: false,
     offSystemsPdfMeta: null, offSystemsPdfFileData: null, offSystemsPdfFileDataFor: null, offSystemsPdfLoading: false,
-    offSystemsPdfUploading: false
+    offSystemsPdfUploading: false,
+    // Campos de jugadora con un guardado en curso o que ha fallado (ver 4.35 del HANDOFF y
+    // pendingFieldVal/updateWithFeedback más abajo) -- clave "<playerId>::<field>" -> valor tal
+    // cual se escribió. Mientras una entrada exista aquí, playerCardHtml la usa en vez del valor
+    // ya guardado en el servidor, para que un repintado (disparado por CUALQUIER cambio de
+    // cualquier jugadora, ya que todas comparten la misma suscripción a la tabla `players`)
+    // nunca pueda revertir en pantalla algo que se acaba de escribir pero todavía no se ha
+    // terminado de guardar de verdad.
+    unsavedFieldEdits: {}
   };
 
   function $(sel){ return document.querySelector(sel); }
@@ -2052,6 +2060,7 @@ if('serviceWorker' in navigator){
     $('#connBannerMsg').textContent = msg;
     var retryBtn = $('#connBannerRetry');
     retryBtn.hidden = !opts.onRetry;
+    retryBtn.textContent = opts.retryLabel || 'Volver a conectar';
     retryBtn.onclick = opts.onRetry || null;
     banner.hidden = false;
     if(connBannerTimer){ clearTimeout(connBannerTimer); connBannerTimer = null; }
@@ -2067,23 +2076,37 @@ if('serviceWorker' in navigator){
 
   // Envuelve cualquier `ref.update(patch)` para que, si falla, se vea claramente (banner arriba +
   // borde rojo en el propio campo, hasta que se guarde bien) en vez de perderse en silencio.
-  // Reintenta una vez sola, por si ha sido un corte de red puntual (muy tipico al volver a una
-  // pestaña de Safari que ha estado un rato en segundo plano).
-  function updateWithFeedback(ref, patch, fieldEl, label){
-    function attempt(isRetry){
+  // Reintenta varias veces sola (1.2s, 3s, 8s), por si ha sido un corte de red puntual (muy
+  // tipico al volver a una pestaña de Safari que ha estado un rato en segundo plano). Si se
+  // agotan los reintentos automáticos, el aviso se queda FIJO (sticky, con botón "Reintentar")
+  // en vez de ocultarse solo a los 7s como antes -- para que un fallo real no pase desapercibido.
+  //
+  // editKey (opcional, formato "<playerId>::<campo>"): si se pasa, se borra de
+  // state.unsavedFieldEdits SOLO cuando el guardado se confirma bien. Mientras tanto (incluidos
+  // los reintentos y el aviso fijo), playerCardHtml sigue pintando ese campo con el valor
+  // pendiente (ver pendingFieldVal) aunque llegue un re-render de por medio por cualquier otro
+  // motivo -- así ya no se puede perder en silencio un texto escrito cuyo guardado falló. Ver
+  // 4.35 del HANDOFF.
+  function updateWithFeedback(ref, patch, fieldEl, label, editKey){
+    var retryDelaysMs = [1200, 3000, 8000];
+    function attempt(attemptIndex){
       return ref.update(patch).then(function(){
         if(fieldEl) fieldEl.classList.remove('field-save-error');
+        if(editKey) delete state.unsavedFieldEdits[editKey];
       }).catch(function(err){
         console.error('save field', label, err);
-        if(isRetry){
-          if(fieldEl) fieldEl.classList.add('field-save-error');
-          showConnBanner('No se ha podido guardar "' + label + '". Comprueba tu conexión — el texto sigue aquí, pero no se ha guardado todavía.');
-        } else {
-          return new Promise(function(resolve){ setTimeout(resolve, 1200); }).then(function(){ return attempt(true); });
+        if(attemptIndex < retryDelaysMs.length){
+          return new Promise(function(resolve){ setTimeout(resolve, retryDelaysMs[attemptIndex]); }).then(function(){ return attempt(attemptIndex + 1); });
         }
+        if(fieldEl) fieldEl.classList.add('field-save-error');
+        showConnBanner('No se ha podido guardar "' + label + '". El texto no se ha perdido (sigue aquí), pero todavía no está guardado. Comprueba tu conexión y pulsa "Reintentar".', {
+          sticky: true,
+          retryLabel: 'Reintentar',
+          onRetry: function(){ hideConnBanner(); attempt(retryDelaysMs.length); }
+        });
       });
     }
-    return attempt(false);
+    return attempt(0);
   }
 
   document.addEventListener('DOMContentLoaded', function(){
@@ -4084,10 +4107,31 @@ if('serviceWorker' in navigator){
     return a || b || '';
   }
 
+  // Ver comentario de state.unsavedFieldEdits (arriba, en la definición de `state`) y 4.35 del
+  // HANDOFF. `fallback` es el valor que se mostraría normalmente (ya guardado en el servidor);
+  // si ese campo de esa jugadora tiene un guardado pendiente/fallido, se devuelve ESE valor en su
+  // lugar, tal cual se había escrito.
+  function pendingFieldVal(playerId, field, fallback){
+    var key = playerId + '::' + field;
+    return Object.prototype.hasOwnProperty.call(state.unsavedFieldEdits, key) ? state.unsavedFieldEdits[key] : fallback;
+  }
+
   // ---------------- Shared player card (roster context or profile context) ----------------
   function playerCardHtml(p, ctx){
     var mode = ctx.mode, isProfile = mode === 'profile';
     var open = isProfile ? true : !!state.expanded[p.id];
+    // Ver pendingFieldVal / state.unsavedFieldEdits: cada campo "de escribir" se pinta con su
+    // valor pendiente si lo hay, en vez del último guardado de verdad en el servidor.
+    var vFirstName = pendingFieldVal(p.id, 'firstName', p.firstName || '');
+    var vLastName = pendingFieldVal(p.id, 'lastName', p.lastName || '');
+    var vPosition = pendingFieldVal(p.id, 'position', p.position);
+    var vHand = pendingFieldVal(p.id, 'hand', p.hand);
+    var vHeightRaw = pendingFieldVal(p.id, 'height', (p.height != null ? String(p.height) : ''));
+    var vThreat = pendingFieldVal(p.id, 'threat', p.threat || 'media');
+    var vStrengths = pendingFieldVal(p.id, 'strengths', p.strengths);
+    var vDefend = pendingFieldVal(p.id, 'defend', mergedDefendText(p));
+    var vInforme = pendingFieldVal(p.id, 'informe', p.informe);
+    var vHighlightStat = pendingFieldVal(p.id, 'highlightStat', p.highlightStat);
     var avatarInner = p.photo ? '<img src="' + p.photo + '" alt="">' : esc(initialsFor(p));
     var stoplightBtns = ['rojo','amarillo','verde'].map(function(c){
       var sel = (p.shootThreat || 'amarillo') === c ? ' selected' : '';
@@ -4132,13 +4176,13 @@ if('serviceWorker' in navigator){
         '</div>' +
         '<div class="player-num-name">' +
           '<div class="row1">' + numberHtml +
-            '<input class="pname" type="text" data-field="firstName" placeholder="Nombre" value="' + esc(p.firstName || '') + '">' +
+            '<input class="pname" type="text" data-field="firstName" placeholder="Nombre" value="' + esc(vFirstName) + '">' +
           '</div>' +
-          '<input class="plast" type="text" data-field="lastName" placeholder="Apellidos" value="' + esc(p.lastName || '') + '">' +
+          '<input class="plast" type="text" data-field="lastName" placeholder="Apellidos" value="' + esc(vLastName) + '">' +
           '<div class="meta-row">' +
-            '<select data-field="position">' + opt('','Posición',p.position) + opt('Base','Base',p.position) + opt('Escolta','Escolta',p.position) + opt('Alero','Alero',p.position) + opt('Ala-pívot','Ala-pívot',p.position) + opt('Pívot','Pívot',p.position) + '</select>' +
-            '<select data-field="hand">' + opt('','Mano',p.hand) + opt('Diestra','Diestra',p.hand) + opt('Zurda','Zurda',p.hand) + opt('Ambidiestra','Ambidiestra',p.hand) + '</select>' +
-            '<input class="pheight" type="number" step="0.01" min="1.30" max="2.30" data-field="height" placeholder="Altura (m)" title="Altura en metros, ej. 1.83" value="' + (p.height != null ? esc(p.height) : '') + '">' +
+            '<select data-field="position">' + opt('','Posición',vPosition) + opt('Base','Base',vPosition) + opt('Escolta','Escolta',vPosition) + opt('Alero','Alero',vPosition) + opt('Ala-pívot','Ala-pívot',vPosition) + opt('Pívot','Pívot',vPosition) + '</select>' +
+            '<select data-field="hand">' + opt('','Mano',vHand) + opt('Diestra','Diestra',vHand) + opt('Zurda','Zurda',vHand) + opt('Ambidiestra','Ambidiestra',vHand) + '</select>' +
+            '<input class="pheight" type="number" step="0.01" min="1.30" max="2.30" data-field="height" placeholder="Altura (m)" title="Altura en metros, ej. 1.83" value="' + esc(vHeightRaw) + '">' +
           '</div>' +
           '<p class="photo-error" data-photo-error>La imagen es demasiado grande. Prueba con otra foto.</p>' +
         '</div>' +
@@ -4150,7 +4194,7 @@ if('serviceWorker' in navigator){
 
       '<div class="threat-row2">' +
         '<div class="threat-block"><span class="tb-label">Importancia / jugadora clave</span>' +
-          '<div class="total-chip total-' + (p.threat || 'media') + '"><select data-field="threat">' + opt('alta','Alta',p.threat) + opt('media','Media',p.threat) + opt('baja','Baja',p.threat) + '</select></div>' +
+          '<div class="total-chip total-' + vThreat + '"><select data-field="threat">' + opt('alta','Alta',vThreat) + opt('media','Media',vThreat) + opt('baja','Baja',vThreat) + '</select></div>' +
         '</div>' +
         '<div class="threat-block"><span class="tb-label">Amenaza de tiro (rol)</span>' +
           '<div class="stoplight" data-stoplight>' + stoplightBtns + '</div>' +
@@ -4166,14 +4210,14 @@ if('serviceWorker' in navigator){
       expandHtml +
 
       '<div class="player-detail' + (open ? ' open' : '') + '" data-detail>' +
-        '<div class="player-field"><label>Fortalezas</label><textarea data-field="strengths" placeholder="Ej. tiradora exterior, transición">' + esc(p.strengths) + '</textarea></div>' +
-        '<div class="player-field player-defend"><label>Qué queremos que pase y cómo defenderla</label><textarea data-field="defend" placeholder="Relacionado con sus fortalezas y la instrucción concreta para banquillo. Ej. si es tiradora: que bote y vaya para dentro">' + esc(mergedDefendText(p)) + '</textarea></div>' +
-        '<div class="player-field player-informe"><label>Informe</label><textarea data-field="informe" placeholder="Lo que verán las jugadoras: este texto es el único que aparece en los informes para jugadoras (Informe Jugadoras, Portadas Individuales, PDF para jugadoras). En los informes de staff aparece todo lo de arriba menos esto.">' + esc(p.informe) + '</textarea></div>' +
+        '<div class="player-field"><label>Fortalezas</label><textarea data-field="strengths" placeholder="Ej. tiradora exterior, transición">' + esc(vStrengths) + '</textarea></div>' +
+        '<div class="player-field player-defend"><label>Qué queremos que pase y cómo defenderla</label><textarea data-field="defend" placeholder="Relacionado con sus fortalezas y la instrucción concreta para banquillo. Ej. si es tiradora: que bote y vaya para dentro">' + esc(vDefend) + '</textarea></div>' +
+        '<div class="player-field player-informe"><label>Informe</label><textarea data-field="informe" placeholder="Lo que verán las jugadoras: este texto es el único que aparece en los informes para jugadoras (Informe Jugadoras, Portadas Individuales, PDF para jugadoras). En los informes de staff aparece todo lo de arriba menos esto.">' + esc(vInforme) + '</textarea></div>' +
         '<div class="stats-section">' +
           '<div class="stats-head"><span>Estadísticas por competición</span><button type="button" class="btn-mini-add" data-add-stat>+ Añadir competición</button></div>' +
           '<div class="highlight-stat-row"><label>Resaltar en la ficha</label><select data-field="highlightStat">' +
-            opt('', 'Ninguna', p.highlightStat) +
-            HIGHLIGHT_STAT_ORDER.map(function(k){ return opt(k, HIGHLIGHT_STAT_LABELS_ES[k], p.highlightStat); }).join('') +
+            opt('', 'Ninguna', vHighlightStat) +
+            HIGHLIGHT_STAT_ORDER.map(function(k){ return opt(k, HIGHLIGHT_STAT_LABELS_ES[k], vHighlightStat); }).join('') +
           '</select></div>' +
           '<div class="stat-blocks" data-stat-blocks><p class="empty-hint" style="padding:.2rem 0;">Cargando…</p></div>' +
         '</div>' +
@@ -4204,6 +4248,13 @@ if('serviceWorker' in navigator){
       input.addEventListener('change', function(){
         var field = input.getAttribute('data-field');
         var val = input.value;
+        var editKey = playerId + '::' + field;
+        // Se guarda el valor tal cual se ha escrito ANTES de intentar guardarlo -- así, si llega
+        // un re-render de por medio (por ejemplo por un cambio de otra jugadora) mientras el
+        // guardado está en curso o si falla, playerCardHtml (vía pendingFieldVal) lo sigue
+        // mostrando en vez de revertir al valor antiguo del servidor. Se borra de
+        // unsavedFieldEdits solo cuando updateWithFeedback confirma que se guardó bien.
+        state.unsavedFieldEdits[editKey] = val;
         var patch = {};
         if(field === 'height'){
           var num = parseFloat(String(val).replace(',', '.'));
@@ -4212,7 +4263,7 @@ if('serviceWorker' in navigator){
           patch[field] = val;
         }
         patch.updatedAt = nowIso();
-        updateWithFeedback(ref, patch, input, input.getAttribute('placeholder') || field);
+        updateWithFeedback(ref, patch, input, input.getAttribute('placeholder') || field, editKey);
         if(field === 'threat'){ input.closest('.total-chip').className = 'total-chip total-' + val; }
       });
     });
