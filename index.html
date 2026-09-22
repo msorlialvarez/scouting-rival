@@ -1093,7 +1093,11 @@ if('serviceWorker' in navigator){
     // Tiros libres anotados/intentados, para mostrar "FT 50% (25/50)" en vez de solo el porcentaje.
     {key:'ftMade', label:'TL anot./p'}, {key:'ftAtt', label:'TL int./p'}
   ];
-  var MAX_PHOTO_CHARS = 150000;
+  // Subido de 150000 a 350000 al aumentar la resolución de las fotos de jugadora (220 -> 640px,
+  // ver 4.45 del HANDOFF) -- si no, el recorte de calidad JPEG que se dispara al superar este
+  // límite habría anulado la mejora. También lo usan el escudo del rival y el logo de
+  // competición (mucho más pequeños, nunca se acercan a este límite).
+  var MAX_PHOTO_CHARS = 350000;
   // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it —
   // comfortably above the "under 10MB" reports Marta actually uploads.
   var MAX_STATS_PDF_BYTES = 12 * 1024 * 1024;
@@ -2755,6 +2759,21 @@ if('serviceWorker' in navigator){
     return b ? [b] : [];
   }
 
+  // Formatea un valor de estadística para mostrarlo en tablas/informes de jugadoras rivales:
+  // SIN decimales, redondeado A LA ALZA (Math.ceil, no al más cercano) -- pedido explícito de
+  // Marta, también sirve para "limpiar" valores con restos de coma flotante (p.ej. rebotes
+  // defensivos calculados como reb-offReb, que en JS pueden salir como 0.20999999999999998 en
+  // vez de 0.21). NO se usa en los campos editables de "Estadísticas por competición" (esos
+  // guardan el dato tal cual lo introduce Marta/InStat, con decimales si los tiene) ni en la
+  // vista previa de importación InStat -- solo en lo que se enseña/exporta como estadística ya
+  // calculada (tablas de jugadora, líneas de marcador tipo "20' - 10 pts - ...").
+  function formatStatValue(v, isPct){
+    if(v === undefined || v === null || v === '') return '—';
+    var num = Number(v);
+    if(isNaN(num)) return '—';
+    return Math.ceil(num) + (isPct ? '%' : '');
+  }
+
   function selectRival(id){
     if(!db) return;
     state.section = 'rivals';
@@ -3427,10 +3446,16 @@ if('serviceWorker' in navigator){
         var img = new Image();
         img.onload = function(){
           try{
-            var size = 220;
+            // 220 -> 640 (pedido de Marta: "que la foto se vea con mayor calidad", ver 4.45 del
+            // HANDOFF): a 220px las fotos salían pixeladas en las Portadas Individuales, donde se
+            // muestran bastante grandes (foto de ~2,35x2,93in a 192px/in, o sea ~450x560px reales
+            // -- más de lo que daba de sí una foto de 220px). El bucle de compresión JPEG de más
+            // abajo ya se encarga de que el archivo siga pesando poco (MAX_PHOTO_CHARS).
+            var size = 640;
             var canvas = document.createElement('canvas');
             canvas.width = size; canvas.height = size;
             var ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
             ctx.clearRect(0, 0, size, size);
             // "contain" (no "cover"): las fotos de la FEB suelen ser de cuerpo entero o
             // con la jugadora descentrada, así que recortar a cuadrado por el centro
@@ -4511,10 +4536,14 @@ if('serviceWorker' in navigator){
       reader.onload = function(e){
         img.onload = function(){
           try{
-            var size = 220;
+            // 220 -> 640 (pedido de Marta: "que la foto se vea con mayor calidad", ver 4.45 del
+            // HANDOFF): mismo motivo que en downloadAndCropPhoto (foto de la FEB) -- 220px se
+            // quedaba corto para el tamaño al que se enseña la foto en las Portadas Individuales.
+            var size = 640;
             var canvas = document.createElement('canvas');
             canvas.width = size; canvas.height = size;
             var ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
             ctx.clearRect(0, 0, size, size);
             var scale = Math.max(size / img.width, size / img.height);
             var w = img.width * scale, h = img.height * scale;
@@ -6640,7 +6669,7 @@ if('serviceWorker' in navigator){
       slide.addShape('rect', { x: tx, y: tableY + tableH1, w: rowW, h: tableH2, fill: {color: tintColorHex(ACCENT, 0.9)}, line: {type: 'none'} });
       STAT_COLS.forEach(function(c, i){
         var txt = '—';
-        if(statsBlock){ var v = c.get(statsBlock); txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v)); }
+        if(statsBlock){ txt = formatStatValue(c.get(statsBlock), c.pct); }
         slide.addText(txt, { x: tx + i * colW2, y: tableY + tableH1, w: colW2, h: tableH2, fontFace: 'Arial', fontSize: 5.6, color: INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       });
     }
@@ -7699,7 +7728,9 @@ if('serviceWorker' in navigator){
       // igual que en la plantilla original, sea cual sea el idioma del informe.
       var statsText;
       if(statsBlock){
-        var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : v; };
+        // Sin decimales (pedido de Marta): redondeado a la alza -- formatStatValue con
+        // isPct=false, porque aquí el "%" ya va escrito a mano en la plantilla del texto.
+        var sv = function(k){ return formatStatValue(statsBlock[k], false); };
         statsText = sv('minutes') + '’ – ' + sv('pts') + ' pts – ' + sv('fga') + ' FG (' + sv('threeAtt') + ' 3P/' + sv('threePct') + '%) – FT ' + sv('ftPct') + '% (' + sv('ftMade') + '/' + sv('ftAtt') + ') – ' + sv('reb') + ' Reb (' + sv('offReb') + ' Off) – ' + sv('ast') + ' Ast';
       } else {
         statsText = L.noStats;
@@ -8109,7 +8140,9 @@ if('serviceWorker' in navigator){
       var statsY = meterY + 0.68;
       var statsLineH = 0.4;
       if(statsBlock){
-        var sv = function(k){ var v = statsBlock[k]; return (v === undefined || v === null || v === '') ? '—' : String(v); };
+        // Sin decimales (pedido de Marta): redondeado a la alza -- formatStatValue con
+        // isPct=false, porque aquí el "%" ya va escrito a mano en la plantilla del texto.
+        var sv = function(k){ return formatStatValue(statsBlock[k], false); };
         var hi = p.highlightStat || '';
         var segments = [
           { key: 'minutes', text: sv('minutes') + '’ ' },
@@ -8236,6 +8269,7 @@ if('serviceWorker' in navigator){
         chain = chain.then(function(){
           var canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
           var ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
           try{ drawCoverSlide(ctx, rivalLogoImg, compLogoImg); }catch(e){ console.error('draw cover slide', e); }
           return canvasToPngBlob(canvas).then(function(blob){ if(blob) zip.file('00_portada.png', blob); })
             .catch(function(e){ console.error('canvas to blob failed (cover)', e); });
@@ -8244,6 +8278,7 @@ if('serviceWorker' in navigator){
           chain = chain.then(function(){
             var canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
             var ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
             try{ drawPlayerSlide(ctx, item, photoImgs[i], rivalLogoImg, compLogoImg); }catch(e){ console.error('draw player slide', e); }
             var num = (i+1 < 10 ? '0' : '') + (i+1);
             var surnameSlug = slug(fullName(item.player) || 'jugadora');
@@ -8838,9 +8873,9 @@ if('serviceWorker' in navigator){
         var labelW = doc.getTextWidth(label);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
         doc.setTextColor.apply(doc, dim);
+        // Sin decimales (pedido de Marta, ver 4.45 del HANDOFF): redondeado a la alza.
         var line = STAT_FIELDS.map(function(c){
-          var v = block[c.key];
-          return (L.statLabels[c.key] || c.label) + ' ' + ((v === undefined || v === null || v === '') ? '—' : v);
+          return (L.statLabels[c.key] || c.label) + ' ' + formatStatValue(block[c.key], false);
         }).join('   ');
         var lines = doc.splitTextToSize(line, pageW - margin*2 - labelW);
         doc.text(lines[0] || '', margin + labelW, y);
@@ -9289,8 +9324,9 @@ if('serviceWorker' in navigator){
         var chipX = margin;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6);
         STAT_FIELDS.forEach(function(c){
-          var v = block[c.key];
-          var text = (L.statLabels[c.key] || c.label) + ' ' + ((v === undefined || v === null || v === '') ? '—' : v);
+          // Sin decimales (pedido de Marta, ver 4.45 del HANDOFF): redondeado a la alza -- el
+          // "%" de columnas como "% T2" ya va incluido en la propia etiqueta, así que isPct=false.
+          var text = (L.statLabels[c.key] || c.label) + ' ' + formatStatValue(block[c.key], false);
           var w = doc.getTextWidth(text) + 6;
           if(chipX + w > margin + contentW){ chipX = margin; y += 7.4; if(y + 8 > pageH - 16){ doc.addPage(); y = 20; chipX = margin; } }
           doc.setFillColor.apply(doc, tintColor(accent, 0.85));
@@ -9622,8 +9658,7 @@ if('serviceWorker' in navigator){
       var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
       if(statsBlock){
         STAT_COLS.forEach(function(c, i){
-          var v = c.get(statsBlock);
-          var txt = (v === undefined || v === null || v === '') ? '—' : (c.pct ? (v + '%') : String(v));
+          var txt = formatStatValue(c.get(statsBlock), c.pct);
           doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
         });
       } else {
@@ -9890,11 +9925,9 @@ if('serviceWorker' in navigator){
       var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
       if(statsBlock){
         STAT_COLS.forEach(function(c, i){
-          var v = c.get(statsBlock);
-          // Sin decimales (pedido de Marta): redondeado al entero más cercano, incluidos los
-          // porcentajes.
-          var num = (v === undefined || v === null || v === '') ? null : Number(v);
-          var txt = (num === null || isNaN(num)) ? '—' : (Math.round(num) + (c.pct ? '%' : ''));
+          // Sin decimales (pedido de Marta): redondeado A LA ALZA, incluidos los porcentajes
+          // (formatStatValue, ver más arriba en el archivo).
+          var txt = formatStatValue(c.get(statsBlock), c.pct);
           doc.text(txt, tableX + i*colW2 + colW2/2, valueTextY, {align:'center'});
         });
       } else {
