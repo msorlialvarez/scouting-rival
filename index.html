@@ -285,6 +285,9 @@ if('serviceWorker' in navigator){
   .essence-item-row.def .item-bullet{ background:var(--text-dim); }
   .essence-item-row input[type="text"]{ flex:1; min-width:0; background:transparent; border:none; font-size:.85rem; color:var(--text); padding:.1rem 0; }
   .essence-item-row input[type="text"]:focus{ outline:none; }
+  /* Casilla "Plan" de Ideas clave (ver 4.43 del HANDOFF): misma .attack-player-plan que ya se
+     usaba en Jugadoras a atacar, reutilizada aquí tal cual. */
+  .essence-item-row .attack-player-plan{ margin-left:0; }
   .essence-items-add{ display:flex; gap:.5rem; }
   .essence-items-add input[type="text"]{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .55rem; font-size:.85rem; color:var(--text); }
 
@@ -297,12 +300,16 @@ if('serviceWorker' in navigator){
   .btn-reorder:disabled:hover{ background:var(--surface-2); color:var(--text-dim); border-color:var(--border); }
 
   .src-table{ display:flex; flex-direction:column; gap:.5rem; }
-  .src-table-head{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
-  .src-row{ display:grid; grid-template-columns:1fr 1.6fr 1.4fr 3.6rem; gap:.6rem; align-items:start; }
+  .src-table-head{ display:grid; grid-template-columns:1fr 1.25fr 1.25fr 1.25fr 4rem; gap:.6rem; padding:0 .2rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); }
+  .src-row{ display:grid; grid-template-columns:1fr 1.25fr 1.25fr 1.25fr 4rem; gap:.6rem; align-items:start; }
   .src-row select, .src-row textarea{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; }
   .src-row textarea{ min-height:2.2rem; resize:vertical; line-height:1.35; overflow:hidden; }
-  .src-row-actions{ display:flex; align-items:flex-start; gap:.3rem; }
-  .src-row .btn-del{ align-self:start; }
+  /* Columna de acciones de cada fila (ver 4.43 del HANDOFF): antes solo tenía subir/bajar/borrar
+     en una línea; ahora también lleva la casilla "Plan" (misma .attack-player-plan que ya se
+     usaba en Jugadoras a atacar), así que pasa a apilarse en vertical para que quepan las tres
+     cosas en una columna estrecha. */
+  .src-row-actions{ display:flex; flex-direction:column; align-items:flex-end; gap:.3rem; }
+  .src-row .btn-del{ align-self:flex-end; }
   .game-plan-text-field{ margin:0 0 1.1rem; }
   .game-plan-text-field h4{ font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin-bottom:.4rem; }
   .game-plan-text-field textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.5rem .6rem; font-size:.85rem; color:var(--text); line-height:1.45; resize:vertical; }
@@ -325,14 +332,21 @@ if('serviceWorker' in navigator){
      lista de conceptos que se resaltan en el PDF + notas extra, mismo patrón de fila fantasma
      que .src-row pero con solo 2 campos (concepto, notas) en vez de 3. */
   .concept-row{ display:grid; grid-template-columns:1fr 1.6fr 3.6rem; gap:.6rem; align-items:start; margin-bottom:.5rem; }
+  /* "Cómo atacarlas" dentro del Plan de Partido lleva una 3ª columna (Sistemas para explotarlo,
+     ver 4.43 del HANDOFF) -- "Sus fuentes de generación" se queda con las 2 de siempre. */
+  .concept-row.has-systems{ grid-template-columns:1fr 1.3fr 1.3fr 3.6rem; }
   .concept-row .concept-title{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; font-weight:700; color:var(--text); width:100%; }
   .concept-row textarea{ background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.4rem .5rem; font-size:.82rem; color:var(--text); width:100%; min-height:2.2rem; resize:vertical; line-height:1.35; overflow:hidden; }
   .attack-player-plan{ display:flex; align-items:center; gap:.3rem; font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:var(--text-dim); white-space:nowrap; cursor:pointer; margin-left:.4rem; }
   .attack-player-plan input[type="checkbox"]{ width:13px; height:13px; accent-color:var(--good); cursor:pointer; }
+  .attack-player-plan input[type="checkbox"]:disabled{ cursor:default; opacity:.4; }
+  /* Sistemas con los que podemos atacar a esta jugadora, en "Jugadoras a atacar" (ver 4.43 del
+     HANDOFF) -- misma clase .attack-notes que las notas, para que se vea igual. */
+  .attack-systems{ margin-top:.35rem; }
   @media (max-width: 800px){
     .src-table-head{ display:none; }
     .src-row{ grid-template-columns:1fr; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.6rem; }
-    .concept-row{ grid-template-columns:1fr; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.6rem; }
+    .concept-row, .concept-row.has-systems{ grid-template-columns:1fr; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.6rem; }
   }
   .src-add-row{ margin-top:.2rem; }
   .options-manager{ display:none; flex-wrap:wrap; gap:.4rem; align-items:center; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:.6rem .7rem; margin:.5rem 0 .8rem; }
@@ -826,7 +840,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="offSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="offSourceOptionsManager" data-options-manager="offSourceOptions"></div>
           <div class="src-table" id="offSourcesTable">
-            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Sistemas con los que nos pueden atacar</span><span></span></div>
+            <div class="src-table-head"><span>Fuente</span><span>Notas</span><span>Propuesta defensiva</span><span>Sistemas con los que nos pueden atacar</span><span></span></div>
             <div id="offSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddOffSource">+ Añadir fuente</button>
           </div>
@@ -854,7 +868,7 @@ if('serviceWorker' in navigator){
           <button type="button" class="link-btn" data-toggle-options="defSourceOptions">Editar opciones del desplegable</button>
           <div class="options-manager" id="defSourceOptionsManager" data-options-manager="defSourceOptions"></div>
           <div class="src-table" id="defSourcesTable">
-            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Sistemas para explotarlo</span><span></span></div>
+            <div class="src-table-head"><span>Cómo atacarlas</span><span>Notas</span><span>Mensaje Jugadoras</span><span>Sistemas para explotarlo</span><span></span></div>
             <div id="defSourcesRows"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddDefSource">+ Añadir fila</button>
           </div>
@@ -905,6 +919,7 @@ if('serviceWorker' in navigator){
 
           <div class="game-plan-text-field">
             <h4>Claves del partido</h4>
+            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">Se rellena sola al marcar "Plan" en una Idea clave (Esencia ofensiva → columna Defensa; Esencia defensiva → columna Ataque), pero cada clave se puede editar aquí sin que afecte a la idea original.</p>
             <div class="game-plan-claves-cols">
               <div class="game-plan-claves-col attack">
                 <h5>Ataque</h5>
@@ -928,7 +943,7 @@ if('serviceWorker' in navigator){
 
           <div class="game-plan-text-field">
             <h4>Sus fuentes de generación</h4>
-            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">El concepto se resalta en el PDF; las notas son la explicación extra.</p>
+            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">El concepto se resalta en el PDF; la propuesta defensiva es la explicación extra. Se rellena sola al marcar "Plan" en una fila de Fuentes de generación (Esencia ofensiva), pero también se puede editar o añadir directamente aquí.</p>
             <div id="gamePlanFuentesItemsList" class="src-table"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddGamePlanFuentes">+ Añadir concepto</button>
           </div>
@@ -943,7 +958,7 @@ if('serviceWorker' in navigator){
 
           <div class="game-plan-text-field">
             <h4>Cómo atacarlas</h4>
-            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">El concepto se resalta en el PDF; las notas son la explicación extra.</p>
+            <p class="game-plan-hint" style="margin:-.2rem 0 .5rem;">El concepto (con qué atacarlas) se resalta en el PDF; el mensaje jugadoras es cómo atacarlas y los sistemas para explotarlo van debajo. Se rellena solo al marcar "Plan" en una fila de Cómo atacarlas (Esencia defensiva), pero también se puede editar o añadir directamente aquí.</p>
             <div id="gamePlanHowAttackItemsList" class="src-table"></div>
             <button type="button" class="link-btn src-add-row" id="btnAddGamePlanHowAttack">+ Añadir concepto</button>
           </div>
@@ -1160,7 +1175,8 @@ if('serviceWorker' in navigator){
       gamePlanHowAttackTitle: 'CÓMO ATACARLAS',
       gamePlanHowAttackEmpty: 'Ninguna marcada con "Plan" en Cómo atacarlas.',
       gamePlanSystemsPrefixOff: 'Sistema(s): ',
-      gamePlanSystemsPrefixDef: 'Sistema: '
+      gamePlanSystemsPrefixDef: 'Sistema: ',
+      gamePlanAttackSystemsPrefix: 'Sistemas: '
     },
     en: {
       dateLocale: 'en-GB',
@@ -1224,7 +1240,8 @@ if('serviceWorker' in navigator){
       gamePlanHowAttackTitle: 'HOW TO ATTACK THEM',
       gamePlanHowAttackEmpty: 'None marked "Plan" in How to attack them.',
       gamePlanSystemsPrefixOff: 'System(s): ',
-      gamePlanSystemsPrefixDef: 'System: '
+      gamePlanSystemsPrefixDef: 'System: ',
+      gamePlanAttackSystemsPrefix: 'Systems: '
     }
   };
   function tr(lang){ return I18N[lang] || I18N.es; }
@@ -4773,6 +4790,12 @@ if('serviceWorker' in navigator){
   }
 
   // ---------------- Scout Colectivo: fuentes de generación / cómo atacarlas ----------------
+  // Nombre del campo "de en medio" (entre Notas y Sistemas) de cada tabla -- ver 4.43 del
+  // HANDOFF: Fuentes de generación (Esencia ofensiva) lleva "Propuesta defensiva"; Cómo
+  // atacarlas (Esencia defensiva) lleva "Mensaje Jugadoras".
+  var SRC_TABLE_EXTRA_FIELD = { off: 'defensiveProposal', def: 'playerMessage' };
+  var SRC_TABLE_EXTRA_PLACEHOLDER = { off: 'Propuesta defensiva', def: 'Mensaje Jugadoras' };
+
   function renderSrcTable(kind){
     var rows = kind === 'off' ? state.offSources : state.defSources;
     var options = kind === 'off'
@@ -4781,11 +4804,15 @@ if('serviceWorker' in navigator){
     var container = $('#' + kind + 'SourcesRows');
     if(!container) return;
     var collName = kind + 'Sources';
+    var extraField = SRC_TABLE_EXTRA_FIELD[kind];
+    var extraPlaceholder = SRC_TABLE_EXTRA_PLACEHOLDER[kind];
 
     // Sin filas todavía se muestra igualmente una fila vacía y editable (con data-src-id=""),
     // en vez del aviso de "todavía no hay filas" — así el apartado no parece que falte. Esa
     // fila no existe de verdad en la base de datos hasta que se escribe algo en ella.
-    var displayRows = rows.length ? rows : [{ id: '', source: '', notes: '', systems: '' }];
+    var emptyRow = { id: '', source: '', notes: '', systems: '' };
+    emptyRow[extraField] = '';
+    var displayRows = rows.length ? rows : [emptyRow];
 
     function optionsHtml(selected){
       var opts = options.slice();
@@ -4807,11 +4834,15 @@ if('serviceWorker' in navigator){
             '<button type="button" class="btn-reorder" data-src-down' + (idx === displayRows.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
           '</div>')
         : '<div class="item-reorder"></div>';
+      var planTitle = kind === 'off' ? 'Incluir en "Sus fuentes de generación" del Plan de Partido' : 'Incluir en "Cómo atacarlas" del Plan de Partido';
       return '<div class="src-row" data-src-id="' + esc(r.id) + '">' +
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
+        '<textarea data-src-field="' + extraField + '" rows="1" placeholder="' + esc(extraPlaceholder) + '">' + esc(r[extraField] || '') + '</textarea>' +
         '<textarea data-src-field="systems" rows="1" placeholder="Sistemas">' + esc(r.systems || '') + '</textarea>' +
-        '<div class="src-row-actions">' + reorderHtml +
+        '<div class="src-row-actions">' +
+          '<label class="attack-player-plan" title="' + esc(planTitle) + '"><input type="checkbox" data-src-plan' + (r.id ? '' : ' disabled') + (r.inGamePlan ? ' checked' : '') + '> Plan</label>' +
+          reorderHtml +
           '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
         '</div>' +
       '</div>';
@@ -4847,6 +4878,19 @@ if('serviceWorker' in navigator){
         ref.collection(collName).doc(id).update(patch).catch(function(err){ console.error('save src field', err); });
       });
     });
+    // Casilla "Plan" (ver 4.43 del HANDOFF): al marcarla, esta fila se copia -- concepto + el
+    // campo "de en medio" (propuesta defensiva / mensaje jugadoras), y en Cómo atacarlas también
+    // los sistemas -- como una entrada editable en el apartado correspondiente del Plan de
+    // Partido. Al desmarcarla se quita de ahí. Editar la fila después no vuelve a sincronizar la
+    // copia (a propósito, igual que con Ideas clave -- ver toggleEssenceItemPlan).
+    container.querySelectorAll('[data-src-plan]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var id = cb.closest('[data-src-id]').getAttribute('data-src-id');
+        if(!id) return;
+        var row = rows.find(function(r){ return r.id === id; });
+        toggleSrcPlan(kind, collName, row, cb.checked);
+      });
+    });
     container.querySelectorAll('[data-src-del]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var id = btn.closest('[data-src-id]').getAttribute('data-src-id');
@@ -4859,6 +4903,7 @@ if('serviceWorker' in navigator){
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection(collName).doc(id).delete().catch(function(err){ console.error('delete src row', err); });
+        unlinkSrcTarget(kind, id);
       });
     });
     restoreFocus(container, focus);
@@ -4871,7 +4916,48 @@ if('serviceWorker' in navigator){
   function addSrcRow(kind){
     var ref = currentRivalRef();
     if(!ref) return;
-    ref.collection(kind + 'Sources').add({source: '', notes: '', systems: '', order: Date.now()}).catch(function(err){ console.error('add src row', err); });
+    var data = { source: '', notes: '', systems: '', order: Date.now() };
+    data[SRC_TABLE_EXTRA_FIELD[kind]] = '';
+    ref.collection(kind + 'Sources').add(data).catch(function(err){ console.error('add src row', err); });
+  }
+
+  function toggleSrcPlan(kind, collName, row, checked){
+    var ref = currentRivalRef();
+    if(!ref || !row) return;
+    ref.collection(collName).doc(row.id).update({inGamePlan: checked}).catch(function(err){ showGamePlanDataError(err, 'guardar la casilla "Plan"'); });
+    if(checked){
+      if(kind === 'off'){
+        // Solo concepto (fuente) + propuesta defensiva -- a petición de Marta, notas y sistemas
+        // (de uso interno del cuerpo técnico) NO se llevan al Plan de Partido.
+        ref.collection('gamePlanFuentesItems').add({
+          concept: row.source || '', notes: row.defensiveProposal || '', order: Date.now(), sourceOffSourceId: row.id
+        }).catch(function(err){ showGamePlanDataError(err, 'añadir la fuente al Plan de Partido'); });
+      } else {
+        // Concepto (cómo atacarlas) + mensaje jugadoras + sistemas para explotarlo -- notas
+        // internas tampoco se llevan aquí.
+        ref.collection('gamePlanHowAttackItems').add({
+          concept: row.source || '', notes: row.playerMessage || '', systems: row.systems || '', order: Date.now(), sourceDefSourceId: row.id
+        }).catch(function(err){ showGamePlanDataError(err, 'añadir a "Cómo atacarlas" del Plan de Partido'); });
+      }
+    } else {
+      unlinkSrcTarget(kind, row.id);
+    }
+  }
+
+  // Quita del Plan de Partido la(s) copia(s) vinculada(s) a esta fila de origen -- al
+  // desmarcar "Plan" (toggleSrcPlan) o al borrar la fila entera (ver data-src-del más arriba).
+  function unlinkSrcTarget(kind, srcRowId){
+    var ref = currentRivalRef();
+    if(!ref || !srcRowId) return;
+    if(kind === 'off'){
+      state.gamePlanFuentesItems.filter(function(it){ return it.sourceOffSourceId === srcRowId; }).forEach(function(it){
+        ref.collection('gamePlanFuentesItems').doc(it.id).delete().catch(function(err){ console.error('quitar fuente vinculada', err); });
+      });
+    } else {
+      state.gamePlanHowAttackItems.filter(function(it){ return it.sourceDefSourceId === srcRowId; }).forEach(function(it){
+        ref.collection('gamePlanHowAttackItems').doc(it.id).delete().catch(function(err){ console.error('quitar concepto vinculado', err); });
+      });
+    }
   }
 
   // Antes, si guardar/añadir/borrar algo del Plan de Partido fallaba (por ejemplo porque a la
@@ -4892,15 +4978,19 @@ if('serviceWorker' in navigator){
 
   // ---------------- Plan de Partido: "Sus fuentes de generación" y "Cómo atacarlas" ----------------
   // Mismo patrón de fila fantasma que renderSrcTable (una fila vacía y editable cuando todavía no
-  // hay ninguna, que se crea de verdad al primer campo tocado), pero con solo 2 campos: un
-  // "concepto" (se resalta en negrita en el PDF, ver layoutConceptList) y unas notas extra — ya
-  // no hay desplegable de fuente ni campo de sistemas, es texto libre pensado para las jugadoras.
+  // hay ninguna, que se crea de verdad al primer campo tocado). "Sus fuentes de generación" tiene
+  // 2 campos (concepto + notas); "Cómo atacarlas" tiene 3 (concepto + notas, aquí con la etiqueta
+  // "Mensaje jugadoras" + sistemas para explotarlo — ver 4.43 del HANDOFF).
   function renderGamePlanConceptList(collKey){
     var containerId = collKey === 'gamePlanFuentesItems' ? 'gamePlanFuentesItemsList' : 'gamePlanHowAttackItemsList';
     var container = $('#' + containerId);
     if(!container) return;
+    var hasSystems = collKey === 'gamePlanHowAttackItems';
+    var notesPlaceholder = hasSystems ? 'Mensaje jugadoras' : 'Notas';
     var rows = state[collKey];
-    var displayRows = rows.length ? rows : [{ id: '', concept: '', notes: '' }];
+    var emptyRow = { id: '', concept: '', notes: '' };
+    if(hasSystems) emptyRow.systems = '';
+    var displayRows = rows.length ? rows : [emptyRow];
     var canReorder = rows.length > 0;
 
     var focus = captureFocus(container, 'data-cn-id', 'data-cn-field');
@@ -4911,9 +5001,10 @@ if('serviceWorker' in navigator){
             '<button type="button" class="btn-reorder" data-cn-down' + (idx === displayRows.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
           '</div>')
         : '<div class="item-reorder"></div>';
-      return '<div class="concept-row" data-cn-id="' + esc(r.id) + '">' +
+      return '<div class="concept-row' + (hasSystems ? ' has-systems' : '') + '" data-cn-id="' + esc(r.id) + '">' +
         '<input type="text" class="concept-title" data-cn-field="concept" placeholder="Concepto" value="' + esc(r.concept || '') + '">' +
-        '<textarea data-cn-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
+        '<textarea data-cn-field="notes" rows="1" placeholder="' + esc(notesPlaceholder) + '">' + esc(r.notes || '') + '</textarea>' +
+        (hasSystems ? ('<textarea data-cn-field="systems" rows="1" placeholder="Sistemas para explotarlo">' + esc(r.systems || '') + '</textarea>') : '') +
         '<div class="src-row-actions">' + reorderHtml +
           '<button type="button" class="btn-del" data-cn-del title="Eliminar">✕</button>' +
         '</div>' +
@@ -4938,6 +5029,7 @@ if('serviceWorker' in navigator){
         if(!ref) return;
         if(!id){
           var data = { concept: '', notes: '', order: Date.now() };
+          if(hasSystems) data.systems = '';
           row.querySelectorAll('[data-cn-field]').forEach(function(f){ data[f.getAttribute('data-cn-field')] = f.value; });
           ref.collection(collKey).add(data).catch(function(err){ showGamePlanDataError(err, 'añadir el concepto'); });
           return;
@@ -4958,7 +5050,17 @@ if('serviceWorker' in navigator){
         }
         var ref = currentRivalRef();
         if(!ref) return;
+        var item = rows.find(function(r){ return r.id === id; });
         ref.collection(collKey).doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'eliminar el concepto'); });
+        // Si este concepto venía de una fila de Fuentes de generación / Cómo atacarlas marcada
+        // "Plan" (ver toggleSrcPlan), se desmarca también allí — mismo motivo que
+        // unlinkClaveSource con las Ideas clave.
+        if(item && item.sourceOffSourceId){
+          ref.collection('offSources').doc(item.sourceOffSourceId).update({inGamePlan: false}).catch(function(err){ console.error('desmarcar plan de fuente', err); });
+        }
+        if(item && item.sourceDefSourceId){
+          ref.collection('defSources').doc(item.sourceDefSourceId).update({inGamePlan: false}).catch(function(err){ console.error('desmarcar plan de cómo atacarlas', err); });
+        }
       });
     });
     restoreFocus(container, focus);
@@ -4969,7 +5071,9 @@ if('serviceWorker' in navigator){
   function addGamePlanConceptRow(collKey){
     var ref = currentRivalRef();
     if(!ref) return;
-    ref.collection(collKey).add({concept: '', notes: '', order: Date.now()}).catch(function(err){ showGamePlanDataError(err, 'añadir el concepto'); });
+    var data = {concept: '', notes: '', order: Date.now()};
+    if(collKey === 'gamePlanHowAttackItems') data.systems = '';
+    ref.collection(collKey).add(data).catch(function(err){ showGamePlanDataError(err, 'añadir el concepto'); });
   }
 
   // ---------------- Plan de Partido: "Claves del partido" ----------------
@@ -5016,7 +5120,12 @@ if('serviceWorker' in navigator){
         var id = btn.closest('[data-id]').getAttribute('data-id');
         var ref = currentRivalRef();
         if(!ref) return;
+        var item = items.find(function(it){ return it.id === id; });
         ref.collection('gamePlanClavesItems').doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'quitar la clave'); });
+        // Si esta clave venía de una Idea clave marcada "Plan" (ver toggleEssenceItemPlan), se
+        // desmarca también allí -- si no, la casilla se quedaría marcada pero sin ninguna copia
+        // de verdad en Claves del partido, dando una falsa sensación de que sigue incluida.
+        unlinkClaveSource(item);
       });
     });
     list.querySelectorAll('[data-item-up]').forEach(function(btn, idx){
@@ -5026,6 +5135,17 @@ if('serviceWorker' in navigator){
       btn.addEventListener('click', function(){ reorderItem(items, idx, 1, 'gamePlanClavesItems'); });
     });
     restoreFocus(list, focus);
+  }
+
+  function unlinkClaveSource(item){
+    if(!item || !item.sourceEssenceId) return;
+    var ref = currentRivalRef();
+    if(!ref) return;
+    var kind = state.offEssenceItems.some(function(e){ return e.id === item.sourceEssenceId; }) ? 'off'
+      : (state.defEssenceItems.some(function(e){ return e.id === item.sourceEssenceId; }) ? 'def' : null);
+    if(!kind) return;
+    ref.collection(kind + 'EssenceItems').doc(item.sourceEssenceId).update({inGamePlan: false})
+      .catch(function(err){ console.error('desmarcar plan de idea clave', err); });
   }
 
   function renderGamePlanClavesItems(){
@@ -5048,7 +5168,7 @@ if('serviceWorker' in navigator){
 
     var joined = state.attackPlayers.map(function(a){
       var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-      return p ? { id: a.id, player: p, category: a.category, notes: a.notes, inGamePlan: a.inGamePlan } : null;
+      return p ? { id: a.id, player: p, category: a.category, notes: a.notes, systems: a.systems, inGamePlan: a.inGamePlan } : null;
     }).filter(Boolean);
 
     function rowHtml(item){
@@ -5062,6 +5182,7 @@ if('serviceWorker' in navigator){
           '<button type="button" class="btn-del" data-attack-del title="Quitar">✕</button>' +
         '</div>' +
         '<textarea class="attack-notes" data-attack-field="notes" rows="1" placeholder="Notas">' + esc(item.notes || '') + '</textarea>' +
+        '<textarea class="attack-notes attack-systems" data-attack-field="systems" rows="1" placeholder="Sistemas con los que podemos atacarla">' + esc(item.systems || '') + '</textarea>' +
       '</div>';
     }
 
@@ -5100,17 +5221,20 @@ if('serviceWorker' in navigator){
       ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
       ta.addEventListener('change', function(){
         var id = ta.closest('[data-attack-id]').getAttribute('data-attack-id');
+        var field = ta.getAttribute('data-attack-field');
         var ref = currentRivalRef();
         if(!ref) return;
-        ref.collection('defPlayersToAttack').doc(id).update({notes: ta.value}).catch(function(err){
-          // Antes este error solo se veía en la consola, así que si la columna "notes" de
+        var patch = {}; patch[field] = ta.value;
+        ref.collection('defPlayersToAttack').doc(id).update(patch).catch(function(err){
+          // Antes este error solo se veía en la consola, así que si la columna correspondiente de
           // attack_players no existía todavía en la base de datos (falta ejecutar
-          // supabase_schema_patch7.sql) el guardado fallaba en silencio: la nota parecía
-          // escribirse pero nunca llegaba a guardarse de verdad. Ahora se avisa en pantalla.
-          console.error('save attack notes', err);
+          // supabase_schema_patch7.sql / supabase_schema_patch15.sql) el guardado fallaba en
+          // silencio: el texto parecía escribirse pero nunca llegaba a guardarse de verdad. Ahora
+          // se avisa en pantalla.
+          console.error('save attack field', field, err);
           var el = $('#attackNotesError');
           if(el){
-            el.textContent = 'No se pudo guardar la nota. Si el problema persiste, revisa que la base de datos tenga la columna "notes" (supabase_schema_patch7.sql).';
+            el.textContent = 'No se pudo guardar "' + (field === 'systems' ? 'Sistemas' : 'Notas') + '". Si el problema persiste, revisa que la base de datos tenga la columna "' + field + '" (supabase_schema_patch7.sql / supabase_schema_patch15.sql).';
             el.style.display = 'block';
             clearTimeout(el._hideTimer);
             el._hideTimer = setTimeout(function(){ el.style.display = 'none'; }, 8000);
@@ -5142,7 +5266,7 @@ if('serviceWorker' in navigator){
   function addAttackPlayer(playerId, category){
     var ref = currentRivalRef();
     if(!ref || !playerId) return;
-    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, notes: '', order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
+    ref.collection('defPlayersToAttack').add({playerId: playerId, category: category, notes: '', systems: '', order: Date.now()}).catch(function(err){ console.error('add attack player', err); });
   }
 
   // "Quintetos iniciales de los últimos partidos" (Esencia ofensiva, ver 4.39 del HANDOFF): un
@@ -5283,6 +5407,7 @@ if('serviceWorker' in navigator){
       return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
         '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        '<label class="attack-player-plan" title="Incluir esta idea en Claves del partido (Plan de Partido)"><input type="checkbox" data-essence-plan' + (it.inGamePlan ? ' checked' : '') + '> Plan</label>' +
         '<div class="item-reorder">' +
           '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
           '<button type="button" class="btn-reorder" data-item-down' + (idx === items.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
@@ -5297,6 +5422,20 @@ if('serviceWorker' in navigator){
         var ref = currentRivalRef();
         if(!ref) return;
         ref.collection(collName).doc(id).update({text: el.value}).catch(function(err){ console.error('save essence item', err); });
+      });
+    });
+    // Casilla "Plan" (ver 4.43 del HANDOFF): al marcarla, esta idea clave se copia -- una vez,
+    // como texto editable independiente -- a "Claves del partido" dentro del Plan de Partido.
+    // Esencia ofensiva describe cómo juega el rival en ataque, así que su idea clave informa
+    // NUESTRA DEFENSA (columna "Defensa"); Esencia defensiva informa NUESTRO ATAQUE (columna
+    // "Ataque"). Al desmarcarla se quita de Claves del partido. Editar el texto después de
+    // copiado NO vuelve a sincronizar (a propósito: "con opción a editarlas" pedía que la copia
+    // de Plan de Partido fuera independiente de la idea original).
+    list.querySelectorAll('[data-essence-plan]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var id = cb.closest('[data-id]').getAttribute('data-id');
+        var item = items.find(function(it){ return it.id === id; });
+        toggleEssenceItemPlan(kind, collName, item, cb.checked);
       });
     });
     list.querySelectorAll('[data-item-del]').forEach(function(btn){
@@ -5314,6 +5453,23 @@ if('serviceWorker' in navigator){
       btn.addEventListener('click', function(){ reorderItem(items, idx, 1, collName); });
     });
     restoreFocus(list, focus);
+  }
+
+  function toggleEssenceItemPlan(kind, collName, item, checked){
+    var ref = currentRivalRef();
+    if(!ref || !item) return;
+    ref.collection(collName).doc(item.id).update({inGamePlan: checked}).catch(function(err){ showGamePlanDataError(err, 'guardar la casilla "Plan"'); });
+    if(checked){
+      // Esencia ofensiva -> nuestra defensa; Esencia defensiva -> nuestro ataque (ver comentario
+      // más arriba, en renderEssenceItems).
+      var category = kind === 'off' ? 'defensa' : 'ataque';
+      ref.collection('gamePlanClavesItems').add({text: item.text || '', category: category, order: Date.now(), sourceEssenceId: item.id})
+        .catch(function(err){ showGamePlanDataError(err, 'añadir la clave al Plan de Partido'); });
+    } else {
+      state.gamePlanClavesItems.filter(function(k){ return k.sourceEssenceId === item.id; }).forEach(function(k){
+        ref.collection('gamePlanClavesItems').doc(k.id).delete().catch(function(err){ console.error('quitar clave vinculada', err); });
+      });
+    }
   }
 
   function addEssenceItem(kind, text){
@@ -5639,18 +5795,20 @@ if('serviceWorker' in navigator){
   function gatherGamePlanContent(){
     // Los apartados de texto del Plan de Partido son propios, escritos con su tono para las
     // jugadoras — ver 4.27 del HANDOFF. "Claves del partido" es una lista de items (como Ideas
-    // clave); "Sus fuentes de generación" y "Cómo atacarlas" son listas de concepto+notas; "A
-    // quién atacar" son las jugadoras de "Jugadoras a atacar" marcadas con "Plan" + una nota.
+    // clave); "Sus fuentes de generación" es concepto+notas; "Cómo atacarlas" es concepto+notas
+    // (mensaje jugadoras)+sistemas (ver 4.43 del HANDOFF); "A quién atacar" son las jugadoras de
+    // "Jugadoras a atacar" marcadas con "Plan", con sus notas y sistemas propios + una nota
+    // general del equipo.
     var r = state.rival || {};
     var clavesItems = state.gamePlanClavesItems.map(function(it){ return {text: it.text, category: claveCategory(it)}; });
     var fuentesItems = state.gamePlanFuentesItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
-    var howAttackItems = state.gamePlanHowAttackItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
+    var howAttackItems = state.gamePlanHowAttackItems.map(function(it){ return {concept: it.concept, notes: it.notes, systems: it.systems}; });
     var setsSorted = state.gamePlanSets.slice().sort(function(a,b){ return (a.orderIndex||0)-(b.orderIndex||0); }).map(function(s){
       return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
     });
     var attackJoined = state.attackPlayers.filter(function(a){ return a.inGamePlan; }).map(function(a){
       var p = state.allPlayers.find(function(pl){ return pl.id === a.playerId; });
-      return p ? {player: p, category: a.category} : null;
+      return p ? {player: p, category: a.category, notes: a.notes, systems: a.systems} : null;
     }).filter(Boolean);
     return {
       clavesItems: clavesItems, fuentesItems: fuentesItems, howAttackItems: howAttackItems,
@@ -5860,6 +6018,17 @@ if('serviceWorker' in navigator){
           }
           y += nLines.length*nlh;
         }
+        // "Sistemas para explotarlo" (solo en Cómo atacarlas, ver 4.43 del HANDOFF) -- en
+        // cursiva y con prefijo, para distinguirlo del mensaje jugadoras de arriba.
+        if(item.systems){
+          doc.setFont('helvetica','italic'); doc.setFontSize(nf);
+          var sLines = doc.splitTextToSize(L.gamePlanSystemsPrefixDef + item.systems, w);
+          if(draw){
+            doc.setTextColor.apply(doc, dim);
+            sLines.forEach(function(line, li){ doc.text(line, x, y + nlh*0.8 + li*nlh); });
+          }
+          y += sLines.length*nlh;
+        }
         y += gap;
       });
       return y;
@@ -5926,27 +6095,49 @@ if('serviceWorker' in navigator){
       return y;
     }
 
-    function layoutAttackPills(x0, y0, w, scale, draw){
+    // Cada jugadora marcada en "A quién atacar", una debajo de otra (antes eran solo pills en
+    // línea con el nombre; ahora también pueden llevar notas y sistemas con los que atacarla, ver
+    // 4.43 del HANDOFF, así que ya no caben varias por línea sin solaparse con el texto).
+    function layoutAttackPlayers(x0, y0, w, scale, spc, draw){
       if(!attackJoined.length){
         if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7*scale); doc.text(L.gamePlanWhoAttackEmpty, x0, y0+3); }
         return y0 + 6;
       }
-      var pf = Math.max(5.6, 7*scale), rowH = 6.2*scale;
-      var ax = x0, y = y0 + rowH*0.7;
-      doc.setFont('helvetica','bold'); doc.setFontSize(pf);
+      var pf = Math.max(5.6, 7*scale), rowH = 4.6*scale;
+      var nf = 7.0*scale, nlh = 3.0*scale;
+      var gap = 2.4*spc;
+      var y = y0;
       attackJoined.forEach(function(item){
-        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || '');
-        var wLabel = doc.getTextWidth(label) + 5*scale;
-        if(ax > x0 && ax + wLabel > x0 + w){ ax = x0; y += rowH; }
+        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || L.noName);
+        var wLabel = doc.getTextWidth(label) + 4.5*scale;
+        var color = item.category === 'calidad' ? good : warnC;
         if(draw){
-          var color = item.category === 'calidad' ? good : warnC;
-          roundRect(ax, y - rowH*0.62, wLabel, rowH*0.78, rowH*0.39, tintColor(color, 0.85));
+          roundRect(x0, y - rowH*0.72, wLabel, rowH*0.86, rowH*0.43, tintColor(color, 0.85));
           doc.setTextColor.apply(doc, shadeColor(color, 0.35)); doc.setFont('helvetica','bold'); doc.setFontSize(pf);
-          doc.text(label, ax+wLabel/2, y - rowH*0.12, {align:'center'});
+          doc.text(label, x0+wLabel/2, y - rowH*0.16, {align:'center'});
         }
-        ax += wLabel + 2*scale;
+        y += rowH*0.55;
+        if(item.notes){
+          doc.setFont('helvetica','normal'); doc.setFontSize(nf);
+          var nLines = doc.splitTextToSize(item.notes, w);
+          if(draw){
+            doc.setTextColor.apply(doc, dim);
+            nLines.forEach(function(line, li){ doc.text(line, x0, y + nlh*0.8 + li*nlh); });
+          }
+          y += nLines.length*nlh;
+        }
+        if(item.systems){
+          doc.setFont('helvetica','italic'); doc.setFontSize(nf);
+          var sLines = doc.splitTextToSize(L.gamePlanAttackSystemsPrefix + item.systems, w);
+          if(draw){
+            doc.setTextColor.apply(doc, dim);
+            sLines.forEach(function(line, li){ doc.text(line, x0, y + nlh*0.8 + li*nlh); });
+          }
+          y += sLines.length*nlh;
+        }
+        y += gap;
       });
-      return y + rowH*0.55;
+      return y;
     }
 
     // "Sus fuentes de generación" y "Nuestros 3 sets" en 2 columnas EN PARALELO (no una debajo de
@@ -5975,7 +6166,7 @@ if('serviceWorker' in navigator){
       if(attackNote && attackNote.trim()){
         y = layoutParagraph(colXR, y+1, colWR, scale, spc, draw, attackNote, '');
       }
-      y = layoutAttackPills(colXR, y+1, colWR, scale, draw);
+      y = layoutAttackPlayers(colXR, y+1, colWR, scale, spc, draw);
       return y;
     }
 
@@ -6089,12 +6280,13 @@ if('serviceWorker' in navigator){
     });
   }
 
-  // Reúne TODAS las cadenas traducibles del contenido del plan (items de claves, concepto+notas de
-  // fuentes y cómo atacarlas, nota de a quién atacar, notas de los 3 sets — el NOMBRE de los sets
-  // no se traduce, ya no se imprime en el PDF, ver layoutSets) en un único array ordenado, las
-  // traduce de una sola vez (una llamada, no una por campo — más rápido y gasta menos cuota) y
-  // reconstruye un `content` nuevo con esos campos sustituidos. Los nombres de jugadoras
-  // (attackJoined) NO se traducen, son nombres propios.
+  // Reúne TODAS las cadenas traducibles del contenido del plan (items de claves, concepto+notas
+  // [+sistemas, en cómo atacarlas] de fuentes y cómo atacarlas, nota de a quién atacar +
+  // notas/sistemas de cada jugadora marcada, notas de los 3 sets — el NOMBRE de los sets no se
+  // traduce, ya no se imprime en el PDF, ver layoutSets) en un único array ordenado, las traduce
+  // de una sola vez (una llamada, no una por campo — más rápido y gasta menos cuota) y reconstruye
+  // un `content` nuevo con esos campos sustituidos. Los nombres de jugadoras (attackJoined.player)
+  // NO se traducen, son nombres propios -- pero sus notas y sistemas sí son texto libre.
   function translateGamePlanContent(content){
     var texts = [];
     var refs = [];
@@ -6103,17 +6295,19 @@ if('serviceWorker' in navigator){
     clavesCopy.forEach(function(k){ push(k, 'text'); });
     var fuentesCopy = content.fuentesItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
     fuentesCopy.forEach(function(it){ push(it, 'concept'); push(it, 'notes'); });
-    var howAttackCopy = content.howAttackItems.map(function(it){ return {concept: it.concept, notes: it.notes}; });
-    howAttackCopy.forEach(function(it){ push(it, 'concept'); push(it, 'notes'); });
+    var howAttackCopy = content.howAttackItems.map(function(it){ return {concept: it.concept, notes: it.notes, systems: it.systems}; });
+    howAttackCopy.forEach(function(it){ push(it, 'concept'); push(it, 'notes'); push(it, 'systems'); });
     var wrap = { attackNote: content.attackNote };
     push(wrap, 'attackNote');
     var setsCopy = content.setsSorted.map(function(s){
       return {id: s.id, name: s.name, notes: s.notes, orderIndex: s.orderIndex, pdfPage: s.pdfPage, cropX: s.cropX, cropY: s.cropY, cropW: s.cropW, cropH: s.cropH};
     });
     setsCopy.forEach(function(s){ push(s, 'notes'); });
+    var attackJoinedCopy = content.attackJoined.map(function(a){ return {player: a.player, category: a.category, notes: a.notes, systems: a.systems}; });
+    attackJoinedCopy.forEach(function(a){ push(a, 'notes'); push(a, 'systems'); });
     return translateTexts(texts).then(function(translated){
       refs.forEach(function(ref, i){ ref.obj[ref.field] = translated[i]; });
-      return {clavesItems: clavesCopy, fuentesItems: fuentesCopy, howAttackItems: howAttackCopy, attackNote: wrap.attackNote, setsSorted: setsCopy, attackJoined: content.attackJoined};
+      return {clavesItems: clavesCopy, fuentesItems: fuentesCopy, howAttackItems: howAttackCopy, attackNote: wrap.attackNote, setsSorted: setsCopy, attackJoined: attackJoinedCopy};
     });
   }
 
@@ -6237,6 +6431,14 @@ if('serviceWorker' in navigator){
           slide.addText(item.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: 8.3, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
           y += h;
         }
+        // "Sistemas para explotarlo" (solo en Cómo atacarlas, ver 4.43 del HANDOFF).
+        if(item.systems){
+          var sysText = L.gamePlanSystemsPrefixDef + item.systems;
+          var sysLines = estPptxLines(sysText, w, 8.3);
+          var sysH = sysLines * 0.145 + 0.05;
+          slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          y += sysH;
+        }
         y += 0.13;
       });
       return y;
@@ -6320,16 +6522,44 @@ if('serviceWorker' in navigator){
     if(!content.attackJoined.length && !(content.attackNote && content.attackNote.trim())){
       s2.addText(L.gamePlanWhoAttackEmpty, { x: colXR, y: yRight, w: colWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
     } else {
-      var px = colXR, py = yRight, rowHPill = 0.30;
+      // Cada jugadora, una debajo de otra (ver 4.43 del HANDOFF: ahora pueden llevar notas y
+      // sistemas propios, así que ya no caben varias pills por línea como antes). Como
+      // pptxgenjs no encoge la letra si el contenido es largo (a diferencia del PDF), aquí se
+      // recortan notas/sistemas a 2 líneas cada uno (truncatePptxText, "…" si no cabe), se
+      // aprieta el interlineado/espaciado, y SI AUN ASÍ no caben todas las jugadoras antes del
+      // pie de página, se corta la lista y se añade un aviso "+N más" en vez de desbordar la
+      // diapositiva (pptxgenjs no puede medir el texto real, así que la altura de cada bloque
+      // se calcula por adelantado con estPptxLines antes de dibujarlo).
+      var py = yRight, pillH = 0.19, attFont = 7.5, attLineH = 0.115;
+      var attMaxY = PAGE_H - 0.55;
+      var attShown = 0, attHidden = 0;
       content.attackJoined.forEach(function(p){
         var label = (p.player.number != null && p.player.number !== '' ? p.player.number + '  ' : '') + (fullName(p.player) || L.noName);
-        var w = 0.075 * label.length + 0.26;
-        if(px > colXR && px + w > colXR + colWR){ px = colXR; py += rowHPill + 0.08; }
+        var pillW = 0.075 * label.length + 0.26;
         var isQuality = p.category === 'calidad';
-        s2.addShape('roundRect', { x: px, y: py, w: w, h: rowHPill, rectRadius: 0.15, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
-        s2.addText(label, { x: px, y: py, w: w, h: rowHPill, fontFace: 'Arial', fontSize: 8.5, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-        px += w + 0.09;
+        var pnText = p.notes ? truncatePptxText(p.notes, colWR, attFont, 2) : '';
+        var pnH = pnText ? (estPptxLines(pnText, colWR, attFont) * attLineH + 0.03) : 0;
+        var psText = p.systems ? truncatePptxText(L.gamePlanAttackSystemsPrefix + p.systems, colWR, attFont, 2) : '';
+        var psH = psText ? (estPptxLines(psText, colWR, attFont) * attLineH + 0.03) : 0;
+        var blockH = pillH + 0.04 + pnH + psH + 0.06;
+        if(py + blockH > attMaxY){ attHidden++; return; }
+        s2.addShape('roundRect', { x: colXR, y: py, w: pillW, h: pillH, rectRadius: 0.1, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
+        s2.addText(label, { x: colXR, y: py, w: pillW, h: pillH, fontFace: 'Arial', fontSize: 8, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        py += pillH + 0.04;
+        if(pnText){
+          s2.addText(pnText, { x: colXR, y: py, w: colWR, h: pnH, fontFace: 'Arial', fontSize: attFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          py += pnH;
+        }
+        if(psText){
+          s2.addText(psText, { x: colXR, y: py, w: colWR, h: psH, fontFace: 'Arial', fontSize: attFont, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          py += psH;
+        }
+        py += 0.06;
+        attShown++;
       });
+      if(attHidden > 0){
+        s2.addText('+ ' + attHidden + ' more', { x: colXR, y: py, w: colWR, h: 0.18, fontFace: 'Arial', fontSize: 7.5, italic: true, bold: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      }
     }
     footer(s2);
 
