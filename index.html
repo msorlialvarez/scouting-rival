@@ -1272,7 +1272,16 @@ if('serviceWorker' in navigator){
     // cualquier jugadora, ya que todas comparten la misma suscripción a la tabla `players`)
     // nunca pueda revertir en pantalla algo que se acaba de escribir pero todavía no se ha
     // terminado de guardar de verdad.
-    unsavedFieldEdits: {}
+    unsavedFieldEdits: {},
+    // Jugadoras para las que YA se ha disparado en esta sesión la migración silenciosa
+    // "weaknesses" -> "defend" (ver wirePlayerCard, 4.42 del HANDOFF). Se marca aquí de forma
+    // SÍNCRONA nada más disparar el update, antes incluso de que se confirme -- así, si
+    // wirePlayerCard se vuelve a ejecutar para la misma jugadora mientras ese update todavía
+    // está en camino (por ejemplo al pulsar "Refrescar", o por cualquier repintado disparado por
+    // el cambio de OTRA jugadora en la misma suscripción a `players`), no se repite el disparo
+    // con datos de `state.allPlayers` que aún no reflejan lo último guardado, pisando por encima
+    // un texto recién escrito en `defend`.
+    weaknessMigrationDone: {}
   };
 
   function $(sel){ return document.querySelector(sel); }
@@ -4318,10 +4327,27 @@ if('serviceWorker' in navigator){
     // campo viejo "weaknesses" (antes "Qué queremos que pase", ahora fusionado con "Cómo
     // defenderla" en un único campo — ver mergedDefendText), lo junta de verdad en `defend` y
     // vacía `weaknesses`, para que quede guardado en el sitio nuevo y no solo mostrado en
-    // pantalla. Como se vacía `weaknesses` al hacerlo, no vuelve a dispararse para esa jugadora
-    // (es idempotente: la próxima vez `p.weaknesses` ya estará vacío).
+    // pantalla.
+    //
+    // OJO (ver 4.42 del HANDOFF): esto NO se puede disparar cada vez que wirePlayerCard se
+    // vuelva a ejecutar para esta jugadora simplemente comprobando `p.weaknesses` en
+    // `state.allPlayers` -- esa suscripción puede tardar un instante en reflejar el
+    // `weaknesses: ''` de un disparo anterior, y wirePlayerCard se reejecuta con cualquier
+    // repintado de la plantilla (incluido pulsar "Refrescar", o el simple hecho de que OTRA
+    // jugadora cambie algo, ya que todas comparten la misma suscripción a `players`). Si en ese
+    // intervalo se repitiera el disparo, se recalcularía `defend` con el valor de
+    // `pForMigration.defend` que hubiera en ESE snapshot -- que puede ser anterior a algo que la
+    // usuaria acabase de escribir y guardar en `defend`, perdiéndolo. Por eso se marca
+    // `state.weaknessMigrationDone[playerId]` de forma síncrona ANTES de lanzar el guardado (no
+    // se espera a que se confirme), y no se dispara una segunda vez en esta sesión aunque
+    // `state.allPlayers` tarde en ponerse al día. Además, si hay un guardado de `defend` en
+    // curso o pendiente para esta jugadora (`state.unsavedFieldEdits`), se deja pasar del todo:
+    // ese guardado ya es la versión más reciente y no hace falta (ni conviene) tocarlo aquí.
     var pForMigration = state.allPlayers.find(function(pl){ return pl.id === playerId; });
-    if(pForMigration && pForMigration.weaknesses && pForMigration.weaknesses.trim()){
+    if(pForMigration && pForMigration.weaknesses && pForMigration.weaknesses.trim() &&
+       !state.weaknessMigrationDone[playerId] &&
+       !Object.prototype.hasOwnProperty.call(state.unsavedFieldEdits, playerId + '::defend')){
+      state.weaknessMigrationDone[playerId] = true;
       ref.update({defend: mergedDefendText(pForMigration), weaknesses: '', updatedAt: nowIso()})
         .catch(function(err){ console.error('migrar weaknesses a defend', err); });
     }
