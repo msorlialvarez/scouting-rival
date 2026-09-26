@@ -6584,47 +6584,68 @@ if('serviceWorker' in navigator){
     }
     if(!content.attackJoined.length && !(content.attackNote && content.attackNote.trim())){
       s2.addText(L.gamePlanWhoAttackEmpty, { x: colXR, y: yRight, w: colWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      footer(s2);
     } else {
       // Cada jugadora, una debajo de otra (ver 4.43 del HANDOFF: ahora pueden llevar notas y
-      // sistemas propios, así que ya no caben varias pills por línea como antes). Como
-      // pptxgenjs no encoge la letra si el contenido es largo (a diferencia del PDF), aquí se
-      // recortan notas/sistemas a 2 líneas cada uno (truncatePptxText, "…" si no cabe), se
-      // aprieta el interlineado/espaciado, y SI AUN ASÍ no caben todas las jugadoras antes del
-      // pie de página, se corta la lista y se añade un aviso "+N más" en vez de desbordar la
-      // diapositiva (pptxgenjs no puede medir el texto real, así que la altura de cada bloque
-      // se calcula por adelantado con estPptxLines antes de dibujarlo).
-      var py = yRight, pillH = 0.19, attFont = 7.5, attLineH = 0.115;
-      var attMaxY = PAGE_H - 0.55;
-      var attShown = 0, attHidden = 0;
-      content.attackJoined.forEach(function(p){
+      // sistemas propios, así que ya no caben varias pills por línea como antes). Antes, si no
+      // cabían todas antes del pie de página, se recortaba cada nota/sistema a 2 líneas y encima
+      // se cortaba la lista entera con un aviso "+N more" -- perdiendo información real que sí
+      // aparece en el PDF (Marta lo señaló: "no aparece toda la info que aparece en el PDF").
+      // Arreglado de raíz: en vez de recortar o esconder nada, las jugadoras que no quepan en
+      // esta diapositiva pasan a una o más diapositivas de continuación (a ancho completo, sin
+      // dividir en las 2 columnas de la primera, así el texto envuelve en menos líneas) -- un
+      // PowerPoint, a diferencia de un PDF de una sola página, puede tener tantas diapositivas
+      // como haga falta, así que no hay motivo para perder contenido.
+      var pillH = 0.19, attFont = 7.5, attLineH = 0.115;
+
+      function attackItemMetrics(p, w){
+        var pnText = p.notes || '';
+        var pnH = pnText ? (estPptxLines(pnText, w, attFont) * attLineH + 0.03) : 0;
+        var psText = p.systems ? (L.gamePlanAttackSystemsPrefix + p.systems) : '';
+        var psH = psText ? (estPptxLines(psText, w, attFont) * attLineH + 0.03) : 0;
+        return { pnText: pnText, pnH: pnH, psText: psText, psH: psH, total: pillH + 0.04 + pnH + psH + 0.06 };
+      }
+      function drawAttackItem(slide, x, w, y, p, m){
         var label = (p.player.number != null && p.player.number !== '' ? p.player.number + '  ' : '') + (fullName(p.player) || L.noName);
         var pillW = 0.075 * label.length + 0.26;
         var isQuality = p.category === 'calidad';
-        var pnText = p.notes ? truncatePptxText(p.notes, colWR, attFont, 2) : '';
-        var pnH = pnText ? (estPptxLines(pnText, colWR, attFont) * attLineH + 0.03) : 0;
-        var psText = p.systems ? truncatePptxText(L.gamePlanAttackSystemsPrefix + p.systems, colWR, attFont, 2) : '';
-        var psH = psText ? (estPptxLines(psText, colWR, attFont) * attLineH + 0.03) : 0;
-        var blockH = pillH + 0.04 + pnH + psH + 0.06;
-        if(py + blockH > attMaxY){ attHidden++; return; }
-        s2.addShape('roundRect', { x: colXR, y: py, w: pillW, h: pillH, rectRadius: 0.1, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
-        s2.addText(label, { x: colXR, y: py, w: pillW, h: pillH, fontFace: 'Arial', fontSize: 8, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-        py += pillH + 0.04;
-        if(pnText){
-          s2.addText(pnText, { x: colXR, y: py, w: colWR, h: pnH, fontFace: 'Arial', fontSize: attFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          py += pnH;
+        slide.addShape('roundRect', { x: x, y: y, w: pillW, h: pillH, rectRadius: 0.1, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
+        slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: 8, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        var yy = y + pillH + 0.04;
+        if(m.pnText){
+          slide.addText(m.pnText, { x: x, y: yy, w: w, h: m.pnH, fontFace: 'Arial', fontSize: attFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          yy += m.pnH;
         }
-        if(psText){
-          s2.addText(psText, { x: colXR, y: py, w: colWR, h: psH, fontFace: 'Arial', fontSize: attFont, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          py += psH;
+        if(m.psText){
+          slide.addText(m.psText, { x: x, y: yy, w: w, h: m.psH, fontFace: 'Arial', fontSize: attFont, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          yy += m.psH;
         }
-        py += 0.06;
-        attShown++;
-      });
-      if(attHidden > 0){
-        s2.addText('+ ' + attHidden + ' more', { x: colXR, y: py, w: colWR, h: 0.18, fontFace: 'Arial', fontSize: 7.5, italic: true, bold: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        return yy + 0.06;
       }
+
+      var queue = content.attackJoined.slice();
+      var slide = s2, x = colXR, w = colWR, py = yRight, slideStartY = yRight, attMaxY = PAGE_H - 0.55;
+      while(queue.length){
+        var m = attackItemMetrics(queue[0], w);
+        // El segundo término (py > slideStartY) garantiza que SIEMPRE se dibuje al menos una
+        // jugadora en cada diapositiva nueva, aunque su bloque no quepa entero -- si no, una
+        // jugadora con muchísimo texto podría hacer que se crearan diapositivas vacías sin fin.
+        if(py + m.total > attMaxY && py > slideStartY){
+          // No cabe ninguna más en esta diapositiva -- se continúa en una nueva, a ancho
+          // completo (más sitio por línea que la columna estrecha de la primera).
+          footer(slide);
+          slide = pptx.addSlide();
+          pageHeader(slide, L.gamePlanPdfTitle);
+          x = colXL; w = fullW;
+          py = sectionBanner(slide, x, w, 0.88, L.gamePlanWhoAttackTitle, GOOD);
+          slideStartY = py;
+          continue;
+        }
+        py = drawAttackItem(slide, x, w, py, queue[0], m);
+        queue.shift();
+      }
+      footer(slide);
     }
-    footer(s2);
 
     // ---- Diapositiva 2: fichas de jugadora, 2 columnas x 6 filas (12 por diapositiva) -- a
     // petición de Marta, la MISMA densidad que la página 2 del PDF (drawPlayerFacingReport), no
