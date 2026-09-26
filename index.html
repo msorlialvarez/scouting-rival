@@ -5894,20 +5894,24 @@ if('serviceWorker' in navigator){
     // draw=false para calcular alturas SIN pintar nada; sin este flag se pintaban los banners y
     // subtítulos también durante la medición (hasta 6 veces, una por cada intento de encoger la
     // letra), dejando el PDF con títulos duplicados unos encima de otros.
+    // Tamaños de los títulos (banners de sección y subtítulos) subidos un poco también, en línea
+    // con el resto del texto de la página (ver 4.48 del HANDOFF) -- estos dos NO se encogen con
+    // `scale`/`spc` (son fijos), así que el pequeño aumento aquí resta un par de mm de `avail`
+    // sea cual sea la densidad del documento; irrelevante frente a los ~174mm disponibles.
     function sectionLabel(x, y, w, text, color, draw){
       if(draw !== false){
-        roundRect(x, y, w, 7.5, 1.5, color);
-        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-        doc.text(text, x+3, y+5.2);
+        roundRect(x, y, w, 8, 1.5, color);
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9.6);
+        doc.text(text, x+3, y+5.6);
       }
-      return y+7.5+3.5;
+      return y+8+3.5;
     }
     function subLabel(x, y, text, color, draw){
       if(draw !== false){
-        doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+        doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(8.4);
         doc.text(text, x, y);
       }
-      return y+4;
+      return y+4.6;
     }
 
     // ---- Cabecera ----
@@ -5956,7 +5960,11 @@ if('serviceWorker' in navigator){
     // (wrap) al ancho disponible, con la altura real que ocupe (nunca solo la 1ª línea, para no
     // repetir el bug de solapes de antes).
     function layoutParagraph(x, y0, w, scale, spc, draw, text, emptyMsg){
-      var bf = 7.6*scale, blh = 3.4*scale;
+      // Tamaños subidos ~18% (pedido de Marta: "la letra se ve muy pequeña", ver 4.48 del
+      // HANDOFF) -- el suelo de encogido (`scale` nunca baja de 0.62) no se toca, así que en un
+      // Plan de Partido muy denso el tamaño final sigue pudiendo llegar a ese mismo suelo, pero
+      // ahora el suelo también es un 18% más grande que antes.
+      var bf = 9.0*scale, blh = 4.0*scale;
       if(!text || !text.trim()){
         if(draw && emptyMsg){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf);
@@ -5978,7 +5986,8 @@ if('serviceWorker' in navigator){
     // items en cada una según orden de alta, sin distinguir ataque de defensa).
     function layoutClaveColumn(x, y0, w, list, emptyMsg, scale, spc, draw){
       var y = y0;
-      var kf = 7.6*scale, klh = 3.4*scale, indent = 4, gap = 2.2*spc;
+      // Tamaño subido ~18% (ver 4.48 del HANDOFF).
+      var kf = 9.0*scale, klh = 4.0*scale, indent = 4, gap = 2.2*spc;
       if(!list.length){
         if(draw){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(kf);
@@ -6021,8 +6030,16 @@ if('serviceWorker' in navigator){
     // concepto clave de la explicación.
     function layoutConceptList(x, y0, w, scale, spc, draw, list, emptyMsg, conceptColor){
       var y = y0;
-      var cf = 7.6*scale, clh = 3.4*scale;
-      var nf = 7.0*scale, nlh = 3.0*scale;
+      // "Sus fuentes de generación" y "Cómo atacarlas" son las que Marta señaló como peor
+      // ("en especial" -- ver 4.48 del HANDOFF), así que aquí el tamaño sube algo más que en el
+      // resto de la página: concepto ~16%, notas/sistemas ~20% (eran el texto más pequeño de
+      // toda la página, 7.0 frente a los 7.6 de claves/párrafos, siendo la parte con más texto).
+      // Ojo: una letra más grande no solo aumenta el alto de línea, también hace que el mismo
+      // texto necesite MÁS líneas (menos caracteres caben por línea) -- por eso aquí la subida es
+      // algo más comedida que en claves/párrafos, para no arriesgar que el auto-encogido tenga
+      // que apretar de más en un Plan de Partido con mucho texto en estas dos tablas.
+      var cf = 8.8*scale, clh = 3.9*scale;
+      var nf = 8.4*scale, nlh = 3.7*scale;
       var gap = 3.0*spc;
       if(!list.length){
         if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(nf); doc.text(emptyMsg, x, y+3); }
@@ -6081,7 +6098,8 @@ if('serviceWorker' in navigator){
       // documento tiene mucho más contenido y no cabe todo, `spc` baja hasta su suelo (0.42) y
       // este máximo vuelve a caer a 30mm -- igual que el límite antiguo, nunca más pequeño.
       var imgMaxH = Math.max(30, 55 * spc);
-      var notesFont = Math.max(5, 5.6*scale), notesLH = 2.7*scale;
+      // Subido un poco junto con el resto del texto de la página (ver 4.48 del HANDOFF).
+      var notesFont = Math.max(5.8, 6.6*scale), notesLH = 3.2*scale;
       setsSorted.forEach(function(s, i){
         var img = images && images[i];
         var imgH = imgMaxH, imgW = w;
@@ -6146,8 +6164,9 @@ if('serviceWorker' in navigator){
       // 4.47 del HANDOFF). Reescrito para que `y` sea siempre la parte de ARRIBA de lo próximo a
       // dibujar (mismo estilo que el resto de layoutX de este documento) y cada bloque reserve de
       // verdad todo el espacio que ocupa, sin solapes.
-      var pf = Math.max(5.6, 7*scale), pillH = 4.0*scale, pillGap = 1.0*scale;
-      var nf = 7.0*scale, nlh = 3.0*scale;
+      // Tamaños subidos junto con el resto de la página (ver 4.48 del HANDOFF).
+      var pf = Math.max(6.4, 8.2*scale), pillH = 4.8*scale, pillGap = 1.1*scale;
+      var nf = 8.2*scale, nlh = 3.6*scale;
       var gap = 2.4*spc;
       var y = y0;
       attackJoined.forEach(function(item){
