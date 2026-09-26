@@ -6073,7 +6073,14 @@ if('serviceWorker' in navigator){
       // en su tamaño mínimo legible y aun así no cabe todo, son las 3 imágenes (lo que más espacio
       // ocupa) las que se encogen más para que quepa todo, en vez de forzar la letra por debajo de
       // lo legible — mínimo 15mm, siguen siendo diagramas reconocibles a ese tamaño.
-      var imgMaxH = Math.max(15, 30 * spc);
+      // Subido de 15/30 a 30/55 (pedido de Marta: "los gráficos de los sistemas quedan muy
+      // pequeños, auméntalos de tamaño", ver 4.47 del HANDOFF) -- antes el límite de altura era
+      // tan bajo que casi siempre recortaba también el ANCHO de la imagen muy por debajo del
+      // ancho de columna disponible (~77mm), dejando los recortes bastante más pequeños de lo que
+      // cabía de sobra en la página. El auto-encogido de más abajo sigue protegiendo: si el
+      // documento tiene mucho más contenido y no cabe todo, `spc` baja hasta su suelo (0.42) y
+      // este máximo vuelve a caer a 30mm -- igual que el límite antiguo, nunca más pequeño.
+      var imgMaxH = Math.max(30, 55 * spc);
       var notesFont = Math.max(5, 5.6*scale), notesLH = 2.7*scale;
       setsSorted.forEach(function(s, i){
         var img = images && images[i];
@@ -6132,20 +6139,28 @@ if('serviceWorker' in navigator){
         if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(7*scale); doc.text(L.gamePlanWhoAttackEmpty, x0, y0+3); }
         return y0 + 6;
       }
-      var pf = Math.max(5.6, 7*scale), rowH = 4.6*scale;
+      // Antes la pastilla se dibujaba con un desplazamiento hacia ARRIBA de `y` (y - rowH*0.72)
+      // pero el avance de `y` tras dibujarla era menor (solo rowH*0.55) -- así que cada pastilla
+      // "se comía" parte del hueco reservado para la última línea de notas/sistemas de la
+      // jugadora ANTERIOR, y el nombre quedaba encima del texto (bug señalado por Marta, ver
+      // 4.47 del HANDOFF). Reescrito para que `y` sea siempre la parte de ARRIBA de lo próximo a
+      // dibujar (mismo estilo que el resto de layoutX de este documento) y cada bloque reserve de
+      // verdad todo el espacio que ocupa, sin solapes.
+      var pf = Math.max(5.6, 7*scale), pillH = 4.0*scale, pillGap = 1.0*scale;
       var nf = 7.0*scale, nlh = 3.0*scale;
       var gap = 2.4*spc;
       var y = y0;
       attackJoined.forEach(function(item){
         var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || L.noName);
+        doc.setFont('helvetica','bold'); doc.setFontSize(pf);
         var wLabel = doc.getTextWidth(label) + 4.5*scale;
         var color = item.category === 'calidad' ? good : warnC;
         if(draw){
-          roundRect(x0, y - rowH*0.72, wLabel, rowH*0.86, rowH*0.43, tintColor(color, 0.85));
-          doc.setTextColor.apply(doc, shadeColor(color, 0.35)); doc.setFont('helvetica','bold'); doc.setFontSize(pf);
-          doc.text(label, x0+wLabel/2, y - rowH*0.16, {align:'center'});
+          roundRect(x0, y, wLabel, pillH, pillH/2, tintColor(color, 0.85));
+          doc.setTextColor.apply(doc, shadeColor(color, 0.35));
+          doc.text(label, x0+wLabel/2, y + pillH/2 + pf*0.13, {align:'center'});
         }
-        y += rowH*0.55;
+        y += pillH + pillGap;
         if(item.notes){
           doc.setFont('helvetica','normal'); doc.setFontSize(nf);
           var nLines = doc.splitTextToSize(item.notes, w);
