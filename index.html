@@ -6471,6 +6471,14 @@ if('serviceWorker' in navigator){
     var ACCENT = hexNoHash(rival.color);
     var GOOD = '1F8A5F', WARN = 'F5A623', DANGER = 'C73434', DARK = '3A3E46', INK = '14171C', DIM = '5B6270', WHITE = 'FFFFFF';
     var fullW = PAGE_W - MARGIN * 2;
+    // 4.56 del HANDOFF: Marta pidió "que quepa todo en la misma página" y "que las posiciones de
+    // cada cosa sean IGUALES" que en el PDF -- así que la diapositiva 1 entera se reescribe para
+    // ser un port literal de `buildGamePlanDoc` (el mismo documento en mm) convertido a pulgadas
+    // con este único factor, en vez de medidas propias "parecidas". Con el mismo factor de
+    // conversión para el ancho de página (297mm) y el margen (12mm) ya usados arriba (11.69in y
+    // 0.47in son ese mismo mm/25.4 aplicado), cualquier medida en mm del PDF se traduce aquí
+    // multiplicando por MM, y el resultado cae en la MISMA posición proporcional de la página.
+    var MM = 1 / 25.4;
     function shootHex(v){ return v === 'rojo' ? DANGER : (v === 'verde' ? GOOD : WARN); }
 
     function pageHeader(slide, subtitle){
@@ -6501,226 +6509,290 @@ if('serviceWorker' in navigator){
         color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
     }
-    // Tamaños igualados a los del PDF (ver 4.54 del HANDOFF: Marta pidió que el PowerPoint se
-    // vea IGUAL que el PDF) -- hasta ahora este PowerPoint usaba tamaños fijos más pequeños y
-    // uniformes (11 / 9,5 / 9 / 8,3 para todo) que NO coincidían con los del PDF (14 / 16-10,5-9,5
-    // / 10,5-9,0 / 10,0-8,3 según la sección, ver 4.50). `sectionBanner` sube a 14pt fijo, igual
-    // que los banners del PDF (que tampoco se encogen). `subLabel` y `conceptList` reciben ahora
-    // el tamaño como parámetro opcional, igual que en el PDF, para poder variarlo por sección.
-    function sectionBanner(slide, x, w, yPos, text, colorHex){
-      var bannerH = 0.34;
-      slide.addShape('roundRect', { x: x, y: yPos, w: w, h: bannerH, rectRadius: 0.06, fill: {color: colorHex}, line: {type: 'none'} });
-      slide.addText(text, {
-        x: x + 0.1, y: yPos, w: w - 0.2, h: bannerH, fontFace: 'Arial', fontSize: 14, bold: true,
-        color: WHITE, align: 'left', valign: 'middle', margin: 0, isTextBox: true
-      });
-      return yPos + bannerH + 0.14;
+    // 4.56 del HANDOFF: TODA esta sección (banners/subtítulos/listas + la diapositiva 1 entera)
+    // reescrita como copia literal de las funciones equivalentes de `buildGamePlanDoc` (el PDF),
+    // con cada medida en mm multiplicada por `MM` en vez de números "parecidos" en pulgadas --
+    // Marta pidió expresamente "que las posiciones de cada cosa sean IGUALES" que en el PDF, y
+    // "que quepa todo en la misma página". Cada función de abajo recibe ahora `scale`/`spc` (los
+    // mismos "mandos" de encogido del PDF) y un flag `draw`: con `draw=false` no dibuja nada, solo
+    // devuelve cuánto ocuparía -- así se puede medir el documento completo ANTES de dibujarlo (ver
+    // `totalHeight`/el bucle de encogido más abajo) exactamente igual que hace el PDF, garantizando
+    // que todo quepa en una sola diapositiva sin solaparse. La única diferencia real frente al PDF
+    // es que pptxgenjs no puede medir el ancho real de un texto (jsPDF sí, con `splitTextToSize`),
+    // así que el nº de líneas se sigue estimando con `estPptxLines` (por caracteres) en vez de
+    // medirlo de verdad -- pero con el mismo criterio en mm que el PDF, la proporción y posición
+    // de cada elemento coincide.
+    function sectionBanner(slide, x, w, yPos, text, colorHex, draw){
+      var bannerH = 9 * MM, gapAfter = 4 * MM;
+      if(draw !== false){
+        slide.addShape('roundRect', { x: x, y: yPos, w: w, h: bannerH, rectRadius: 0.06, fill: {color: colorHex}, line: {type: 'none'} });
+        slide.addText(text, {
+          x: x + 0.1, y: yPos, w: w - 0.2, h: bannerH, fontFace: 'Arial', fontSize: 14, bold: true,
+          color: WHITE, align: 'left', valign: 'middle', margin: 0, isTextBox: true
+        });
+      }
+      return yPos + bannerH + gapAfter;
     }
-    function subLabel(slide, x, w, text, colorHex, yPos, fontSize){
+    // OJO: aquí NO se usa la fórmula de hueco del PDF (`3.0 + fs*0.125` mm) tal cual, aunque el
+    // resto de esta sección sí porta las fórmulas del PDF literalmente -- probado en la 4.56 y
+    // descartado: esa fórmula está calibrada para jsPDF, que posiciona el texto por su LÍNEA BASE
+    // (`doc.text(x,y)` dibuja con y como línea base, así que un hueco pequeño después ya vale
+    // porque y está casi al final del propio glifo). pptxgenjs, en cambio, posiciona por la parte
+    // DE ARRIBA de la caja (`valign:'top'`), así que ese mismo hueco pequeño no deja sitio para el
+    // alto del propio texto -- con "NUESTRA DEFENSA"/"NUESTRO ATAQUE" a 16pt (el subtítulo más
+    // grande de la página) esto producía justo el bug que Marta señaló después de la 4.55 (la
+    // primera clave se dibujaba encima del título). Se mantiene la fórmula ORIGINAL de este mismo
+    // archivo (ver 4.54 del HANDOFF), ya probada sin solapes a 9,5/10,5/16pt.
+    function subLabel(slide, x, w, text, colorHex, yPos, fontSize, draw){
       var fs = fontSize || 9.5;
-      slide.addText(text, { x: x, y: yPos, w: w, h: 0.24, fontFace: 'Arial', fontSize: fs, bold: true, color: colorHex, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      if(draw !== false){
+        slide.addText(text, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: fs, bold: true, color: colorHex, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      }
       return yPos + 0.09 + fs * 0.017;
     }
-    function bulletList(slide, x, w, items, yPos, emptyMsg){
-      if(!items.length){
-        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: 9, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-        return yPos + 0.35;
+    // Equivalente de `layoutClaveColumn` del PDF: una jugadora/idea por línea con su propio hueco
+    // (en vez del bloque único de texto que se usaba antes, que no podía reservar un alto preciso
+    // por punto).
+    function claveColumn(slide, x, w, list, yPos, emptyMsg, scale, spc, draw){
+      var kf = 9.5 * scale, klh = 4.2 * scale * MM, indent = 4 * MM, gap = 2.2 * spc * MM;
+      var y = yPos;
+      if(!list.length){
+        if(draw !== false){
+          slide.addText(emptyMsg, { x: x, y: y, w: w, h: 0.3, fontFace: 'Arial', fontSize: kf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        }
+        return y + 6 * MM;
       }
-      var totalLines = 0;
-      var paras = items.map(function(t, i){
-        totalLines += estPptxLines(t, w - 0.16, 9.5);
-        return { text: t, options: { bullet: {code: '2022', indent: 14}, color: INK, fontFace: 'Arial', fontSize: 9.5, breakLine: i < items.length - 1, paraSpaceAfter: 6 } };
+      list.forEach(function(text){
+        var lines = estPptxLines(text, w - indent, kf);
+        var h = lines * klh;
+        if(draw !== false){
+          slide.addText(text, {
+            x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: kf, color: INK, align: 'left', valign: 'top',
+            margin: 0, isTextBox: true, bullet: { code: '2022', indent: Math.round(indent * 72) }
+          });
+        }
+        y += h + gap;
       });
-      var h = totalLines * 0.16 + items.length * 0.08 + 0.1;
-      slide.addText(paras, { x: x, y: yPos, w: w, h: h, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-      return yPos + h;
+      return y;
     }
     // `cf`/`nf` (concepto/notas) opcionales -- por defecto los de "Cómo atacarlas" (9,0/8,3, la
     // llamada más exigente); la llamada de "Sus fuentes de generación" pasa 10,5/10,0 (letra más
-    // grande, igual que en el PDF desde la 4.50, ver 4.54 del HANDOFF).
-    function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg, cfBase, nfBase){
-      var cf = cfBase || 9.0, nf = nfBase || 8.3;
+    // grande, igual que en el PDF desde la 4.50). Ahora recibe `scale`/`spc` como el equivalente
+    // `layoutConceptList` del PDF, con las mismas fórmulas en mm.
+    function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg, cfBase, nfBase, scale, spc, draw){
+      var cf = (cfBase || 9.0) * scale, clh = (cfBase ? cfBase * 0.444 : 4.0) * scale * MM;
+      var nf = (nfBase || 8.3) * scale, nlh = (nfBase ? nfBase * 0.446 : 3.7) * scale * MM;
+      var gap = 3.0 * spc * MM;
       if(!items.length){
-        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-        return yPos + 0.35;
+        if(draw !== false){ slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+        return yPos + 6 * MM;
       }
       var y = yPos;
       items.forEach(function(item){
         if(item.concept){
-          slide.addText(item.concept, { x: x, y: y, w: w, h: 0.2, fontFace: 'Arial', fontSize: cf, bold: true, color: conceptColor, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          y += 0.05 + cf*0.017;
+          var cLines = estPptxLines(item.concept, w, cf);
+          var ch = cLines * clh;
+          if(draw !== false){ slide.addText(item.concept, { x: x, y: y, w: w, h: ch, fontFace: 'Arial', fontSize: cf, bold: true, color: conceptColor, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          y += ch;
         }
         if(item.notes){
-          var lines = estPptxLines(item.notes, w, nf);
-          var h = lines * 0.145 + 0.05;
-          slide.addText(item.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          y += h;
+          var nLines = estPptxLines(item.notes, w, nf);
+          var nh = nLines * nlh;
+          if(draw !== false){ slide.addText(item.notes, { x: x, y: y, w: w, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          y += nh;
         }
         // "Sistemas para explotarlo" (solo en Cómo atacarlas, ver 4.43 del HANDOFF).
         if(item.systems){
           var sysText = L.gamePlanSystemsPrefixDef + item.systems;
           var sysLines = estPptxLines(sysText, w, nf);
-          var sysH = sysLines * 0.145 + 0.05;
-          slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          var sysH = sysLines * nlh;
+          if(draw !== false){ slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
           y += sysH;
         }
-        y += 0.13;
+        y += gap;
+      });
+      return y;
+    }
+    // Equivalente de `layoutParagraph` del PDF -- párrafo libre (usado por la nota de "A quién
+    // atacar"), con su alto real reservado en vez de una caja fija.
+    function layoutParagraph(slide, x, y0, w, scale, spc, draw, text, emptyMsg){
+      var bf = 9.5 * scale, blh = 4.2 * scale * MM;
+      if(!text || !text.trim()){
+        if(draw !== false && emptyMsg){ slide.addText(emptyMsg, { x: x, y: y0, w: w, h: 0.3, fontFace: 'Arial', fontSize: bf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+        return y0 + 6 * MM;
+      }
+      var lines = estPptxLines(text, w, bf);
+      var h = lines * blh;
+      if(draw !== false){ slide.addText(text, { x: x, y: y0, w: w, h: h, fontFace: 'Arial', fontSize: bf, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+      return y0 + h + 2 * spc * MM;
+    }
+    // Equivalente de `layoutSets` del PDF -- mismo suelo de altura de imagen ligado a `spc` (ver
+    // 4.54 del HANDOFF: "que los sistemas se vean un poco más grandes").
+    function drawSets(slide, x, y0, w, scale, spc, draw, setsList, images){
+      var imgMaxH = Math.max(40, 62 * spc) * MM;
+      var notesFont = Math.max(5.8, 6.6 * scale), notesLH = 3.2 * scale * MM;
+      var y = y0;
+      setsList.forEach(function(s, i){
+        var img = images && images[i];
+        var imgH = imgMaxH, imgW = w;
+        if(img && img.width && img.height){
+          var aspect = img.width / img.height;
+          imgH = w / aspect;
+          if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+        }
+        var imgX = x + (w - imgW) / 2;
+        if(draw !== false){
+          if(img){
+            try{ slide.addImage({ data: img.dataUrl, x: imgX, y: y, w: imgW, h: imgH }); }
+            catch(e){
+              console.error('pptx set crop', e);
+              slide.addShape('roundRect', { x: x, y: y, w: w, h: imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
+              imgH = imgMaxH;
+            }
+          } else {
+            slide.addShape('roundRect', { x: x, y: y, w: w, h: imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
+            slide.addText(L.gamePlanSinRecorte, { x: x, y: y, w: w, h: imgMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+            imgH = imgMaxH;
+          }
+        } else if(!img){ imgH = imgMaxH; }
+        y += imgH + 2.4 * spc * MM;
+        if(s.notes){
+          var lines = estPptxLines(s.notes, w, notesFont);
+          var h = lines * notesLH;
+          if(draw !== false){ slide.addText(s.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: notesFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          y += h;
+        }
+        y += 4.5 * spc * MM;
+      });
+      return y;
+    }
+    // Equivalente de `layoutAttackPlayers` del PDF -- TODAS las jugadoras de "A quién atacar" en
+    // esta misma columna, una debajo de otra, sin paginar a diapositivas de continuación (ver
+    // 4.56 del HANDOFF: Marta pidió que quepa todo en la misma página, así que ya no hace falta
+    // repartir en varias diapositivas -- el bucle de encogido de más abajo es lo que ahora
+    // garantiza que quepan todas, igual que en el PDF).
+    function layoutAttackPlayers(slide, x, y0, w, scale, spc, draw){
+      if(!content.attackJoined.length){
+        if(draw !== false){ slide.addText(L.gamePlanWhoAttackEmpty, { x: x, y: y0, w: w, h: 0.3, fontFace: 'Arial', fontSize: Math.max(6.4, 7 * scale), italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+        return y0 + 6 * MM;
+      }
+      var pf = Math.max(6.4, 8.2 * scale), pillH = 4.8 * scale * MM, pillGap = 1.1 * scale * MM;
+      var nf = 8.2 * scale, nlh = 3.6 * scale * MM;
+      var gap = 2.4 * spc * MM;
+      var y = y0;
+      content.attackJoined.forEach(function(item){
+        var label = (item.player.number != null && item.player.number !== '' ? item.player.number + '  ' : '') + (fullName(item.player) || L.noName);
+        var pillW = scale * (0.075 * label.length + 0.26);
+        var isQuality = item.category === 'calidad';
+        if(draw !== false){
+          slide.addShape('roundRect', { x: x, y: y, w: pillW, h: pillH, rectRadius: pillH / 2, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
+          slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: pf, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        }
+        y += pillH + pillGap;
+        if(item.notes){
+          var nLines = estPptxLines(item.notes, w, nf);
+          var nh = nLines * nlh;
+          if(draw !== false){ slide.addText(item.notes, { x: x, y: y, w: w, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          y += nh;
+        }
+        if(item.systems){
+          var sysText = L.gamePlanAttackSystemsPrefix + item.systems;
+          var sLines = estPptxLines(sysText, w, nf);
+          var sh = sLines * nlh;
+          if(draw !== false){ slide.addText(sysText, { x: x, y: y, w: w, h: sh, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          y += sh;
+        }
+        y += gap;
       });
       return y;
     }
 
-    // ---- Diapositiva 1: Claves del partido + Cómo les defendemos/atacamos, TODO junto -- a
-    // petición de Marta ("quiero solo 2 páginas"), igual que la página 1 del PDF, no repartido
-    // en 2 diapositivas como en el primer intento. Letra más pequeña que aquel primer intento
-    // (más parecida a la del PDF) para maximizar las posibilidades de que quepa todo sin
-    // solaparse -- pero OJO, a diferencia del PDF esto NO encoge la letra automáticamente si el
-    // contenido es más largo de lo normal (ver comentario de la función); si a Marta le queda
-    // apretado con un Plan de Partido largo, hay que ajustar tamaños a mano.
-    var s2 = pptx.addSlide();
-    s2.background = { color: WHITE };
-    var y = pageHeader(s2, L.gamePlanPdfTitle) + 0.16;
-    y = sectionBanner(s2, MARGIN, fullW, y, L.gamePlanClavesTitle, ACCENT);
-    var clavesGap = 0.3, clavesColW = (fullW - clavesGap) / 2;
-    var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
-    // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
-    // derecha "NUESTRO ATAQUE" -- igual que en el PDF, para que ambos coincidan.
-    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y, 16);
-    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y, 16);
-    var clavesTop = Math.max(yL, yR);
-    var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
-    var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
-    var clavesBottomL = bulletList(s2, clavesXL, clavesColW, defenseList, clavesTop, L.gamePlanClavesEmpty);
-    var clavesBottomR = bulletList(s2, clavesXR, clavesColW, attackList, clavesTop, L.gamePlanClavesEmpty);
-    y = Math.max(clavesBottomL, clavesBottomR) + 0.16;
-
-    var colGap = 0.32, colWL = fullW * 0.58 - colGap / 2, colWR = fullW * 0.42 - colGap / 2;
+    // Equivalentes de `layoutClaves`/`layoutLeftColumn`/`layoutRightColumn` del PDF -- misma
+    // composición y mismo orden, con `draw=false` para la pasada de MEDICIÓN (sin `slide`, no hace
+    // falta) y `draw=true` para la pasada real (con el `scale`/`spc` ya definitivos).
+    var colGap = 8 * MM, colWL = fullW * 0.6 - colGap / 2, colWR = fullW * 0.4 - colGap / 2;
     var colXL = MARGIN, colXR = MARGIN + colWL + colGap;
 
-    var yLeft = sectionBanner(s2, colXL, colWL, y, L.gamePlanDefendTitle, DARK);
-    var subGap = 0.26, subColW = (colWL - subGap) / 2;
-    var xFuentes = colXL, xSets = colXL + subColW + subGap;
-    var yF = subLabel(s2, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, yLeft, 10.5);
-    conceptList(s2, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0);
-
-    var yS = subLabel(s2, xSets, subColW, L.gamePlanSetsTitle, DARK, yLeft);
-    // Subido de 0.92 a 1.05in (Marta: "que los sistemas se vean un poco más grandes", igual que
-    // en el PDF, ver 4.54 del HANDOFF).
-    var setMaxH = 1.05;
-    content.setsSorted.forEach(function(s, i){
-      var img = setImages && setImages[i];
-      var imgH = setMaxH, imgW = subColW;
-      if(img && img.width && img.height){
-        var aspect = img.width / img.height;
-        imgH = subColW / aspect;
-        if(imgH > setMaxH){ imgH = setMaxH; imgW = imgH * aspect; }
-      }
-      var imgX = xSets + (subColW - imgW) / 2;
-      if(img){
-        try{ s2.addImage({ data: img.dataUrl, x: imgX, y: yS, w: imgW, h: imgH }); }
-        catch(e){
-          console.error('pptx set crop', e);
-          s2.addShape('roundRect', { x: xSets, y: yS, w: subColW, h: setMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
-          imgH = setMaxH;
-        }
-      } else {
-        s2.addShape('roundRect', { x: xSets, y: yS, w: subColW, h: setMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
-        s2.addText(L.gamePlanSinRecorte, { x: xSets, y: yS, w: subColW, h: setMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-        imgH = setMaxH;
-      }
-      yS += imgH + 0.08;
-      if(s.notes){
-        var lines = estPptxLines(s.notes, subColW, 7.6);
-        var h = lines * 0.13 + 0.05;
-        s2.addText(s.notes, { x: xSets, y: yS, w: subColW, h: h, fontFace: 'Arial', fontSize: 7.6, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-        yS += h;
-      }
-      yS += 0.12;
-    });
-
-    // "Cómo atacarlas" y "A quién atacar" EN PARALELO, en 2 columnas una junto a otra -- igual
-    // que ya hace "Sus fuentes de generación"/"Sus 3 sets" a la izquierda, y que el PDF desde la
-    // 4.51 (Marta pidió que el PowerPoint se vea IGUAL que el PDF, ver 4.54 del HANDOFF). Antes
-    // iban una debajo de otra a todo el ancho de `colWR`.
-    var yRight = sectionBanner(s2, colXR, colWR, y, L.gamePlanAttackTitle, GOOD);
-    var subGapR = 0.26, subColWR = (colWR - subGapR) / 2;
-    var xAtacarlas = colXR, xQuien = colXR + subColWR + subGapR;
-    // "Cómo atacarlas" -- concepto a 9pt y notas/sistemas a 8,3pt, igual que en el PDF (la tabla
-    // con más texto de la página, ver 4.50).
-    var yA = subLabel(s2, xAtacarlas, subColWR, L.gamePlanHowAttackTitle, GOOD, yRight, 9.5);
-    conceptList(s2, xAtacarlas, subColWR, content.howAttackItems, yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3);
-
-    var yQ = subLabel(s2, xQuien, subColWR, L.gamePlanWhoAttackTitle, GOOD, yRight, 9.5);
-    if(content.attackNote && content.attackNote.trim()){
-      var noteLines = estPptxLines(content.attackNote, subColWR, 8.3);
-      var noteH = noteLines * 0.145 + 0.05;
-      s2.addText(content.attackNote, { x: xQuien, y: yQ, w: subColWR, h: noteH, fontFace: 'Arial', fontSize: 8.3, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-      yQ += noteH + 0.10;
+    function layoutClaves(slide, y0, scale, spc, draw){
+      var y = sectionBanner(slide, MARGIN, fullW, y0, L.gamePlanClavesTitle, ACCENT, draw);
+      var clavesGap = 6 * MM, clavesColW = (fullW - clavesGap) / 2;
+      var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
+      // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
+      // derecha "NUESTRO ATAQUE" -- igual que en el PDF, para que ambos coincidan.
+      var yLabelL = subLabel(slide, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y + 3 * MM, 16, draw);
+      var yLabelR = subLabel(slide, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y + 3 * MM, 16, draw);
+      var yTop = Math.max(yLabelL, yLabelR);
+      var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
+      var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
+      var yL = claveColumn(slide, clavesXL, clavesColW, defenseList, yTop, L.gamePlanClavesEmpty, scale, spc, draw);
+      var yR = claveColumn(slide, clavesXR, clavesColW, attackList, yTop, L.gamePlanClavesEmpty, scale, spc, draw);
+      return Math.max(yL, yR);
     }
-    var yRight2 = yQ;
-    if(!content.attackJoined.length && !(content.attackNote && content.attackNote.trim())){
-      s2.addText(L.gamePlanWhoAttackEmpty, { x: xQuien, y: yRight2, w: subColWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-      footer(s2);
-    } else {
-      // Cada jugadora, una debajo de otra (ver 4.43 del HANDOFF: ahora pueden llevar notas y
-      // sistemas propios, así que ya no caben varias pills por línea como antes). Antes, si no
-      // cabían todas antes del pie de página, se recortaba cada nota/sistema a 2 líneas y encima
-      // se cortaba la lista entera con un aviso "+N more" -- perdiendo información real que sí
-      // aparece en el PDF (Marta lo señaló: "no aparece toda la info que aparece en el PDF").
-      // Arreglado de raíz: en vez de recortar o esconder nada, las jugadoras que no quepan en
-      // esta diapositiva pasan a una o más diapositivas de continuación (a ancho completo, sin
-      // dividir en las 2 columnas de la primera, así el texto envuelve en menos líneas) -- un
-      // PowerPoint, a diferencia de un PDF de una sola página, puede tener tantas diapositivas
-      // como haga falta, así que no hay motivo para perder contenido.
-      var pillH = 0.19, attFont = 7.5, attLineH = 0.115;
-
-      function attackItemMetrics(p, w){
-        var pnText = p.notes || '';
-        var pnH = pnText ? (estPptxLines(pnText, w, attFont) * attLineH + 0.03) : 0;
-        var psText = p.systems ? (L.gamePlanAttackSystemsPrefix + p.systems) : '';
-        var psH = psText ? (estPptxLines(psText, w, attFont) * attLineH + 0.03) : 0;
-        return { pnText: pnText, pnH: pnH, psText: psText, psH: psH, total: pillH + 0.04 + pnH + psH + 0.06 };
-      }
-      function drawAttackItem(slide, x, w, y, p, m){
-        var label = (p.player.number != null && p.player.number !== '' ? p.player.number + '  ' : '') + (fullName(p.player) || L.noName);
-        var pillW = 0.075 * label.length + 0.26;
-        var isQuality = p.category === 'calidad';
-        slide.addShape('roundRect', { x: x, y: y, w: pillW, h: pillH, rectRadius: 0.1, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
-        slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: 8, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-        var yy = y + pillH + 0.04;
-        if(m.pnText){
-          slide.addText(m.pnText, { x: x, y: yy, w: w, h: m.pnH, fontFace: 'Arial', fontSize: attFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          yy += m.pnH;
-        }
-        if(m.psText){
-          slide.addText(m.psText, { x: x, y: yy, w: w, h: m.psH, fontFace: 'Arial', fontSize: attFont, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          yy += m.psH;
-        }
-        return yy + 0.06;
-      }
-
-      var queue = content.attackJoined.slice();
-      var slide = s2, x = xQuien, w = subColWR, py = yRight2, slideStartY = yRight2, attMaxY = PAGE_H - 0.55;
-      while(queue.length){
-        var m = attackItemMetrics(queue[0], w);
-        // El segundo término (py > slideStartY) garantiza que SIEMPRE se dibuje al menos una
-        // jugadora en cada diapositiva nueva, aunque su bloque no quepa entero -- si no, una
-        // jugadora con muchísimo texto podría hacer que se crearan diapositivas vacías sin fin.
-        if(py + m.total > attMaxY && py > slideStartY){
-          // No cabe ninguna más en esta diapositiva -- se continúa en una nueva, a ancho
-          // completo (más sitio por línea que la columna estrecha de la primera).
-          footer(slide);
-          slide = pptx.addSlide();
-          pageHeader(slide, L.gamePlanPdfTitle);
-          x = colXL; w = fullW;
-          py = sectionBanner(slide, x, w, 0.88, L.gamePlanWhoAttackTitle, GOOD);
-          slideStartY = py;
-          continue;
-        }
-        py = drawAttackItem(slide, x, w, py, queue[0], m);
-        queue.shift();
-      }
-      footer(slide);
+    function layoutLeftColumn(slide, y0, scale, spc, draw, images){
+      var y = sectionBanner(slide, colXL, colWL, y0, L.gamePlanDefendTitle, DARK, draw);
+      var subGap = 6 * MM, subColW = (colWL - subGap) / 2;
+      var xFuentes = colXL, xSets = colXL + subColW + subGap;
+      var yF = subLabel(slide, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, y + 2 * MM, 10.5, draw);
+      yF = conceptList(slide, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
+      var yS = subLabel(slide, xSets, subColW, L.gamePlanSetsTitle, DARK, y + 2 * MM, 9.5, draw);
+      yS = drawSets(slide, xSets, yS, subColW, scale, spc, draw, content.setsSorted, images);
+      return Math.max(yF, yS);
     }
+    function layoutRightColumn(slide, y0, scale, spc, draw){
+      var y = sectionBanner(slide, colXR, colWR, y0, L.gamePlanAttackTitle, GOOD, draw);
+      var subGap = 6 * MM, subColW = (colWR - subGap) / 2;
+      var xAtacarlas = colXR, xQuien = colXR + subColW + subGap;
+      var yA = subLabel(slide, xAtacarlas, subColW, L.gamePlanHowAttackTitle, GOOD, y + 2 * MM, 9.5, draw);
+      yA = conceptList(slide, xAtacarlas, subColW, content.howAttackItems, yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3, scale, spc, draw);
+      var yQ = subLabel(slide, xQuien, subColW, L.gamePlanWhoAttackTitle, GOOD, y + 2 * MM, 9.5, draw);
+      if(content.attackNote && content.attackNote.trim()){
+        yQ = layoutParagraph(slide, xQuien, yQ + 1 * MM, subColW, scale, spc, draw, content.attackNote, '');
+      }
+      yQ = layoutAttackPlayers(slide, xQuien, yQ + 1 * MM, subColW, scale, spc, draw);
+      return Math.max(yA, yQ);
+    }
+
+    // ---- Diapositiva 1: Claves del partido + Cómo les defendemos/atacamos, TODO junto, en UNA
+    // sola diapositiva garantizada (ver 4.56 del HANDOFF) -- mismo `startY`/`bottomLimit`/`avail`
+    // que el PDF (25mm de margen superior de contenido, 11mm de margen inferior) y el MISMO bucle
+    // de encogido en 2 fases (primero `spc`, huecos e imágenes de los sets, hasta su suelo 0.42;
+    // solo si con eso no basta, `scale`, la letra, hasta su suelo 0.62 -- ver 4.52 del HANDOFF).
+    var startY = 25 * MM;
+    var bottomLimit = PAGE_H - 11 * MM;
+    var avail = bottomLimit - startY;
+
+    function totalHeight(scale, spc){
+      var yAfterClaves = layoutClaves(null, startY, scale, spc, false);
+      var yTop = yAfterClaves + 3 * MM;
+      var leftEnd = layoutLeftColumn(null, yTop, scale, spc, false, null);
+      var rightEnd = layoutRightColumn(null, yTop, scale, spc, false);
+      return Math.max(leftEnd, rightEnd) - startY;
+    }
+
+    var scale = 1, spc = 1;
+    for(var iterP = 0; iterP < 6; iterP++){
+      var needP = totalHeight(scale, spc);
+      if(needP <= avail) break;
+      spc = Math.max(0.42, spc * (avail / needP) * 0.96);
+    }
+    spc = Math.max(0.42, Math.min(1, spc));
+    if(totalHeight(scale, spc) > avail){
+      for(var iterP2 = 0; iterP2 < 6; iterP2++){
+        var needP2 = totalHeight(scale, spc);
+        if(needP2 <= avail) break;
+        scale = Math.max(0.62, scale * (avail / needP2) * 0.96);
+      }
+      scale = Math.max(0.62, Math.min(1, scale));
+    }
+
+    var s2 = pptx.addSlide();
+    s2.background = { color: WHITE };
+    pageHeader(s2, L.gamePlanPdfTitle);
+    var yAfterClavesDraw = layoutClaves(s2, startY, scale, spc, true);
+    var yTopDraw = yAfterClavesDraw + 3 * MM;
+    layoutLeftColumn(s2, yTopDraw, scale, spc, true, setImages);
+    layoutRightColumn(s2, yTopDraw, scale, spc, true);
+    footer(s2);
 
     // ---- Diapositiva 2: fichas de jugadora, 2 columnas x 6 filas (12 por diapositiva) -- a
     // petición de Marta, la MISMA densidad que la página 2 del PDF (drawPlayerFacingReport), no
@@ -6730,7 +6802,7 @@ if('serviceWorker' in navigator){
     // una sola página, así que se reutiliza tal cual en vez de inventar proporciones nuevas.
     // Los tamaños de letra también son los mismos (jsPDF y pptxgenjs miden `fontSize` en puntos
     // en los dos casos, así que los números de drawPlayerFacingReport valen sin conversión).
-    var MM = 1 / 25.4;
+    // (`MM` ya está definido arriba, al principio de la función, reutilizado también aquí.)
     var STAT_COLS = [
       {label:'MIN', get:function(s){ return s.minutes; }}, {label:'PTS', get:function(s){ return s.pts; }},
       {label:'FG', get:function(s){ return s.fga; }}, {label:'3PA', get:function(s){ return s.threeAtt; }},
