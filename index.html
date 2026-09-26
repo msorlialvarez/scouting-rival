@@ -6682,11 +6682,22 @@ if('serviceWorker' in navigator){
       var y = y0;
       content.attackJoined.forEach(function(item){
         var label = (item.player.number != null && item.player.number !== '' ? item.player.number + '  ' : '') + (fullName(item.player) || L.noName);
-        var pillW = scale * (0.075 * label.length + 0.26);
+        // 4.57 del HANDOFF: la pastilla del nombre se partía en 2 líneas con nombres reales largos
+        // en mayúsculas (p.ej. "YARDEN GARZON") aunque el ancho reservado parecía suficiente en la
+        // estimación -- el bug real era que este ancho se escalaba con `scale` directamente, pero
+        // la letra (`pf`) tiene su propio suelo (6,4pt) que NO baja en la misma proporción que
+        // `scale` en un documento muy denso (donde `scale` sí llega a su suelo, 0,62): la letra
+        // quedaba relativamente más grande de lo que este ancho preveía, y ya no cabía en una
+        // línea. Arreglado usando la proporción real de `pf` (no de `scale`) para el ancho, con más
+        // margen por carácter (mayúsculas en negrita ocupan más que el cálculo original, pensado
+        // para nombres normales) -- y `wrap:false` como red de seguridad: aunque el cálculo se
+        // quede corto alguna vez, el texto ya no puede partirse en 2 líneas (como mucho se sale un
+        // poco de la pastilla, nunca empuja el resto del contenido hacia abajo).
+        var pillW = (pf / 8.2) * (0.09 * label.length + 0.3);
         var isQuality = item.category === 'calidad';
         if(draw !== false){
           slide.addShape('roundRect', { x: x, y: y, w: pillW, h: pillH, rectRadius: pillH / 2, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
-          slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: pf, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+          slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: pf, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true, wrap: false });
         }
         y += pillH + pillGap;
         if(item.notes){
