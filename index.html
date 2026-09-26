@@ -5894,24 +5894,31 @@ if('serviceWorker' in navigator){
     // draw=false para calcular alturas SIN pintar nada; sin este flag se pintaban los banners y
     // subtítulos también durante la medición (hasta 6 veces, una por cada intento de encoger la
     // letra), dejando el PDF con títulos duplicados unos encima de otros.
-    // Tamaños de los títulos (banners de sección y subtítulos) subidos un poco también, en línea
-    // con el resto del texto de la página (ver 4.48 del HANDOFF) -- estos dos NO se encogen con
-    // `scale`/`spc` (son fijos), así que el pequeño aumento aquí resta un par de mm de `avail`
-    // sea cual sea la densidad del documento; irrelevante frente a los ~174mm disponibles.
+    // Tamaños de los títulos (banners de sección y subtítulos) igualados a los de la primera
+    // diapositiva del PowerPoint en inglés (ver 4.50 del HANDOFF -- Marta pidió explícitamente
+    // "que el tamaño de las letras sea como la primera página de ese powerpoint"; el PDF y ese
+    // PowerPoint usan la MISMA página A4 apaisada en mm/pulgadas, así que los puntos son
+    // directamente comparables uno a uno). Estos dos NO se encogen con `scale`/`spc` (son fijos),
+    // así que el aumento aquí resta un par de mm más de `avail` sea cual sea la densidad del
+    // documento; irrelevante frente a los ~174mm disponibles.
+    // `fontSize` es opcional (por defecto 9.5, el tamaño más repetido de subtítulo en el
+    // PowerPoint) -- cada llamada de subLabel más abajo pasa el tamaño concreto que le
+    // corresponde según su equivalente en el PowerPoint.
     function sectionLabel(x, y, w, text, color, draw){
       if(draw !== false){
-        roundRect(x, y, w, 8, 1.5, color);
-        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9.6);
-        doc.text(text, x+3, y+5.6);
+        roundRect(x, y, w, 9, 1.5, color);
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(14);
+        doc.text(text, x+3, y+6.3);
       }
-      return y+8+3.5;
+      return y+9+4;
     }
-    function subLabel(x, y, text, color, draw){
+    function subLabel(x, y, text, color, draw, fontSize){
+      var fs = fontSize || 9.5;
       if(draw !== false){
-        doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(8.4);
+        doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(fs);
         doc.text(text, x, y);
       }
-      return y+4.6;
+      return y + fs*0.548;
     }
 
     // ---- Cabecera ----
@@ -5960,11 +5967,11 @@ if('serviceWorker' in navigator){
     // (wrap) al ancho disponible, con la altura real que ocupe (nunca solo la 1ª línea, para no
     // repetir el bug de solapes de antes).
     function layoutParagraph(x, y0, w, scale, spc, draw, text, emptyMsg){
-      // Tamaños subidos ~18% (pedido de Marta: "la letra se ve muy pequeña", ver 4.48 del
-      // HANDOFF) -- el suelo de encogido (`scale` nunca baja de 0.62) no se toca, así que en un
-      // Plan de Partido muy denso el tamaño final sigue pudiendo llegar a ese mismo suelo, pero
-      // ahora el suelo también es un 18% más grande que antes.
-      var bf = 9.0*scale, blh = 4.0*scale;
+      // Tamaño igualado al de "claves del partido" en el PowerPoint (9.5pt, ver 4.50 del HANDOFF)
+      // -- el suelo de encogido (`scale` nunca baja de 0.62) no se toca, así que en un Plan de
+      // Partido muy denso el tamaño final sigue pudiendo llegar a ese mismo suelo, pero ahora el
+      // suelo también es más grande que antes.
+      var bf = 9.5*scale, blh = 4.2*scale;
       if(!text || !text.trim()){
         if(draw && emptyMsg){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf);
@@ -5986,8 +5993,8 @@ if('serviceWorker' in navigator){
     // items en cada una según orden de alta, sin distinguir ataque de defensa).
     function layoutClaveColumn(x, y0, w, list, emptyMsg, scale, spc, draw){
       var y = y0;
-      // Tamaño subido ~18% (ver 4.48 del HANDOFF).
-      var kf = 9.0*scale, klh = 4.0*scale, indent = 4, gap = 2.2*spc;
+      // Tamaño igualado al de "claves del partido" en el PowerPoint (9.5pt, ver 4.50 del HANDOFF).
+      var kf = 9.5*scale, klh = 4.2*scale, indent = 4, gap = 2.2*spc;
       if(!list.length){
         if(draw){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(kf);
@@ -6016,8 +6023,10 @@ if('serviceWorker' in navigator){
       var clavesXL = margin, clavesXR = margin + clavesColW + clavesGap;
       var attackList = clavesItems.filter(function(k){ return k.category !== 'defensa'; });
       var defenseList = clavesItems.filter(function(k){ return k.category === 'defensa'; });
-      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesAttackLabel, accent, draw);
-      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesDefenseLabel, good, draw);
+      // "ATAQUE"/"DEFENSA" -- equivalente a "OFFENSE"/"DEFENSE" en el PowerPoint, con la letra
+      // más grande de todos los subtítulos de la página (16pt, ver 4.50 del HANDOFF).
+      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesAttackLabel, accent, draw, 16);
+      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesDefenseLabel, good, draw, 16);
       var yTop = Math.max(yLabelL, yLabelR);
       var yL = layoutClaveColumn(clavesXL, yTop, clavesColW, attackList, L.gamePlanClavesEmpty, scale, spc, draw);
       var yR = layoutClaveColumn(clavesXR, yTop, clavesColW, defenseList, L.gamePlanClavesEmpty, scale, spc, draw);
@@ -6028,18 +6037,17 @@ if('serviceWorker' in navigator){
     // conceptos (se resaltan en negrita, con el color de su columna) + una nota extra opcional
     // debajo de cada uno, en texto normal — a petición de Marta, así se distingue de un vistazo el
     // concepto clave de la explicación.
-    function layoutConceptList(x, y0, w, scale, spc, draw, list, emptyMsg, conceptColor){
+    // `cf`/`nf` (concepto/notas) son ahora parámetros, no fijos -- Marta pidió igualar el tamaño
+    // de letra al de la primera diapositiva del PowerPoint en inglés (ver 4.50 del HANDOFF), que
+    // usa letra más grande en "Sus fuentes de generación" (menos denso) que en "Cómo atacarlas"
+    // (la tabla con más texto de toda la página) -- se replica esa misma diferencia aquí en vez
+    // de un tamaño único para las dos, como pasaba hasta ahora. Los valores por defecto son los
+    // de "Cómo atacarlas" (la llamada más exigente); layoutLeftColumn pasa los de "Sus fuentes de
+    // generación" explícitamente.
+    function layoutConceptList(x, y0, w, scale, spc, draw, list, emptyMsg, conceptColor, cfBase, nfBase){
       var y = y0;
-      // "Sus fuentes de generación" y "Cómo atacarlas" son las que Marta señaló como peor
-      // ("en especial" -- ver 4.48 del HANDOFF), así que aquí el tamaño sube algo más que en el
-      // resto de la página: concepto ~16%, notas/sistemas ~20% (eran el texto más pequeño de
-      // toda la página, 7.0 frente a los 7.6 de claves/párrafos, siendo la parte con más texto).
-      // Ojo: una letra más grande no solo aumenta el alto de línea, también hace que el mismo
-      // texto necesite MÁS líneas (menos caracteres caben por línea) -- por eso aquí la subida es
-      // algo más comedida que en claves/párrafos, para no arriesgar que el auto-encogido tenga
-      // que apretar de más en un Plan de Partido con mucho texto en estas dos tablas.
-      var cf = 8.8*scale, clh = 3.9*scale;
-      var nf = 8.4*scale, nlh = 3.7*scale;
+      var cf = (cfBase || 9.0)*scale, clh = (cfBase ? cfBase*0.444 : 4.0)*scale;
+      var nf = (nfBase || 8.3)*scale, nlh = (nfBase ? nfBase*0.446 : 3.7)*scale;
       var gap = 3.0*spc;
       if(!list.length){
         if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(nf); doc.text(emptyMsg, x, y+3); }
@@ -6211,9 +6219,11 @@ if('serviceWorker' in navigator){
       var subGap = 6;
       var subColW = (colWL - subGap) / 2;
       var xFuentes = colXL, xSets = colXL + subColW + subGap;
-      var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw);
-      yF = layoutConceptList(xFuentes, yF, subColW, scale, spc, draw, fuentesItems, L.gamePlanFuentesEmpty, darkAccent);
-      var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw);
+      // "Sus fuentes de generación" -- equivalente a "THEIR SCORING SOURCES" en el PowerPoint:
+      // subtítulo a 10.5pt, concepto a 10.5pt y notas a 10.0pt (ver 4.50 del HANDOFF).
+      var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw, 10.5);
+      yF = layoutConceptList(xFuentes, yF, subColW, scale, spc, draw, fuentesItems, L.gamePlanFuentesEmpty, darkAccent, 10.5, 10.0);
+      var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw, 9.5);
       yS = layoutSets(xSets, yS, subColW, scale, spc, draw, images);
       return Math.max(yF, yS);
     }
@@ -6222,9 +6232,12 @@ if('serviceWorker' in navigator){
     // AL FINAL (A quién atacar) — orden pedido explícitamente por Marta.
     function layoutRightColumn(y0, scale, spc, draw){
       var y = sectionLabel(colXR, y0, colWR, L.gamePlanAttackTitle, good, draw);
-      y = subLabel(colXR, y+2, L.gamePlanHowAttackTitle, good, draw);
-      y = layoutConceptList(colXR, y, colWR, scale, spc, draw, howAttackItems, L.gamePlanHowAttackEmpty, shadeColor(good, 0.15));
-      y = subLabel(colXR, y+3, L.gamePlanWhoAttackTitle, good, draw);
+      // "Cómo atacarlas" -- equivalente a "HOW TO ATTACK THEM" en el PowerPoint: subtítulo a
+      // 9.5pt, concepto a 9.0pt y notas/sistemas a 8.3pt -- la tabla con más texto de la página,
+      // por eso se queda por debajo de "Sus fuentes de generación" (ver 4.50 del HANDOFF).
+      y = subLabel(colXR, y+2, L.gamePlanHowAttackTitle, good, draw, 9.5);
+      y = layoutConceptList(colXR, y, colWR, scale, spc, draw, howAttackItems, L.gamePlanHowAttackEmpty, shadeColor(good, 0.15), 9.0, 8.3);
+      y = subLabel(colXR, y+3, L.gamePlanWhoAttackTitle, good, draw, 9.5);
       // La nota de "a quién atacar" es opcional — si está vacía no reserva hueco de más.
       if(attackNote && attackNote.trim()){
         y = layoutParagraph(colXR, y+1, colWR, scale, spc, draw, attackNote, '');
