@@ -6418,7 +6418,20 @@ if('serviceWorker' in navigator){
     if(!text) return 0;
     var charW = fontPt * 0.52 / 72;
     var perLine = Math.max(6, Math.floor(boxWidthIn / charW));
-    return Math.max(1, Math.ceil(text.length / perLine));
+    // 4.55 del HANDOFF: el texto real de "sistemas"/notas de las jugadoras trae saltos de línea
+    // manuales -- p.ej. "System: Counterattack\nDrag\nSPURS" -- que PowerPoint respeta como fin
+    // de línea aunque sobre ancho de sobra. Antes se contaba el texto entero como si fuera una
+    // sola línea larga (solo por nº de caracteres), reservando mucho menos alto del que en
+    // realidad ocupa y provocando que se solapara con el elemento siguiente (Marta: "el texto se
+    // solapa y eso no puede pasar", con datos reales que traían esos saltos manuales). Ahora se
+    // cuenta cada trozo entre saltos de línea por separado y se suman sus líneas.
+    var segments = text.split('\n');
+    var total = 0;
+    for(var i = 0; i < segments.length; i++){
+      var seg = segments[i];
+      total += seg.length ? Math.ceil(seg.length / perLine) : 1;
+    }
+    return Math.max(1, total);
   }
   // Igual que wrapCapped del PDF (drawPlayerFacingReport): recorta con "…" si no cabe en
   // maxLines, para que el párrafo de informe nunca desborde el hueco reservado de la ficha.
@@ -6427,6 +6440,10 @@ if('serviceWorker' in navigator){
     if(!text) return '';
     var charW = fontPt * 0.52 / 72;
     var perLine = Math.max(6, Math.floor(boxWidthIn / charW));
+    // 4.55: usa el mismo conteo por saltos de línea manuales que estPptxLines, para no dejar
+    // pasar sin recortar un texto que en realidad ocupa más líneas de las que sugiere su nº de
+    // caracteres.
+    if(estPptxLines(text, boxWidthIn, fontPt) <= maxLines) return text;
     var maxChars = perLine * maxLines;
     if(text.length <= maxChars) return text;
     return text.slice(0, Math.max(0, maxChars - 1)).replace(/\s+\S*$/, '') + '…';
