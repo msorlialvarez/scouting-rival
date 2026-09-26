@@ -6228,22 +6228,30 @@ if('serviceWorker' in navigator){
       return Math.max(yF, yS);
     }
 
-    // Dentro de "Cómo les atacamos": primero la info (Cómo atacarlas) y las jugadoras concretas
-    // AL FINAL (A quién atacar) — orden pedido explícitamente por Marta.
+    // Dentro de "Cómo les atacamos": "Cómo atacarlas" y "A quién atacar" EN PARALELO, en 2
+    // columnas una junto a otra (igual que "Sus fuentes de generación"/"Sus 3 sets" a la
+    // izquierda) -- ver 4.50 del HANDOFF: Marta pidió que el PDF tuviera "la misma estructura"
+    // que el PowerPoint en inglés, que ya coloca "HOW TO ATTACK THEM" y "WHO TO ATTACK" lado a
+    // lado en vez de uno debajo del otro (como iba antes aquí). Como beneficio adicional, esto
+    // reduce el alto total de la sección (el máximo de las dos columnas en vez de la suma de las
+    // dos), lo que da más margen al auto-encogido para no tener que apretar tanto la letra.
     function layoutRightColumn(y0, scale, spc, draw){
       var y = sectionLabel(colXR, y0, colWR, L.gamePlanAttackTitle, good, draw);
+      var subGap = 6, subColW = (colWR - subGap) / 2;
+      var xAtacarlas = colXR, xQuien = colXR + subColW + subGap;
       // "Cómo atacarlas" -- equivalente a "HOW TO ATTACK THEM" en el PowerPoint: subtítulo a
       // 9.5pt, concepto a 9.0pt y notas/sistemas a 8.3pt -- la tabla con más texto de la página,
       // por eso se queda por debajo de "Sus fuentes de generación" (ver 4.50 del HANDOFF).
-      y = subLabel(colXR, y+2, L.gamePlanHowAttackTitle, good, draw, 9.5);
-      y = layoutConceptList(colXR, y, colWR, scale, spc, draw, howAttackItems, L.gamePlanHowAttackEmpty, shadeColor(good, 0.15), 9.0, 8.3);
-      y = subLabel(colXR, y+3, L.gamePlanWhoAttackTitle, good, draw, 9.5);
+      var yA = subLabel(xAtacarlas, y+2, L.gamePlanHowAttackTitle, good, draw, 9.5);
+      yA = layoutConceptList(xAtacarlas, yA, subColW, scale, spc, draw, howAttackItems, L.gamePlanHowAttackEmpty, shadeColor(good, 0.15), 9.0, 8.3);
+      // "A quién atacar" -- equivalente a "WHO TO ATTACK".
+      var yQ = subLabel(xQuien, y+2, L.gamePlanWhoAttackTitle, good, draw, 9.5);
       // La nota de "a quién atacar" es opcional — si está vacía no reserva hueco de más.
       if(attackNote && attackNote.trim()){
-        y = layoutParagraph(colXR, y+1, colWR, scale, spc, draw, attackNote, '');
+        yQ = layoutParagraph(xQuien, yQ+1, subColW, scale, spc, draw, attackNote, '');
       }
-      y = layoutAttackPlayers(colXR, y+1, colWR, scale, spc, draw);
-      return y;
+      yQ = layoutAttackPlayers(xQuien, yQ+1, subColW, scale, spc, draw);
+      return Math.max(yA, yQ);
     }
 
     var startY = 25;
