@@ -6479,34 +6479,80 @@ if('serviceWorker' in navigator){
     // 0.47in son ese mismo mm/25.4 aplicado), cualquier medida en mm del PDF se traduce aquí
     // multiplicando por MM, y el resultado cae en la MISMA posición proporcional de la página.
     var MM = 1 / 25.4;
+    // 4.58 del HANDOFF: suelo mínimo de altura de las imágenes de los sets ("Sus 3 sets") -- 40mm
+    // como en el PDF, pero aquí es una variable (no una constante) porque puede bajar más si hace
+    // falta (ver la 3ª fase del encogido, más abajo): con un Plan de Partido muy denso y las 3
+    // imágenes reales cerca de este suelo, la columna izquierda podía acabar más alta que el hueco
+    // disponible y la 3ª imagen se salía por debajo de la diapositiva -- algo que en el PDF pasa
+    // desapercibido (el contenido que no cabe en la página simplemente no se imprime), pero que en
+    // PowerPoint se nota mucho más (una imagen cortada/fuera de la diapositiva). `drawSets` lee
+    // esta variable en vez de un 40 fijo.
+    var imgFloorMM = 40;
+    // 4.58 del HANDOFF (2ª parte): red de seguridad equivalente a `imgFloorMM` pero para la
+    // columna derecha ("A quién atacar") en vez de la izquierda (los sets) -- con un Plan de
+    // Partido con MUCHAS jugadoras marcadas para atacar, `scale`/`spc` podían llegar a su suelo
+    // (0,62/0,42) sin que aun así cupiera todo, porque esa lista no tiene techo (crece con cada
+    // jugadora marcada) y nada más la compensaba (a diferencia de las imágenes de los sets, que sí
+    // tenían esta 3ª fase). El resultado era el mismo tipo de defecto que `imgFloorMM` arregló: el
+    // texto de la última jugadora quedaba por debajo del límite de la diapositiva, debajo incluso
+    // de la franja del pie de página. `layoutAttackPlayers` multiplica por esta variable (además de
+    // por `scale`/`spc`) y puede bajar hasta 0,75 si hace falta -- letra/huecos algo más apretados
+    // en esa lista es preferible a texto que se sale de la diapositiva.
+    var attackShrink = 1;
     function shootHex(v){ return v === 'rojo' ? DANGER : (v === 'verde' ? GOOD : WARN); }
 
+    // 4.58 del HANDOFF: cabecera igualada al PDF -- Marta: "los textos no se ven igual que en el
+    // pdf, te dije mismo tamaño y estructura/espacios". Hasta ahora la cabecera era la única parte
+    // de la diapositiva 1 que NO se había portado del PDF en la 4.56 (se dejó igual a propósito,
+    // razonando que ya estaba aprobada) -- pero con letra a 19/10/13pt en vez de los 15/9/11pt del
+    // PDF, el título se veía notablemente más grande. Además, el subtítulo aquí SIEMPRE mostraba
+    // temporada+competición, sin mirar nunca `rival.gamePlanDate` (el campo "Ej. Jornada 14 ·
+    // 21/09/2026 · Pabellón..." que Marta puede rellenar) como sí hace el PDF -- así que si lo
+    // había rellenado, el PDF y el PowerPoint mostraban un texto DISTINTO ahí, no solo de tamaño
+    // distinto.
     function pageHeader(slide, subtitle){
-      var headerH = 0.72;
+      var headerH = 20 * MM;
       slide.addShape('rect', { x: 0, y: 0, w: PAGE_W, h: headerH, fill: {color: ACCENT}, line: {type: 'none'} });
       var titleX = MARGIN;
       if(rival.logo){
-        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 0.09, w: 0.54, h: 0.54 }); titleX = MARGIN + 0.68; }
+        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 3 * MM, w: 14 * MM, h: 14 * MM }); titleX = MARGIN + 18 * MM; }
         catch(e){ console.error('pptx game plan logo', e); }
       }
+      var subtitleText = rival.gamePlanDate || [rival.season, competition].filter(Boolean).join('  ·  ') || '';
       slide.addText((rival.name || 'Rival').toUpperCase(), {
-        x: titleX, y: 0.07, w: PAGE_W - titleX - 3.6, h: 0.38, fontFace: 'Arial', fontSize: 19, bold: true,
+        x: titleX, y: 0.24, w: PAGE_W - titleX - 3.6, h: 0.28, fontFace: 'Arial', fontSize: 15, bold: true,
         color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
-      slide.addText([rival.season, competition].filter(Boolean).join('  ·  '), {
-        x: titleX, y: 0.42, w: PAGE_W - titleX - 3.6, h: 0.24, fontFace: 'Arial', fontSize: 10, italic: true,
+      slide.addText(subtitleText, {
+        x: titleX, y: 0.52, w: PAGE_W - titleX - 3.6, h: 0.2, fontFace: 'Arial', fontSize: 9, italic: true,
         color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
       slide.addText(subtitle, {
-        x: PAGE_W - MARGIN - 4, y: 0.14, w: 4, h: 0.3, fontFace: 'Arial', fontSize: 13, bold: true,
+        x: PAGE_W - MARGIN - 4, y: 0.32, w: 4, h: 0.26, fontFace: 'Arial', fontSize: 11, bold: true,
         color: WHITE, align: 'right', valign: 'top', margin: 0, isTextBox: true
       });
       return headerH;
     }
-    function footer(slide){
-      slide.addText('Scouting Rival — Valencia Basket', {
-        x: MARGIN, y: PAGE_H - 0.32, w: fullW, h: 0.22, fontFace: 'Arial', fontSize: 7.5, italic: true,
-        color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true
+    // 4.58 del HANDOFF: pie de página igualado al PDF (`addFooters`) -- Marta: "los textos no se
+    // ven igual que en el pdf... estructura/espacios". El PDF pinta una franja oscura de 10mm a
+    // todo lo ancho con "Valencia Basket Club" + "página / total" en blanco a 8pt; el PowerPoint
+    // llevaba en su lugar una simple línea de texto gris en cursiva ("Scouting Rival — Valencia
+    // Basket", sin nº de página) -- una diferencia de estructura visible en TODAS las diapositivas,
+    // no solo de tamaño de letra. El nº de página necesita saber cuántas diapositivas tiene el
+    // documento en total, algo que no se sabe hasta haber creado todas -- así que ya no se dibuja
+    // el pie según se va construyendo cada diapositiva; se dibuja al final, en una sola pasada
+    // sobre `pptx.slides` (ver el final de esta función), igual que el PDF hace con
+    // `doc.internal.getNumberOfPages()`.
+    function drawFooterBand(slide, pageNum, totalPages){
+      var bandH = 10 * MM, marginF = 16 * MM;
+      slide.addShape('rect', { x: 0, y: PAGE_H - bandH, w: PAGE_W, h: bandH, fill: {color: INK}, line: {type: 'none'} });
+      slide.addText('Valencia Basket Club', {
+        x: marginF, y: PAGE_H - bandH, w: 4, h: bandH, fontFace: 'Arial', fontSize: 8,
+        color: WHITE, align: 'left', valign: 'middle', margin: 0, isTextBox: true
+      });
+      slide.addText(pageNum + ' / ' + totalPages, {
+        x: PAGE_W - marginF - 2, y: PAGE_H - bandH, w: 2, h: bandH, fontFace: 'Arial', fontSize: 8,
+        color: WHITE, align: 'right', valign: 'middle', margin: 0, isTextBox: true
       });
     }
     // 4.56 del HANDOFF: TODA esta sección (banners/subtítulos/listas + la diapositiva 1 entera)
@@ -6629,7 +6675,7 @@ if('serviceWorker' in navigator){
     // Equivalente de `layoutSets` del PDF -- mismo suelo de altura de imagen ligado a `spc` (ver
     // 4.54 del HANDOFF: "que los sistemas se vean un poco más grandes").
     function drawSets(slide, x, y0, w, scale, spc, draw, setsList, images){
-      var imgMaxH = Math.max(40, 62 * spc) * MM;
+      var imgMaxH = Math.max(imgFloorMM, 62 * spc) * MM;
       var notesFont = Math.max(5.8, 6.6 * scale), notesLH = 3.2 * scale * MM;
       var y = y0;
       setsList.forEach(function(s, i){
@@ -6676,9 +6722,13 @@ if('serviceWorker' in navigator){
         if(draw !== false){ slide.addText(L.gamePlanWhoAttackEmpty, { x: x, y: y0, w: w, h: 0.3, fontFace: 'Arial', fontSize: Math.max(6.4, 7 * scale), italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
         return y0 + 6 * MM;
       }
-      var pf = Math.max(6.4, 8.2 * scale), pillH = 4.8 * scale * MM, pillGap = 1.1 * scale * MM;
-      var nf = 8.2 * scale, nlh = 3.6 * scale * MM;
-      var gap = 2.4 * spc * MM;
+      // 4.58 del HANDOFF (2ª parte): `attackShrink` (ver su comentario más arriba) aprieta esta
+      // lista un poco más allá del suelo normal de `scale`/`spc` cuando hace falta, sin tocar el
+      // resto de la diapositiva.
+      var effScale = scale * attackShrink, effSpc = spc * attackShrink;
+      var pf = Math.max(6.4, 8.2 * effScale), pillH = 4.8 * effScale * MM, pillGap = 1.1 * effScale * MM;
+      var nf = 8.2 * effScale, nlh = 3.6 * effScale * MM;
+      var gap = 2.4 * effSpc * MM;
       var y = y0;
       content.attackJoined.forEach(function(item){
         var label = (item.player.number != null && item.player.number !== '' ? item.player.number + '  ' : '') + (fullName(item.player) || L.noName);
@@ -6772,12 +6822,22 @@ if('serviceWorker' in navigator){
     var bottomLimit = PAGE_H - 11 * MM;
     var avail = bottomLimit - startY;
 
-    function totalHeight(scale, spc){
+    // 4.58 del HANDOFF (2ª parte): expone `leftEnd`/`rightEnd` por separado (no solo su máximo),
+    // para poder saber CUÁL de las dos columnas es la que de verdad desborda y aplicar la red de
+    // seguridad que le corresponde (`imgFloorMM` a la izquierda, `attackShrink` a la derecha) sin
+    // tocar la que ya cabía -- antes, con un documento donde solo desbordaba la derecha, la 3ª fase
+    // encogía las imágenes de los sets igualmente (sin necesidad, ya que no era esa columna la que
+    // sobraba) porque solo miraba el máximo de las dos.
+    function measureEnds(scale, spc){
       var yAfterClaves = layoutClaves(null, startY, scale, spc, false);
       var yTop = yAfterClaves + 3 * MM;
       var leftEnd = layoutLeftColumn(null, yTop, scale, spc, false, null);
       var rightEnd = layoutRightColumn(null, yTop, scale, spc, false);
-      return Math.max(leftEnd, rightEnd) - startY;
+      return { left: leftEnd, right: rightEnd };
+    }
+    function totalHeight(scale, spc){
+      var ends = measureEnds(scale, spc);
+      return Math.max(ends.left, ends.right) - startY;
     }
 
     var scale = 1, spc = 1;
@@ -6795,6 +6855,34 @@ if('serviceWorker' in navigator){
       }
       scale = Math.max(0.62, Math.min(1, scale));
     }
+    // 4.58 del HANDOFF -- 3ª fase, red de seguridad SOLO del PowerPoint (el PDF no la tiene, ver
+    // el comentario de `imgFloorMM` más arriba): si con `scale` y `spc` en su suelo TODAVÍA no
+    // cabe la columna IZQUIERDA (documentos muy densos con las 3 imágenes de los sets cerca de su
+    // suelo de 40mm), se sigue encogiendo el suelo de esas imágenes, hasta un mínimo absoluto de
+    // 20mm -- una imagen algo más pequeña es preferible a una imagen que se sale de la diapositiva.
+    // Se mira específicamente `ends.left` (no el máximo de las dos columnas): si la que desborda es
+    // la derecha, encoger las imágenes de los sets no soluciona nada y solo las deja más pequeñas
+    // sin necesidad.
+    if(totalHeight(scale, spc) > avail){
+      for(var iterP3 = 0; iterP3 < 10; iterP3++){
+        var ends3 = measureEnds(scale, spc);
+        if(ends3.left <= bottomLimit || imgFloorMM <= 20) break;
+        imgFloorMM = Math.max(20, imgFloorMM - 2);
+      }
+    }
+    // 4.58 del HANDOFF (2ª parte) -- 4ª fase, misma idea que la anterior pero para la columna
+    // DERECHA ("A quién atacar"): esta lista no tiene techo (crece con cada jugadora marcada), así
+    // que un Plan de Partido con muchas jugadoras podía seguir sin caber aun con `scale`/`spc` en su
+    // suelo y las imágenes de los sets ya reducidas -- sin nada que compensara esa columna en
+    // concreto. Se encoge `attackShrink` hasta un mínimo de 0,75 SOLO si es la columna derecha
+    // (`ends.right`) la que de verdad desborda.
+    if(totalHeight(scale, spc) > avail){
+      for(var iterP4 = 0; iterP4 < 10; iterP4++){
+        var ends4 = measureEnds(scale, spc);
+        if(ends4.right <= bottomLimit || attackShrink <= 0.75) break;
+        attackShrink = Math.max(0.75, attackShrink - 0.05);
+      }
+    }
 
     var s2 = pptx.addSlide();
     s2.background = { color: WHITE };
@@ -6803,7 +6891,6 @@ if('serviceWorker' in navigator){
     var yTopDraw = yAfterClavesDraw + 3 * MM;
     layoutLeftColumn(s2, yTopDraw, scale, spc, true, setImages);
     layoutRightColumn(s2, yTopDraw, scale, spc, true);
-    footer(s2);
 
     // ---- Diapositiva 2: fichas de jugadora, 2 columnas x 6 filas (12 por diapositiva) -- a
     // petición de Marta, la MISMA densidad que la página 2 del PDF (drawPlayerFacingReport), no
@@ -6919,6 +7006,11 @@ if('serviceWorker' in navigator){
         drawPlayerCard(slide, item, cx, cy, colWP, rowH);
       });
     }
+
+    // Pie de página (franja + "página / total"), igual que el PDF -- una sola pasada al final,
+    // sobre TODAS las diapositivas ya creadas, ahora que se sabe cuántas hay en total.
+    var totalSlidesGP = pptx.slides.length;
+    pptx.slides.forEach(function(slide, idxGP){ drawFooterBand(slide, idxGP + 1, totalSlidesGP); });
 
     return pptx;
   }
