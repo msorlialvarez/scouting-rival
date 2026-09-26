@@ -1166,7 +1166,7 @@ if('serviceWorker' in navigator){
       gamePlanPdfTitle: 'PLAN DE PARTIDO',
       gamePlanClavesTitle: 'CLAVES DEL PARTIDO',
       gamePlanClavesEmpty: 'No hay claves marcadas para el plan de partido.',
-      gamePlanClavesAttackLabel: 'ATAQUE', gamePlanClavesDefenseLabel: 'DEFENSA',
+      gamePlanClavesAttackLabel: 'NUESTRO ATAQUE', gamePlanClavesDefenseLabel: 'NUESTRA DEFENSA',
       gamePlanDefendTitle: 'CÓMO LES DEFENDEMOS',
       gamePlanFuentesTitle: 'SUS FUENTES DE GENERACIÓN',
       gamePlanFuentesEmpty: 'Ninguna marcada con "Plan" en Fuentes de generación.',
@@ -1231,7 +1231,7 @@ if('serviceWorker' in navigator){
       gamePlanPdfTitle: 'GAME PLAN',
       gamePlanClavesTitle: 'KEYS TO THE GAME',
       gamePlanClavesEmpty: 'No keys marked for the game plan.',
-      gamePlanClavesAttackLabel: 'OFFENSE', gamePlanClavesDefenseLabel: 'DEFENSE',
+      gamePlanClavesAttackLabel: 'OUR OFFENSE', gamePlanClavesDefenseLabel: 'OUR DEFENSE',
       gamePlanDefendTitle: 'HOW WE DEFEND THEM',
       gamePlanFuentesTitle: 'THEIR SCORING SOURCES',
       gamePlanFuentesEmpty: 'None marked "Plan" in Scoring sources.',
@@ -5918,7 +5918,14 @@ if('serviceWorker' in navigator){
         doc.setTextColor.apply(doc, color); doc.setFont('helvetica','bold'); doc.setFontSize(fs);
         doc.text(text, x, y);
       }
-      return y + fs*0.548;
+      // El hueco hasta el texto de debajo NO escala 1:1 con el tamaño de letra -- con "ATAQUE"/
+      // "DEFENSA" a 16pt (el subtítulo más grande de la página, ver 4.50) la fórmula antigua
+      // (proporcional sin más) dejaba un hueco de casi 14mm antes de las claves, medido en el PDF
+      // real que mandó Marta -- señalado como "no hace falta tanto" (ver 4.53 del HANDOFF). Ahora
+      // es una base fija pequeña + una parte mucho más comedida del tamaño de letra, para que el
+      // hueco crezca poco a poco en vez de en la misma proporción que la letra (con esto, el hueco
+      // bajo "ATAQUE"/"DEFENSA" se reduce a poco menos de la mitad).
+      return y + 3.0 + fs*0.125;
     }
 
     // ---- Cabecera ----
@@ -6023,13 +6030,15 @@ if('serviceWorker' in navigator){
       var clavesXL = margin, clavesXR = margin + clavesColW + clavesGap;
       var attackList = clavesItems.filter(function(k){ return k.category !== 'defensa'; });
       var defenseList = clavesItems.filter(function(k){ return k.category === 'defensa'; });
-      // "ATAQUE"/"DEFENSA" -- equivalente a "OFFENSE"/"DEFENSE" en el PowerPoint, con la letra
-      // más grande de todos los subtítulos de la página (16pt, ver 4.50 del HANDOFF).
-      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesAttackLabel, accent, draw, 16);
-      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesDefenseLabel, good, draw, 16);
+      // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): a la izquierda "NUESTRA
+      // DEFENSA", a la derecha "NUESTRO ATAQUE" (antes iba Ataque a la izquierda y Defensa a la
+      // derecha). Los nombres también cambian, de "ATAQUE"/"DEFENSA" a "NUESTRO ATAQUE"/"NUESTRA
+      // DEFENSA" -- letra a 16pt, la más grande de todos los subtítulos de la página (ver 4.50).
+      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesDefenseLabel, good, draw, 16);
+      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesAttackLabel, accent, draw, 16);
       var yTop = Math.max(yLabelL, yLabelR);
-      var yL = layoutClaveColumn(clavesXL, yTop, clavesColW, attackList, L.gamePlanClavesEmpty, scale, spc, draw);
-      var yR = layoutClaveColumn(clavesXR, yTop, clavesColW, defenseList, L.gamePlanClavesEmpty, scale, spc, draw);
+      var yL = layoutClaveColumn(clavesXL, yTop, clavesColW, defenseList, L.gamePlanClavesEmpty, scale, spc, draw);
+      var yR = layoutClaveColumn(clavesXR, yTop, clavesColW, attackList, L.gamePlanClavesEmpty, scale, spc, draw);
       return Math.max(yL, yR);
     }
 
@@ -6546,13 +6555,15 @@ if('serviceWorker' in navigator){
     y = sectionBanner(s2, MARGIN, fullW, y, L.gamePlanClavesTitle, ACCENT);
     var clavesGap = 0.3, clavesColW = (fullW - clavesGap) / 2;
     var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
-    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y);
-    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y);
+    // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
+    // derecha "NUESTRO ATAQUE" -- igual que en el PDF, para que ambos coincidan.
+    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y);
+    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y);
     var clavesTop = Math.max(yL, yR);
     var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
     var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
-    var clavesBottomL = bulletList(s2, clavesXL, clavesColW, attackList, clavesTop, L.gamePlanClavesEmpty);
-    var clavesBottomR = bulletList(s2, clavesXR, clavesColW, defenseList, clavesTop, L.gamePlanClavesEmpty);
+    var clavesBottomL = bulletList(s2, clavesXL, clavesColW, defenseList, clavesTop, L.gamePlanClavesEmpty);
+    var clavesBottomR = bulletList(s2, clavesXR, clavesColW, attackList, clavesTop, L.gamePlanClavesEmpty);
     y = Math.max(clavesBottomL, clavesBottomR) + 0.16;
 
     var colGap = 0.32, colWL = fullW * 0.58 - colGap / 2, colWR = fullW * 0.42 - colGap / 2;
