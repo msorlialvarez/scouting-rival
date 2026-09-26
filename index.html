@@ -6269,25 +6269,30 @@ if('serviceWorker' in navigator){
     // Dos "mandos" independientes: `scale` encoge la LETRA (con un suelo legible, 0.62 — nunca
     // baja de ahí, "que se lea a la perfección" es innegociable) y `spc` encoge los HUECOS entre
     // bloques y el alto de las 3 imágenes de los sets (que no tienen ese problema de legibilidad,
-    // así que pueden encogerse más). 1ª fase: bajar los dos juntos hasta el suelo de la letra. 2ª
-    // fase, solo si con eso aún no cabe todo: seguir bajando SOLO `spc` (huecos + imágenes) hasta
-    // que quepa, o hasta su propio suelo.
+    // así que pueden encogerse más).
+    // ORDEN INVERTIDO respecto de antes (ver 4.52 del HANDOFF) -- Marta confirmó que quiere
+    // mantener SIEMPRE 1 sola página aunque eso implique encoger, pero prefiere que se sacrifique
+    // primero el aire en blanco antes que el tamaño de letra. Antes `scale` y `spc` bajaban juntos
+    // a la vez, así que en un Plan de Partido denso la letra tocaba fondo (0.62) enseguida aunque
+    // aún quedara margen por apretar en los huecos. Ahora: 1ª fase, bajar SOLO `spc` (huecos +
+    // imágenes de los sets) manteniendo la letra a tamaño completo (scale=1), hasta su propio
+    // suelo (0.42). 2ª fase, solo si con eso aún no cabe todo: entonces sí, empezar a encoger
+    // también la letra (`scale`) hasta su suelo (0.62). Así la letra se queda grande el máximo
+    // tiempo posible, y solo se toca como último recurso.
     var scale = 1, spc = 1;
     for(var iter = 0; iter < 6; iter++){
       var need = totalHeight(scale, spc);
       if(need <= avail) break;
-      var next = Math.max(0.62, scale * (avail / need) * 0.96);
-      scale = next; spc = next;
+      spc = Math.max(0.42, spc * (avail / need) * 0.96);
     }
-    scale = Math.max(0.62, Math.min(1, scale));
-    spc = Math.max(0.62, Math.min(1, spc));
+    spc = Math.max(0.42, Math.min(1, spc));
     if(totalHeight(scale, spc) > avail){
       for(var iter2 = 0; iter2 < 6; iter2++){
         var need2 = totalHeight(scale, spc);
         if(need2 <= avail) break;
-        spc = Math.max(0.42, spc * (avail / need2) * 0.96);
+        scale = Math.max(0.62, scale * (avail / need2) * 0.96);
       }
-      spc = Math.max(0.42, Math.min(1, spc));
+      scale = Math.max(0.62, Math.min(1, scale));
     }
 
     // ---- Recortes de los 3 sets: se descargan/generan en paralelo a haber calculado `scale`
