@@ -6107,14 +6107,13 @@ if('serviceWorker' in navigator){
       // en su tamaño mínimo legible y aun así no cabe todo, son las 3 imágenes (lo que más espacio
       // ocupa) las que se encogen más para que quepa todo, en vez de forzar la letra por debajo de
       // lo legible — mínimo 15mm, siguen siendo diagramas reconocibles a ese tamaño.
-      // Subido de 15/30 a 30/55 (pedido de Marta: "los gráficos de los sistemas quedan muy
-      // pequeños, auméntalos de tamaño", ver 4.47 del HANDOFF) -- antes el límite de altura era
-      // tan bajo que casi siempre recortaba también el ANCHO de la imagen muy por debajo del
-      // ancho de columna disponible (~77mm), dejando los recortes bastante más pequeños de lo que
-      // cabía de sobra en la página. El auto-encogido de más abajo sigue protegiendo: si el
-      // documento tiene mucho más contenido y no cabe todo, `spc` baja hasta su suelo (0.42) y
-      // este máximo vuelve a caer a 30mm -- igual que el límite antiguo, nunca más pequeño.
-      var imgMaxH = Math.max(30, 55 * spc);
+      // Subido de 15/30 a 30/55 en la 4.47, y ahora otra vez a 40/62 (Marta: "que los sistemas se
+      // vean un poco más grandes", ver 4.54 del HANDOFF) -- con el orden de encogido invertido de
+      // la 4.52 (primero se aprieta `spc`, antes que la letra), estas imágenes tocan su suelo con
+      // más frecuencia que antes en un Plan de Partido denso, así que ese suelo también sube un
+      // poco para compensar. El auto-encogido sigue protegiendo igual: si no cabe todo, `spc` baja
+      // hasta su suelo (0.42) y este máximo cae a 40mm -- nunca más pequeño que eso.
+      var imgMaxH = Math.max(40, 62 * spc);
       // Subido un poco junto con el resto del texto de la página (ver 4.48 del HANDOFF).
       var notesFont = Math.max(5.8, 6.6*scale), notesLH = 3.2*scale;
       setsSorted.forEach(function(s, i){
@@ -6485,18 +6484,25 @@ if('serviceWorker' in navigator){
         color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
     }
+    // Tamaños igualados a los del PDF (ver 4.54 del HANDOFF: Marta pidió que el PowerPoint se
+    // vea IGUAL que el PDF) -- hasta ahora este PowerPoint usaba tamaños fijos más pequeños y
+    // uniformes (11 / 9,5 / 9 / 8,3 para todo) que NO coincidían con los del PDF (14 / 16-10,5-9,5
+    // / 10,5-9,0 / 10,0-8,3 según la sección, ver 4.50). `sectionBanner` sube a 14pt fijo, igual
+    // que los banners del PDF (que tampoco se encogen). `subLabel` y `conceptList` reciben ahora
+    // el tamaño como parámetro opcional, igual que en el PDF, para poder variarlo por sección.
     function sectionBanner(slide, x, w, yPos, text, colorHex){
-      var bannerH = 0.30;
-      slide.addShape('roundRect', { x: x, y: yPos, w: w, h: bannerH, rectRadius: 0.055, fill: {color: colorHex}, line: {type: 'none'} });
+      var bannerH = 0.34;
+      slide.addShape('roundRect', { x: x, y: yPos, w: w, h: bannerH, rectRadius: 0.06, fill: {color: colorHex}, line: {type: 'none'} });
       slide.addText(text, {
-        x: x + 0.1, y: yPos, w: w - 0.2, h: bannerH, fontFace: 'Arial', fontSize: 11, bold: true,
+        x: x + 0.1, y: yPos, w: w - 0.2, h: bannerH, fontFace: 'Arial', fontSize: 14, bold: true,
         color: WHITE, align: 'left', valign: 'middle', margin: 0, isTextBox: true
       });
       return yPos + bannerH + 0.14;
     }
-    function subLabel(slide, x, w, text, colorHex, yPos){
-      slide.addText(text, { x: x, y: yPos, w: w, h: 0.2, fontFace: 'Arial', fontSize: 9.5, bold: true, color: colorHex, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-      return yPos + 0.24;
+    function subLabel(slide, x, w, text, colorHex, yPos, fontSize){
+      var fs = fontSize || 9.5;
+      slide.addText(text, { x: x, y: yPos, w: w, h: 0.24, fontFace: 'Arial', fontSize: fs, bold: true, color: colorHex, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      return yPos + 0.09 + fs * 0.017;
     }
     function bulletList(slide, x, w, items, yPos, emptyMsg){
       if(!items.length){
@@ -6512,29 +6518,33 @@ if('serviceWorker' in navigator){
       slide.addText(paras, { x: x, y: yPos, w: w, h: h, align: 'left', valign: 'top', margin: 0, isTextBox: true });
       return yPos + h;
     }
-    function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg){
+    // `cf`/`nf` (concepto/notas) opcionales -- por defecto los de "Cómo atacarlas" (9,0/8,3, la
+    // llamada más exigente); la llamada de "Sus fuentes de generación" pasa 10,5/10,0 (letra más
+    // grande, igual que en el PDF desde la 4.50, ver 4.54 del HANDOFF).
+    function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg, cfBase, nfBase){
+      var cf = cfBase || 9.0, nf = nfBase || 8.3;
       if(!items.length){
-        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
         return yPos + 0.35;
       }
       var y = yPos;
       items.forEach(function(item){
         if(item.concept){
-          slide.addText(item.concept, { x: x, y: y, w: w, h: 0.18, fontFace: 'Arial', fontSize: 9, bold: true, color: conceptColor, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-          y += 0.20;
+          slide.addText(item.concept, { x: x, y: y, w: w, h: 0.2, fontFace: 'Arial', fontSize: cf, bold: true, color: conceptColor, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          y += 0.05 + cf*0.017;
         }
         if(item.notes){
-          var lines = estPptxLines(item.notes, w, 8.3);
+          var lines = estPptxLines(item.notes, w, nf);
           var h = lines * 0.145 + 0.05;
-          slide.addText(item.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: 8.3, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          slide.addText(item.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
           y += h;
         }
         // "Sistemas para explotarlo" (solo en Cómo atacarlas, ver 4.43 del HANDOFF).
         if(item.systems){
           var sysText = L.gamePlanSystemsPrefixDef + item.systems;
-          var sysLines = estPptxLines(sysText, w, 8.3);
+          var sysLines = estPptxLines(sysText, w, nf);
           var sysH = sysLines * 0.145 + 0.05;
-          slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+          slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
           y += sysH;
         }
         y += 0.13;
@@ -6557,8 +6567,8 @@ if('serviceWorker' in navigator){
     var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
     // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
     // derecha "NUESTRO ATAQUE" -- igual que en el PDF, para que ambos coincidan.
-    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y);
-    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y);
+    var yL = subLabel(s2, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y, 16);
+    var yR = subLabel(s2, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y, 16);
     var clavesTop = Math.max(yL, yR);
     var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
     var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
@@ -6572,11 +6582,13 @@ if('serviceWorker' in navigator){
     var yLeft = sectionBanner(s2, colXL, colWL, y, L.gamePlanDefendTitle, DARK);
     var subGap = 0.26, subColW = (colWL - subGap) / 2;
     var xFuentes = colXL, xSets = colXL + subColW + subGap;
-    var yF = subLabel(s2, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, yLeft);
-    conceptList(s2, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty);
+    var yF = subLabel(s2, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, yLeft, 10.5);
+    conceptList(s2, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0);
 
     var yS = subLabel(s2, xSets, subColW, L.gamePlanSetsTitle, DARK, yLeft);
-    var setMaxH = 0.92;
+    // Subido de 0.92 a 1.05in (Marta: "que los sistemas se vean un poco más grandes", igual que
+    // en el PDF, ver 4.54 del HANDOFF).
+    var setMaxH = 1.05;
     content.setsSorted.forEach(function(s, i){
       var img = setImages && setImages[i];
       var imgH = setMaxH, imgW = subColW;
@@ -6608,19 +6620,28 @@ if('serviceWorker' in navigator){
       yS += 0.12;
     });
 
+    // "Cómo atacarlas" y "A quién atacar" EN PARALELO, en 2 columnas una junto a otra -- igual
+    // que ya hace "Sus fuentes de generación"/"Sus 3 sets" a la izquierda, y que el PDF desde la
+    // 4.51 (Marta pidió que el PowerPoint se vea IGUAL que el PDF, ver 4.54 del HANDOFF). Antes
+    // iban una debajo de otra a todo el ancho de `colWR`.
     var yRight = sectionBanner(s2, colXR, colWR, y, L.gamePlanAttackTitle, GOOD);
-    yRight = subLabel(s2, colXR, colWR, L.gamePlanHowAttackTitle, GOOD, yRight);
-    yRight = conceptList(s2, colXR, colWR, content.howAttackItems, yRight, '17573F', L.gamePlanHowAttackEmpty);
+    var subGapR = 0.26, subColWR = (colWR - subGapR) / 2;
+    var xAtacarlas = colXR, xQuien = colXR + subColWR + subGapR;
+    // "Cómo atacarlas" -- concepto a 9pt y notas/sistemas a 8,3pt, igual que en el PDF (la tabla
+    // con más texto de la página, ver 4.50).
+    var yA = subLabel(s2, xAtacarlas, subColWR, L.gamePlanHowAttackTitle, GOOD, yRight, 9.5);
+    conceptList(s2, xAtacarlas, subColWR, content.howAttackItems, yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3);
 
-    yRight = subLabel(s2, colXR, colWR, L.gamePlanWhoAttackTitle, GOOD, yRight + 0.06);
+    var yQ = subLabel(s2, xQuien, subColWR, L.gamePlanWhoAttackTitle, GOOD, yRight, 9.5);
     if(content.attackNote && content.attackNote.trim()){
-      var noteLines = estPptxLines(content.attackNote, colWR, 8.3);
+      var noteLines = estPptxLines(content.attackNote, subColWR, 8.3);
       var noteH = noteLines * 0.145 + 0.05;
-      s2.addText(content.attackNote, { x: colXR, y: yRight, w: colWR, h: noteH, fontFace: 'Arial', fontSize: 8.3, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
-      yRight += noteH + 0.10;
+      s2.addText(content.attackNote, { x: xQuien, y: yQ, w: subColWR, h: noteH, fontFace: 'Arial', fontSize: 8.3, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      yQ += noteH + 0.10;
     }
+    var yRight2 = yQ;
     if(!content.attackJoined.length && !(content.attackNote && content.attackNote.trim())){
-      s2.addText(L.gamePlanWhoAttackEmpty, { x: colXR, y: yRight, w: colWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      s2.addText(L.gamePlanWhoAttackEmpty, { x: xQuien, y: yRight2, w: subColWR, h: 0.3, fontFace: 'Arial', fontSize: 8.3, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
       footer(s2);
     } else {
       // Cada jugadora, una debajo de otra (ver 4.43 del HANDOFF: ahora pueden llevar notas y
@@ -6661,7 +6682,7 @@ if('serviceWorker' in navigator){
       }
 
       var queue = content.attackJoined.slice();
-      var slide = s2, x = colXR, w = colWR, py = yRight, slideStartY = yRight, attMaxY = PAGE_H - 0.55;
+      var slide = s2, x = xQuien, w = subColWR, py = yRight2, slideStartY = yRight2, attMaxY = PAGE_H - 0.55;
       while(queue.length){
         var m = attackItemMetrics(queue[0], w);
         // El segundo término (py > slideStartY) garantiza que SIEMPRE se dibuje al menos una
