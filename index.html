@@ -1159,6 +1159,7 @@ if('serviceWorker' in navigator){
       advancedStatsAttached: 'Informe adjunto a continuación',
       colSource: 'Fuente', colNotes: 'Notas', colOffSystemsCol: 'Sistemas con los que nos pueden atacar',
       colHowToAttack: 'Cómo atacarlas', colDefSystemsCol: 'Sistemas para explotarlo',
+      colDefensiveProposal: 'Propuesta defensiva', colPlayerMessage: 'Mensaje Jugadoras',
       noName: 'Sin nombre',
       threatLevels: {alta:'ALTA', media:'MEDIA', baja:'BAJA'},
       shootLevels: {rojo:'ROJO', amarillo:'AMARILLO', verde:'VERDE'},
@@ -1224,6 +1225,7 @@ if('serviceWorker' in navigator){
       advancedStatsAttached: 'Report attached next',
       colSource: 'Source', colNotes: 'Notes', colOffSystemsCol: 'Systems they can attack us with',
       colHowToAttack: 'How to attack them', colDefSystemsCol: 'Systems to exploit it',
+      colDefensiveProposal: 'Defensive proposal', colPlayerMessage: 'Player message',
       noName: 'No name',
       threatLevels: {alta:'HIGH', media:'MEDIUM', baja:'LOW'},
       shootLevels: {rojo:'RED', amarillo:'YELLOW', verde:'GREEN'},
@@ -5512,20 +5514,28 @@ if('serviceWorker' in navigator){
   // primera vez que se abre un rival) con una página + un rectángulo en proporciones 0-1 dentro
   // del PDF ya subido en "Sistemas de juego" — así el recorte no depende de a qué resolución se
   // vuelva a renderizar la página, ni aquí ni al exportar.
+  // 4.60 del HANDOFF: `ensureGamePlanSets` solo miraba CUÁNTOS sets había (`state.gamePlanSets.length`),
+  // no CUÁLES -- si dos personas del cuerpo técnico abrían el mismo rival casi a la vez (o la misma
+  // persona en dos pestañas), las dos podían ver "0 sets todavía" en el mismo instante y las dos
+  // creaban su propia tanda de 3, sin enterarse la una de la otra hasta que ya eran 6 en total (el
+  // caso real que reportó Marta en Hozono Global Jairis e Innova-TSN Leganés). Ahora se calcula qué
+  // `orderIndex` (1, 2 o 3) faltan de verdad y solo se crean esos -- si ya hay 3 (los que sean), no
+  // se crea nada, esté today el recuento en 0, 3 o 6.
   function ensureGamePlanSets(){
     var ref = currentRivalRef();
     if(!ref || state.gamePlanSeeding) return;
     if(state.gamePlanSets.length >= 3) return;
+    var haveIndexes = {};
+    state.gamePlanSets.forEach(function(s){ haveIndexes[s.orderIndex] = true; });
+    var missing = [1, 2, 3].filter(function(i){ return !haveIndexes[i]; });
+    if(!missing.length) return;
     state.gamePlanSeeding = true;
-    var have = state.gamePlanSets.length;
     var chain = Promise.resolve();
-    for(var i = have + 1; i <= 3; i++){
-      (function(orderIndex){
-        chain = chain.then(function(){
-          return ref.collection('gamePlanSets').add({orderIndex: orderIndex, name: 'Set ' + orderIndex, notes: ''});
-        });
-      })(i);
-    }
+    missing.forEach(function(orderIndex){
+      chain = chain.then(function(){
+        return ref.collection('gamePlanSets').add({orderIndex: orderIndex, name: 'Set ' + orderIndex, notes: ''});
+      });
+    });
     chain.then(function(){ state.gamePlanSeeding = false; }).catch(function(err){
       state.gamePlanSeeding = false;
       console.error('ensureGamePlanSets', err);
@@ -5562,6 +5572,11 @@ if('serviceWorker' in navigator){
         '<textarea data-set-field="notes" rows="2" placeholder="Notas">' + esc(s.notes || '') + '</textarea>' +
         '<div class="game-plan-set-actions">' +
           '<button type="button" class="btn-mini-add" data-set-crop-btn' + (hasSystemsPdf ? '' : ' disabled') + '>' + (hasCrop ? 'Cambiar recorte' : 'Elegir recorte') + '</button>' +
+          // 4.60 del HANDOFF: antes no había forma de quitar un set (solo de añadir hasta 3) -- si
+          // por lo que sea un rival acababa con más de 3 (ver el comentario de ensureGamePlanSets
+          // más arriba), no había manera de arreglarlo desde la app. Mismo patrón de "doble clic
+          // para confirmar" que el resto de botones de borrar de esta página (ej. data-src-del).
+          '<button type="button" class="btn-del" data-set-del title="Eliminar este set">Eliminar</button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -5583,6 +5598,20 @@ if('serviceWorker' in navigator){
       btn.addEventListener('click', function(){
         var id = btn.closest('[data-set-id]').getAttribute('data-set-id');
         openGamePlanCrop(id);
+      });
+    });
+    list.querySelectorAll('[data-set-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.closest('[data-set-id]').getAttribute('data-set-id');
+        if(!id) return;
+        if(!btn.classList.contains('confirm')){
+          btn.classList.add('confirm'); btn.textContent = '¿Seguro?';
+          setTimeout(function(){ btn.classList.remove('confirm'); btn.textContent = 'Eliminar'; }, 3000);
+          return;
+        }
+        var ref = currentRivalRef();
+        if(!ref) return;
+        ref.collection('gamePlanSets').doc(id).delete().catch(function(err){ showGamePlanDataError(err, 'eliminar el set'); });
       });
     });
     restoreFocus(list, focus);
@@ -7359,7 +7388,7 @@ if('serviceWorker' in navigator){
       drawItemsList(doc, cursor, accent, lang, L.startingFivesLabel, startingFivesForPdf);
       drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes);
       if(cfg.offSources){
-        drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colOffSystemsCol]);
+        drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colDefensiveProposal, L.colOffSystemsCol], ['source', 'notes', 'defensiveProposal', 'systems']);
         cursor.y += TABLE_GAP_EXTRA;
       }
       // Antes aquí se escribía un apartado "Sistemas de juego" con una etiqueta y una caja de
@@ -7395,7 +7424,7 @@ if('serviceWorker' in navigator){
       drawSectionHeader(doc, cursor, accent, lang, L.defEssenceTitle, true);
       if(cfg.defItems) drawItemsList(doc, cursor, accent, lang, L.keyItemsLabel, state.defEssenceItems);
       if(cfg.defSources){
-        drawSourcesTable(doc, cursor, lang, L.defSourcesLabel, state.defSources, [L.colHowToAttack, L.colNotes, L.colDefSystemsCol]);
+        drawSourcesTable(doc, cursor, lang, L.defSourcesLabel, state.defSources, [L.colHowToAttack, L.colNotes, L.colPlayerMessage, L.colDefSystemsCol], ['source', 'notes', 'playerMessage', 'systems']);
         cursor.y += TABLE_GAP_EXTRA;
       }
       if(cfg.defSpecial) drawNotesBox(doc, cursor, accent, lang, L.defSpecialDefensesLabel, rival.defSpecialDefenses);
@@ -8902,7 +8931,15 @@ if('serviceWorker' in navigator){
 
   // 3-column table shared by "Principales fuentes de generación" and "Cómo atacarlas": each
   // row wraps independently and the row height grows to fit whichever cell has the most text.
-  function drawSourcesTable(doc, cursor, lang, title, rows, colLabels){
+  // 4.61 del HANDOFF: `fields` es nuevo -- dice de qué propiedad de cada fila sale cada columna.
+  // Antes las 3 columnas estaban fijas por posición (source/notes/systems) y por eso el informe de
+  // staff ("Generar informe PDF") nunca imprimía la "Propuesta defensiva" (Fuentes de generación) ni
+  // el "Mensaje Jugadoras" (Cómo atacarlas) -- esos dos campos SÍ existen en cada fila (se rellenan
+  // en el propio editor, ver SRC_TABLE_EXTRA_FIELD) pero no tenían columna en este informe, aunque
+  // sí aparecen en el Plan de Partido. Con `fields` esta función sirve igual para 3 columnas (como
+  // antes, si no se pasa `fields`) o para 4 (con la columna extra en su sitio, entre notas y
+  // sistemas -- mismo orden que en el editor).
+  function drawSourcesTable(doc, cursor, lang, title, rows, colLabels, fields){
     var L = tr(lang);
     var pageW = 210, margin = 16;
     var ink = [20,23,28], dim = [91,98,112];
@@ -8913,7 +8950,11 @@ if('serviceWorker' in navigator){
     cursor.y += 6;
 
     // Última columna (sistemas) más estrecha y notas más ancha (pedido de Marta) — antes 34/68/68.
-    var cols = [ {label: colLabels[0], w: 34}, {label: colLabels[1], w: 92}, {label: colLabels[2], w: 44} ];
+    // Con 4 columnas, notas y la columna extra se reparten ese ancho a partes iguales en vez de
+    // robarle sitio a fuente/sistemas.
+    fields = fields || ['source', 'notes', 'systems'];
+    var weights = fields.length === 4 ? [26, 52, 52, 30] : [34, 92, 44];
+    var cols = colLabels.map(function(label, i){ return {label: label, field: fields[i], w: weights[i]}; });
     var totalW = pageW - margin*2;
     var colScale = totalW / cols.reduce(function(s,c){ return s + c.w; }, 0);
 
@@ -8937,12 +8978,8 @@ if('serviceWorker' in navigator){
 
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
     rows.forEach(function(r, idx){
-      var wraps = [
-        doc.splitTextToSize(r.source || '—', cols[0].w*colScale - 4),
-        doc.splitTextToSize(r.notes || '—', cols[1].w*colScale - 4),
-        doc.splitTextToSize(r.systems || '—', cols[2].w*colScale - 4)
-      ];
-      var lineCount = Math.max(wraps[0].length, wraps[1].length, wraps[2].length, 1);
+      var wraps = cols.map(function(c){ return doc.splitTextToSize(r[c.field] || '—', c.w*colScale - 4); });
+      var lineCount = Math.max.apply(Math, wraps.map(function(w){ return w.length; }).concat([1]));
       var rowH = Math.max(7, lineCount * 4.2 + 2.5);
       ensureSpace(doc, cursor, rowH);
       if(idx % 2 === 1){ doc.setFillColor(250,250,250); doc.rect(margin, cursor.y, totalW, rowH, 'F'); }
