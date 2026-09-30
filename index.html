@@ -1135,7 +1135,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Tipo de jugadora',
       playerTypeNames: {generadora:'Generadora', shooter:'Finalizadora shooter', paint:'Finalizadora paint', energia:'Energía'},
       strengths: 'Fortalezas', weaknesses: 'Qué queremos que pase', defend: 'Qué queremos que pase y cómo defenderla',
-      cardStrengthsLabel: 'Fortalezas:', cardDefendLabel: 'Cómo defenderla:',
+      cardStrengthsLabel: 'Fortalezas:', cardDefendLabel: 'Cómo defenderla:', cardInformeLabel: 'Informe:',
       informe: 'Informe',
       noNotes: 'Sin notas.',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
@@ -1201,7 +1201,7 @@ if('serviceWorker' in navigator){
       playerTypesLabel: 'Player type',
       playerTypeNames: {generadora:'Playmaker', shooter:'Shooter finisher', paint:'Paint finisher', energia:'Energy/hustle'},
       strengths: 'Strengths', weaknesses: 'What we want to happen', defend: 'What we want to happen and how to defend her',
-      cardStrengthsLabel: 'Strengths:', cardDefendLabel: 'How to defend her:',
+      cardStrengthsLabel: 'Strengths:', cardDefendLabel: 'How to defend her:', cardInformeLabel: 'Report:',
       informe: 'Report',
       noNotes: 'No notes.',
       statsTitle: 'STATS BY COMPETITION',
@@ -7472,8 +7472,8 @@ if('serviceWorker' in navigator){
         var cardColW = (210 - cardMargin*2 - cardColGap) / 2;
         var cardColX = [cardMargin, cardMargin + cardColW + cardColGap];
         var CARDS_PAGE_BOTTOM = 297 - 14;
-        // Pedido de Marta: el texto de fortalezas/cómo defenderla ya no se corta -- cada ficha
-        // crece lo alto que haga falta. Como jsPDF no tiene flujo multi-columna nativo, para que
+        // Pedido de Marta: el texto del campo "Informe" (ver 4.62 del HANDOFF) no se corta -- cada
+        // ficha crece lo alto que haga falta. Como jsPDF no tiene flujo multi-columna nativo, para que
         // las dos fichas de una misma fila queden alineadas (misma línea divisoria abajo) primero
         // se miden las dos SIN pintar (drawPlayerFacingCard con draw=false devuelve el alto
         // natural que necesita cada una) y se usa la más alta como alto compartido de la fila;
@@ -10095,8 +10095,8 @@ if('serviceWorker' in navigator){
   function drawPlayerFacingCard(doc, item, x, rowY, colW, rowH, lang, accent, competition, draw){
     // draw=false: pasada de "solo medir" (patrón usado en el resto de constructores de PDF de la
     // app) -- no pinta nada, solo calcula y devuelve el alto natural que necesita la ficha (según
-    // cuánto ocupe el texto de fortalezas/cómo defenderla, ahora sin límite de líneas). El
-    // llamador mide las 2 fichas de una fila, se queda con la más alta como rowH compartido, y
+    // cuánto ocupe el texto del campo "Informe", ver 4.62 del HANDOFF, ahora sin límite de líneas).
+    // El llamador mide las 2 fichas de una fila, se queda con la más alta como rowH compartido, y
     // solo entonces vuelve a llamar con draw=true para pintar las dos con ese rowH.
     if(draw === undefined) draw = true;
     lang = lang || 'es';
@@ -10300,7 +10300,13 @@ if('serviceWorker' in navigator){
       curY += lines.length * lineH + 0.7; // pequeño respiro antes del siguiente apartado
     }
 
-    if(!(p.strengths||'').trim() && !(p.defend||'').trim()){
+    // Pedido de Marta (ver 4.62 del HANDOFF): esta ficha (usada en el informe de staff -- "Generar
+    // informe PDF" de Scout Colectivo, apartado "Plantilla") ya no muestra fortalezas/cómo
+    // defenderla (campos solo para staff) -- ahora muestra el campo "Informe", el mismo texto
+    // pensado para que lo lean las jugadoras que ya usan drawPlayerFacingReport (Scout Individual)
+    // y drawVisualPlayerCard ("PDF para jugadoras"). Explícitamente NO fortalezas ni cómo
+    // defenderla.
+    if(!(p.informe||'').trim()){
       if(draw){
         doc.setFont('helvetica', 'normal'); doc.setFontSize(bodyFontSize);
         doc.setTextColor.apply(doc, textDim);
@@ -10308,8 +10314,7 @@ if('serviceWorker' in navigator){
       }
       curY += lineH;
     } else {
-      drawParaBlock(L.cardStrengthsLabel || 'Fortalezas:', p.strengths);
-      drawParaBlock(L.cardDefendLabel || 'Cómo defenderla:', p.defend);
+      drawParaBlock(L.cardInformeLabel || 'Informe:', p.informe);
     }
 
     var statsBlock = pickStatsForExport(item.stats, competition);
