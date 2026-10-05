@@ -285,6 +285,10 @@ if('serviceWorker' in navigator){
   .essence-item-row.def .item-bullet{ background:var(--text-dim); }
   .essence-item-row input[type="text"]{ flex:1; min-width:0; background:transparent; border:none; font-size:.85rem; color:var(--text); padding:.1rem 0; }
   .essence-item-row input[type="text"]:focus{ outline:none; }
+  /* Claves del partido: textarea de alto automático (ver autoGrowTextarea), más grande y con salto de línea. */
+  .essence-item-row textarea{ flex:1; min-width:0; background:transparent; border:none; font-size:.9rem; line-height:1.4; color:var(--text); padding:.2rem 0; resize:none; overflow:hidden; font-family:inherit; min-height:1.6rem; }
+  .essence-item-row textarea:focus{ outline:none; }
+  .game-plan-text-field textarea[data-teamfield]{ resize:none; overflow:hidden; font-size:.9rem; line-height:1.4; min-height:4.2rem; }
   /* Casilla "Plan" de Ideas clave (ver 4.43 del HANDOFF): misma .attack-player-plan que ya se
      usaba en Jugadoras a atacar, reutilizada aquí tal cual. */
   .essence-item-row .attack-player-plan{ margin-left:0; }
@@ -3152,6 +3156,7 @@ if('serviceWorker' in navigator){
     $('#btnExportCollectivePdf').addEventListener('click', exportCollectivePdf);
     $all('#collectiveView [data-teamfield]').forEach(function(el){
       el.addEventListener('change', function(){ saveRivalField(el.getAttribute('data-teamfield'), el.value); });
+      if(el.tagName === 'TEXTAREA') el.addEventListener('input', function(){ autoGrowTextarea(el); });
     });
     $('#btnTogglePlayersPdf').addEventListener('click', function(){ $('#playersPdfPanel').classList.toggle('open'); });
     $('#btnGeneratePlayersPdf').addEventListener('click', exportCollectivePlayersPdf);
@@ -4699,6 +4704,7 @@ if('serviceWorker' in navigator){
     $all('#collectiveView [data-teamfield]').forEach(function(el){
       var field = el.getAttribute('data-teamfield');
       if(document.activeElement !== el) el.value = state.rival[field] || '';
+      if(el.tagName === 'TEXTAREA') autoGrowTextarea(el);
     });
     var pdfCfg = getPlayersPdfConfig();
     $all('#playersPdfPanel [data-pdf-section]').forEach(function(cb){
@@ -5129,7 +5135,7 @@ if('serviceWorker' in navigator){
     list.innerHTML = items.map(function(it, idx){
       return '<div class="essence-item-row" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
-        '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        '<textarea data-field="text" rows="1">' + esc(it.text || '') + '</textarea>' +
         '<div class="item-reorder">' +
           '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
           '<button type="button" class="btn-reorder" data-item-down' + (idx === items.length - 1 ? ' disabled' : '') + ' title="Bajar">▼</button>' +
@@ -5138,6 +5144,10 @@ if('serviceWorker' in navigator){
       '</div>';
     }).join('');
 
+    list.querySelectorAll('textarea[data-field]').forEach(function(ta){
+      autoGrowTextarea(ta);
+      ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
+    });
     list.querySelectorAll('[data-field]').forEach(function(el){
       el.addEventListener('change', function(){
         var id = el.closest('[data-id]').getAttribute('data-id');
@@ -5313,7 +5323,10 @@ if('serviceWorker' in navigator){
 
     var rosterOptions = state.roster.map(function(r){
       var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
-      return p ? {id: p.id, name: fullName(p) || 'Sin nombre'} : null;
+      if(!p) return null;
+      // Dorsal delante del nombre (pedido de Marta, ver 4.63 del HANDOFF).
+      var num = (r.number != null && r.number !== '') ? ('#' + r.number + ' ') : '';
+      return {id: p.id, name: num + (fullName(p) || 'Sin nombre')};
     }).filter(Boolean);
 
     function optionsHtml(selectedId){
@@ -6155,7 +6168,7 @@ if('serviceWorker' in navigator){
       // más frecuencia que antes en un Plan de Partido denso, así que ese suelo también sube un
       // poco para compensar. El auto-encogido sigue protegiendo igual: si no cabe todo, `spc` baja
       // hasta su suelo (0.42) y este máximo cae a 40mm -- nunca más pequeño que eso.
-      var imgMaxH = Math.max(imgFloorMM, 62 * spc);
+      var imgMaxH = Math.max(imgFloorMM, 80 * spc); // 4.63: tope subido de 62 a 80 al quitar el pie de página
       // Subido un poco junto con el resto del texto de la página (ver 4.48 del HANDOFF).
       var notesFont = Math.max(5.8, 6.6*scale), notesLH = 3.2*scale;
       setsSorted.forEach(function(s, i){
@@ -6309,7 +6322,7 @@ if('serviceWorker' in navigator){
     }
 
     var startY = 25;
-    var bottomLimit = pageH - 11;
+    var bottomLimit = pageH - 5;
     var avail = bottomLimit - startY;
 
     // 4.59 del HANDOFF: expone `leftEnd`/`rightEnd` por separado (no solo su máximo), para poder
@@ -6759,7 +6772,7 @@ if('serviceWorker' in navigator){
     // Equivalente de `layoutSets` del PDF -- mismo suelo de altura de imagen ligado a `spc` (ver
     // 4.54 del HANDOFF: "que los sistemas se vean un poco más grandes").
     function drawSets(slide, x, y0, w, scale, spc, draw, setsList, images){
-      var imgMaxH = Math.max(imgFloorMM, 62 * spc) * MM;
+      var imgMaxH = Math.max(imgFloorMM, 80 * spc) * MM;
       var notesFont = Math.max(5.8, 6.6 * scale), notesLH = 3.2 * scale * MM;
       var y = y0;
       setsList.forEach(function(s, i){
@@ -6903,7 +6916,7 @@ if('serviceWorker' in navigator){
     // de encogido en 2 fases (primero `spc`, huecos e imágenes de los sets, hasta su suelo 0.42;
     // solo si con eso no basta, `scale`, la letra, hasta su suelo 0.62 -- ver 4.52 del HANDOFF).
     var startY = 25 * MM;
-    var bottomLimit = PAGE_H - 11 * MM;
+    var bottomLimit = PAGE_H - 5 * MM; // 4.63: sin pie de página
     var avail = bottomLimit - startY;
 
     // 4.58 del HANDOFF (2ª parte): expone `leftEnd`/`rightEnd` por separado (no solo su máximo),
@@ -7103,7 +7116,7 @@ if('serviceWorker' in navigator){
     // Pie de página (franja + "página / total"), igual que el PDF -- una sola pasada al final,
     // sobre TODAS las diapositivas ya creadas, ahora que se sabe cuántas hay en total.
     var totalSlidesGP = pptx.slides.length;
-    pptx.slides.forEach(function(slide, idxGP){ drawFooterBand(slide, idxGP + 1, totalSlidesGP); });
+    // Pie de página eliminado (4.63 del HANDOFF): drawFooterBand ya no se llama.
 
     return pptx;
   }
@@ -7380,7 +7393,9 @@ if('serviceWorker' in navigator){
       var startingFivesForPdf = state.startingFives.map(function(sf){
         var names = (Array.isArray(sf.playerIds) ? sf.playerIds : []).map(function(pid){
           var p = state.allPlayers.find(function(pl){ return pl.id === pid; });
-          return p ? fullName(p) : null;
+          var rr = state.roster.find(function(r){ return r.playerId === pid; });
+          var num = (rr && rr.number != null && rr.number !== '') ? ('#' + rr.number + ' ') : '';
+          return p ? (num + fullName(p)) : null;
         }).filter(Boolean);
         var head = (sf.label && sf.label.trim()) ? sf.label.trim() : L.noName;
         return { text: names.length ? (head + ':  ' + names.join(', ')) : head };
@@ -7471,7 +7486,7 @@ if('serviceWorker' in navigator){
         var cardMargin = 16, cardColGap = 8;
         var cardColW = (210 - cardMargin*2 - cardColGap) / 2;
         var cardColX = [cardMargin, cardMargin + cardColW + cardColGap];
-        var CARDS_PAGE_BOTTOM = 297 - 14;
+        var CARDS_PAGE_BOTTOM = 297 - 6;
         // Pedido de Marta: el texto del campo "Informe" (ver 4.62 del HANDOFF) no se corta -- cada
         // ficha crece lo alto que haga falta. Como jsPDF no tiene flujo multi-columna nativo, para que
         // las dos fichas de una misma fila queden alineadas (misma línea divisoria abajo) primero
@@ -8811,7 +8826,7 @@ if('serviceWorker' in navigator){
   // label redrawn) when the next chunk genuinely doesn't fit.
   function ensureSpace(doc, cursor, needed){
     var pageH = 297;
-    if(cursor.y + needed > pageH - 16){ doc.addPage(); drawPageHeaderLabel(doc, cursor); }
+    if(cursor.y + needed > pageH - 8){ doc.addPage(); drawPageHeaderLabel(doc, cursor); }
   }
 
   // Fixed vertical rhythm for the Scout Colectivo report: every subsection ends with the same
@@ -9214,7 +9229,7 @@ if('serviceWorker' in navigator){
 
     var y = cursor.y;
     function ensureSpace(needed){
-      if(y + needed > pageH - 16){ doc.addPage(); drawPageHeaderLabel(doc, cursor); y = cursor.y; }
+      if(y + needed > pageH - 8){ doc.addPage(); drawPageHeaderLabel(doc, cursor); y = cursor.y; }
     }
 
     ensureSpace(28);
@@ -9597,7 +9612,7 @@ if('serviceWorker' in navigator){
     var cardH = 16;
     var col = 0;
     sorted.forEach(function(item){
-      if(cursor.y + cardH > pageH - 16){ doc.addPage(); drawPageHeaderLabel(doc, cursor); col = 0; }
+      if(cursor.y + cardH > pageH - 8){ doc.addPage(); drawPageHeaderLabel(doc, cursor); col = 0; }
       var x = margin + col * (cardW + gap);
       var y = cursor.y;
       var p = item.player;
@@ -9688,7 +9703,7 @@ if('serviceWorker' in navigator){
       var totalLines = 0;
       wrappedItems.forEach(function(ls){ totalLines += ls.length; });
       var cardH = 6.5 + totalLines*CONTENT_LINE_H + Math.max(wrappedItems.length - 1, 0) * bulletGap;
-      if(y + cardH > pageH - 16){ doc.addPage(); y = 20; }
+      if(y + cardH > pageH - 8){ doc.addPage(); y = 20; }
       doc.setFillColor.apply(doc, tintColor(color, 0.92));
       doc.roundedRect(margin, y, contentW, cardH, 3, 3, 'F');
       doc.setFillColor.apply(doc, color);
@@ -9715,7 +9730,7 @@ if('serviceWorker' in navigator){
     contentCard(accent, p.informe);
 
     if(statsBlocks && statsBlocks.length){
-      if(y + 10 > pageH - 16){ doc.addPage(); y = 20; }
+      if(y + 10 > pageH - 8){ doc.addPage(); y = 20; }
       doc.setFillColor.apply(doc, accent);
       doc.rect(margin, y - 3.2, 3, 3, 'F');
       doc.setTextColor.apply(doc, shadeColor(accent, 0.3));
@@ -9723,7 +9738,7 @@ if('serviceWorker' in navigator){
       doc.text(L.statsTitle, margin + 5.5, y);
       y += 6;
       statsBlocks.forEach(function(block){
-        if(y + 8 > pageH - 16){ doc.addPage(); y = 20; }
+        if(y + 8 > pageH - 8){ doc.addPage(); y = 20; }
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8.3); doc.setTextColor(20,23,28);
         doc.text(block.competition || L.competitionFallback, margin, y);
         y += 5;
@@ -9734,7 +9749,7 @@ if('serviceWorker' in navigator){
           // "%" de columnas como "% T2" ya va incluido en la propia etiqueta, así que isPct=false.
           var text = (L.statLabels[c.key] || c.label) + ' ' + formatStatValue(block[c.key], false);
           var w = doc.getTextWidth(text) + 6;
-          if(chipX + w > margin + contentW){ chipX = margin; y += 7.4; if(y + 8 > pageH - 16){ doc.addPage(); y = 20; chipX = margin; } }
+          if(chipX + w > margin + contentW){ chipX = margin; y += 7.4; if(y + 8 > pageH - 8){ doc.addPage(); y = 20; chipX = margin; } }
           doc.setFillColor.apply(doc, tintColor(accent, 0.85));
           doc.roundedRect(chipX, y - 4.6, w, 6, 3, 3, 'F');
           doc.setTextColor.apply(doc, shadeColor(accent, 0.35));
@@ -9930,7 +9945,7 @@ if('serviceWorker' in navigator){
 
     sorted.forEach(function(item, idx){
       var col = idx % 2;
-      if(y[col] + rowH > pageH - 14){
+      if(y[col] + rowH > pageH - 6){
         // Un salto de página aquí afecta a las DOS columnas por igual (jsPDF no tiene flujo
         // multi-columna nativo): se empieza página nueva y las dos columnas vuelven arriba a la
         // vez, para que nunca queden desalineadas entre sí. Con rowH=28 y 12 jugadoras esto ya
@@ -10358,22 +10373,11 @@ if('serviceWorker' in navigator){
     return naturalHeight;
   }
 
-  function addFooters(doc){
-    var margin = 16;
-    var pageCount = doc.internal.getNumberOfPages();
-    for(var i = 1; i <= pageCount; i++){
-      doc.setPage(i);
-      // No se asume vertical: el informe de jugadoras (drawPlayerFacingReport) ahora se genera
-      // apaisado, así que el tamaño real de cada página puede variar según el informe.
-      var pageW = doc.internal.pageSize.getWidth();
-      var pageH = doc.internal.pageSize.getHeight();
-      doc.setFillColor(20,23,28);
-      doc.rect(0, pageH - 10, pageW, 10, 'F');
-      doc.setTextColor(255,255,255); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-      doc.text('Valencia Basket Club', margin, pageH - 4);
-      doc.text(i + ' / ' + pageCount, pageW - margin, pageH - 4, {align: 'right'});
-    }
-  }
+  // Pie de página (franja negra con "Valencia Basket Club" y nº de página) ELIMINADO a petición de
+  // Marta (ver 4.63 del HANDOFF) para dejar más sitio al contenido. Se deja la función como
+  // no-op para no tener que tocar sus ~6 llamadas; los límites inferiores de cada PDF ya no
+  // reservan el hueco de la franja.
+  function addFooters(doc){ return; }
 
 })();
 </script>
