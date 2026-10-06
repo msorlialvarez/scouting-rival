@@ -1273,6 +1273,7 @@ if('serviceWorker' in navigator){
     rivals: [], allPlayers: [],
     rivalId: null, rival: null, roster: [],
     selectedPlayerId: null,
+    recentPlayers: {},
     mode: 'prep',
     permSub: [], rivalSub: [],
     expanded: {}, playerStats: {}, statsUnsub: {},
@@ -1985,8 +1986,14 @@ if('serviceWorker' in navigator){
       },
       onSnapshot: function(onNext, onError){
         var cancelled = false;
+        // 4.65 del HANDOFF: varias peticiones pueden estar en vuelo a la vez (cada aviso de
+        // Realtime lanza una); si una MÁS ANTIGUA terminaba después que una más reciente,
+        // pisaba los datos buenos con unos viejos (p. ej. sin la jugadora recién creada).
+        // Solo se aplica la respuesta de la última petición lanzada.
+        var seqStarted = 0;
         function refetch(){
-          ref.get().then(function(snap){ if(!cancelled) onNext(snap); }).catch(function(err){ if(!cancelled && onError) onError(err); });
+          var mySeq = ++seqStarted;
+          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); });
         }
         refetch();
         var off = addRealtimeListener(table, refetch);
@@ -2095,8 +2102,14 @@ if('serviceWorker' in navigator){
       },
       onSnapshot: function(onNext, onError){
         var cancelled = false;
+        // 4.65 del HANDOFF: varias peticiones pueden estar en vuelo a la vez (cada aviso de
+        // Realtime lanza una); si una MÁS ANTIGUA terminaba después que una más reciente,
+        // pisaba los datos buenos con unos viejos (p. ej. sin la jugadora recién creada).
+        // Solo se aplica la respuesta de la última petición lanzada.
+        var seqStarted = 0;
         function refetch(){
-          ref.get().then(function(snap){ if(!cancelled) onNext(snap); }).catch(function(err){ if(!cancelled && onError) onError(err); });
+          var mySeq = ++seqStarted;
+          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); });
         }
         refetch();
         var off = addRealtimeListener(table, refetch);
@@ -2470,6 +2483,14 @@ if('serviceWorker' in navigator){
   function subscribeAllPlayers(){
     var unsub = db.collection('players').orderBy('lastName', 'asc').onSnapshot(function(snap){
       state.allPlayers = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      // 4.65: una jugadora recién creada puede no venir todavía en esta lista (respuesta vieja o
+      // retraso del servidor) -- se mantiene en local hasta que el servidor la confirme (o pasen 2 min).
+      Object.keys(state.recentPlayers).forEach(function(rid){
+        var rec = state.recentPlayers[rid];
+        if(state.allPlayers.some(function(p){ return p.id === rid; })){ delete state.recentPlayers[rid]; }
+        else if(Date.now() - rec.ts < 120000){ state.allPlayers.push(rec.data); }
+        else { delete state.recentPlayers[rid]; }
+      });
       if(state.section === 'players') renderPlayerSidebarList();
       if(state.section === 'rivals' && state.rivalId){ renderRoster(); renderGameView(); }
       if(state.section === 'players' && state.selectedPlayerId) renderProfileView();
@@ -3039,6 +3060,17 @@ if('serviceWorker' in navigator){
       .catch(function(err){ console.error('delete global player', err); });
   }
 
+  // 4.65 del HANDOFF: apunta una jugadora recién creada para que no desaparezca si llega una
+  // lista de jugadoras anterior a su creación, y pide una relectura al servidor (que funciona
+  // aunque el canal Realtime esté bloqueado en la red/navegador de esa persona).
+  function rememberNewPlayer(id, data){
+    var full = Object.assign({id: id}, data);
+    state.recentPlayers[id] = { data: full, ts: Date.now() };
+    if(!state.allPlayers.some(function(p){ return p.id === id; })) state.allPlayers.push(full);
+    setTimeout(function(){ notifyTableListeners('players'); }, 1200);
+    setTimeout(function(){ notifyTableListeners('players'); }, 5000);
+  }
+
   function createGlobalPlayerStandalone(){
     if(!db) return;
     var newPlayerData = {
@@ -3056,12 +3088,10 @@ if('serviceWorker' in navigator){
       // creado bien en Supabase). Añadiéndola aquí mismo a la caché local, el perfil se pinta ya
       // en el momento sin depender de esa notificación -- cuando la suscripción real llegue más
       // tarde, sustituye el array entero por el real, así que no hay riesgo de duplicados.
-      if(!state.allPlayers.some(function(p){ return p.id === ref.id; })){
-        state.allPlayers.push(Object.assign({id: ref.id}, newPlayerData));
-      }
+      rememberNewPlayer(ref.id, newPlayerData);
       selectPlayerProfile(ref.id);
       setTimeout(function(){ var i = $('#profileView [data-field="firstName"]'); if(i){ i.focus(); i.select(); } }, 150);
-    }).catch(function(err){ console.error('create player', err); });
+    }).catch(function(err){ console.error('create player', err); showConnBanner('No se ha podido crear la jugadora (' + ((err && err.message) || 'error de conexión') + '). Prueba otra vez y, si sigue igual, avisa a IT.', { sticky: true }); });
   }
 
   function selectPlayerProfile(id){
@@ -3354,9 +3384,7 @@ if('serviceWorker' in navigator){
       // de forma asíncrona e independiente), así que sin esto el perfil
       // podía mostrar "Esta jugadora ya no existe." hasta que llegara el
       // evento realtime.
-      if(!state.allPlayers.some(function(p){ return p.id === ref.id; })){
-        state.allPlayers.push(Object.assign({id: ref.id}, newPlayerData));
-      }
+      rememberNewPlayer(ref.id, newPlayerData);
       return rivalRef.collection('roster').add({ playerId: ref.id, number: 0, addedAt: nowIso() }).then(function(){ return ref.id; });
     }).then(function(newId){
       closeAddPicker();
