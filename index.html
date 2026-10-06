@@ -7033,7 +7033,7 @@ if('serviceWorker' in navigator){
         var dx = photoX + i * (photoW / 2);
         slide.addText(lab, { x: dx, y: dotLabelY, w: photoW / 2, h: 2.6 * MM, fontFace: 'Arial', fontSize: 3.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
         var val = i === 0 ? p.clutch : p.temple;
-        var c = val === 'alta' ? DANGER : (val === 'baja' ? GOOD : WARN);
+        var c = shootHex(val); // rojo/amarillo/verde, igual que el PDF (antes comparaba con alta/baja y siempre salía ámbar)
         slide.addShape('ellipse', { x: dx + photoW / 4 - 1.15 * MM, y: dotLabelY + 2.6 * MM, w: 2.3 * MM, h: 2.3 * MM, fill: {color: c}, line: {type: 'none'} });
       });
 
