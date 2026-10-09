@@ -504,7 +504,7 @@ if('serviceWorker' in navigator){
   /* Aviso de conexion/sesion: se muestra encima de la app (sin taparla del todo ni destruir
      nada de lo que hubiera en pantalla) cuando un guardado falla o la sesion se ha caducado —
      ver "guardado con aviso" mas abajo (wirePlayerCard) y la gestion de sesion (onAuthStateChange). */
-  .conn-banner{ display:flex; align-items:center; gap:.6rem; background:var(--danger-bg); color:var(--danger);
+  .conn-banner{ grid-column:1 / -1; display:flex; align-items:center; gap:.6rem; background:var(--danger-bg); color:var(--danger);
     border-bottom:1px solid var(--danger); padding:.5rem .9rem; font-size:.82rem; font-weight:600; }
   .conn-banner[hidden]{ display:none; }
   .conn-banner button{ border:1px solid var(--danger); background:transparent; color:var(--danger); font-size:.74rem;
@@ -1870,6 +1870,18 @@ if('serviceWorker' in navigator){
         return performRemoteOp(entry).then(function(){
           succeededQids.push(entry.qid);
         }).catch(function(err){
+          // 4.66 del HANDOFF: errores que ya NO se arreglan reintentando y que dejaban el aviso
+          // fijo para siempre. 23505 (clave duplicada) en un insert = esa fila YA está en el
+          // servidor (la petición original llegó pero se perdió la respuesta y por eso se encoló):
+          // se da por buena. 23503 (clave foránea) = el rival/jugadora a la que colgaba ya no
+          // existe: no hay dónde guardarlo, se descarta.
+          var code = err && err.code;
+          if((code === '23505' && entry.op === 'insert') || code === '23503'){
+            console.warn('offline: entrada descartada/ya aplicada (' + code + ')', entry, err);
+            succeededQids.push(entry.qid);
+            return;
+          }
+          entry.lastError = String((err && (err.code || err.message)) || 'error').slice(0, 80);
           entry.failCount = (entry.failCount || 0) + 1;
           console.error('offline: no se pudo sincronizar (intento ' + entry.failCount + '), se reintentará más tarde', entry, err);
         });
@@ -1922,7 +1934,7 @@ if('serviceWorker' in navigator){
     var stuck = offlineQueue.filter(function(e){ return (e.failCount || 0) >= OFFLINE_ENTRY_STUCK_THRESHOLD; });
     if(!stuck.length) return;
     var msg = stuck.length === 1
-      ? ('Hay un cambio que no se consigue guardar en el servidor (sigue guardado en este dispositivo): ' + describeQueueEntry(stuck[0]) + '. Comprueba tu conexión y pulsa "Reintentar"; si sigue sin poder ser, avisa a IT.')
+      ? ('Hay un cambio que no se consigue guardar en el servidor (sigue guardado en este dispositivo): ' + describeQueueEntry(stuck[0]) + (stuck[0].lastError ? ' [' + stuck[0].lastError + ']' : '') + '. Comprueba tu conexión y pulsa "Reintentar"; si sigue sin poder ser, avisa a IT.')
       : ('Hay ' + stuck.length + ' cambios que no se consiguen guardar en el servidor (siguen guardados en este dispositivo). Comprueba tu conexión y pulsa "Reintentar"; si sigue sin poder ser, avisa a IT.');
     showConnBanner(msg, { sticky: true, retryLabel: 'Reintentar', onRetry: function(){ hideConnBanner(); flushOfflineQueue(); } });
   }
@@ -3452,7 +3464,14 @@ if('serviceWorker' in navigator){
       if(number === null && /^\d{1,3}$/.test(cell)){ number = parseInt(cell, 10); continue; }
       if(!name && /[a-zA-ZÀ-ÿ]{3,}/.test(cell) && /\s/.test(cell)) name = cell;
     }
-    if(name && (position || height !== null)){
+    // 4.68 del HANDOFF: antes se exigía posición O altura para aceptar la fila, y las jugadoras
+    // sin esos datos (ni dorsal) se descartaban en silencio. Ahora basta con el nombre -- los
+    // datos que falten se rellenan a mano luego. Para no colar filas que no son jugadoras
+    // (cabeceras, entrenadores, delegados...) cuando solo hay nombre, se descartan las que
+    // parecen cabecera/cuerpo técnico.
+    var looksNonPlayer = /^(nombre|jugador|jugadora|equipo|entrenador|entrenadora|ayudante|delegad|fisio|prepar|médico|medico|t[ée]cnico|staff|total)/i.test(name || '') ||
+      cells.some(function(c){ return /^(entrenador|entrenadora|ayudante|delegad|fisioterapeuta|preparador|m[ée]dico|cuerpo t[ée]cnico)/i.test(c); });
+    if(name && (position || height !== null || !looksNonPlayer)){
       var parts = splitFebName(name);
       return { selected: true, firstName: parts.firstName, lastName: parts.lastName, position: position, height: height, number: number, photo: imgSrc || '', photoUrl: imgSrc || '' };
     }
