@@ -1592,14 +1592,78 @@ if('serviceWorker' in navigator){
   // activo se apunta aqui y se le vuelve a llamar cuando le toca.
   var realtimeChannel = null;
   var realtimeListeners = [];
+  // 4.70 del HANDOFF: antes el canal se creaba UNA vez con .subscribe() sin mirar el estado: si el
+  // websocket se caía (wifi con cortes, portátil dormido, red del club que bloquea websockets,
+  // pestaña en segundo plano) nadie se enteraba y los cambios de otras personas dejaban de llegar
+  // hasta recargar. Ahora: se vigila el estado, se reconecta solo, se refresca todo al reconectar /
+  // volver a la pestaña, y hay un refresco periódico de seguridad (también cubre el caso de una
+  // tabla que no esté en la publicación de Realtime, donde el canal figura "conectado" pero no
+  // avisa de nada).
+  var realtimeStatus = 'connecting'; // 'connecting' | 'ok' | 'down'
+  var realtimeRetryTimer = null;
+  function refetchAllActiveTables(){
+    var tables = {};
+    realtimeListeners.forEach(function(l){ tables[l.table] = true; });
+    Object.keys(tables).forEach(function(t){ notifyTableListeners(t); });
+  }
+  function setRealtimeStatus(s){
+    if(realtimeStatus === s) return;
+    realtimeStatus = s;
+    try{ updateSyncStatusUI(); }catch(e){}
+  }
+  function scheduleRealtimeReconnect(){
+    if(realtimeRetryTimer) return;
+    realtimeRetryTimer = setTimeout(function(){
+      realtimeRetryTimer = null;
+      reconnectRealtime();
+    }, 5000);
+  }
+  function reconnectRealtime(){
+    if(!supabaseClient) return;
+    var old = realtimeChannel;
+    realtimeChannel = null;
+    try{ if(old) supabaseClient.removeChannel(old); }catch(e){}
+    ensureRealtimeChannel();
+  }
   function ensureRealtimeChannel(){
     if(realtimeChannel || !supabaseClient) return;
-    realtimeChannel = supabaseClient.channel('db-changes')
+    var ch;
+    ch = supabaseClient.channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, function(payload){
         notifyTableListeners(payload.table);
-      })
-      .subscribe();
+      });
+    realtimeChannel = ch;
+    ch.subscribe(function(status){
+      if(ch !== realtimeChannel) return; // canal ya reemplazado
+      if(status === 'SUBSCRIBED'){
+        setRealtimeStatus('ok');
+        refetchAllActiveTables(); // por si se perdió algo mientras estuvo caído
+      } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        console.warn('realtime: canal ' + status + ', se reintentará');
+        setRealtimeStatus('down');
+        scheduleRealtimeReconnect();
+      }
+    });
   }
+  (function(){
+    var tick = 0;
+    // Cada 10 s: si el tiempo real está caído, refresca; si está bien, refresca cada 30 s como red
+    // de seguridad. Solo con la pestaña visible y con conexión.
+    setInterval(function(){
+      tick++;
+      if(document.visibilityState !== 'visible' || !navigator.onLine || !realtimeListeners.length) return;
+      if(realtimeStatus !== 'ok' || tick % 3 === 0) refetchAllActiveTables();
+    }, 10000);
+    function resync(){
+      if(!realtimeListeners.length) return;
+      if(realtimeStatus !== 'ok') reconnectRealtime();
+      refetchAllActiveTables();
+    }
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'visible') resync();
+    });
+    window.addEventListener('online', resync);
+  })();
   function addRealtimeListener(table, refetch){
     var entry = { table: table, refetch: refetch };
     realtimeListeners.push(entry);
@@ -1955,6 +2019,12 @@ if('serviceWorker' in navigator){
       el.hidden = false;
       el.className = 'sync-status pending';
       el.textContent = 'Sincronizando ' + pending + (pending === 1 ? ' cambio…' : ' cambios…');
+      return;
+    }
+    if(realtimeStatus === 'down'){
+      el.hidden = false;
+      el.className = 'sync-status pending';
+      el.textContent = 'Reconectando con el equipo… los cambios de otras personas se actualizan cada pocos segundos';
       return;
     }
     el.hidden = true;
