@@ -1601,7 +1601,10 @@ if('serviceWorker' in navigator){
   // avisa de nada).
   var realtimeStatus = 'connecting'; // 'connecting' | 'ok' | 'down'
   var realtimeRetryTimer = null;
+  var realtimeEverSubscribed = false;
+  var lastRefetchAllTs = 0;
   function refetchAllActiveTables(){
+    lastRefetchAllTs = Date.now();
     var tables = {};
     realtimeListeners.forEach(function(l){ tables[l.table] = true; });
     Object.keys(tables).forEach(function(t){ notifyTableListeners(t); });
@@ -1636,8 +1639,10 @@ if('serviceWorker' in navigator){
     ch.subscribe(function(status){
       if(ch !== realtimeChannel) return; // canal ya reemplazado
       if(status === 'SUBSCRIBED'){
+        var wasDown = realtimeEverSubscribed;
+        realtimeEverSubscribed = true;
         setRealtimeStatus('ok');
-        refetchAllActiveTables(); // por si se perdió algo mientras estuvo caído
+        if(wasDown) refetchAllActiveTables(); // por si se perdió algo mientras estuvo caído
       } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
         console.warn('realtime: canal ' + status + ', se reintentará');
         setRealtimeStatus('down');
@@ -1647,17 +1652,17 @@ if('serviceWorker' in navigator){
   }
   (function(){
     var tick = 0;
-    // Cada 10 s: si el tiempo real está caído, refresca; si está bien, refresca cada 30 s como red
-    // de seguridad. Solo con la pestaña visible y con conexión.
+    // 4.72: SOLO si el tiempo real está caído, se refresca cada 30 s (con la pestaña visible y
+    // con conexión). Con el tiempo real bien NO se hace polling: la lista de jugadoras es pesada.
     setInterval(function(){
       tick++;
       if(document.visibilityState !== 'visible' || !navigator.onLine || !realtimeListeners.length) return;
-      if(realtimeStatus !== 'ok' || tick % 3 === 0) refetchAllActiveTables();
+      if(realtimeStatus !== 'ok' && tick % 3 === 0) refetchAllActiveTables();
     }, 10000);
     function resync(){
       if(!realtimeListeners.length) return;
       if(realtimeStatus !== 'ok') reconnectRealtime();
-      refetchAllActiveTables();
+      if(Date.now() - lastRefetchAllTs > 30000) refetchAllActiveTables();
     }
     document.addEventListener('visibilitychange', function(){
       if(document.visibilityState === 'visible') resync();
@@ -2038,6 +2043,59 @@ if('serviceWorker' in navigator){
 
   function parsePath(path){ return String(path || '').split('/').filter(Boolean); }
 
+
+  // ---- 4.72 del HANDOFF: la lista de jugadoras NO trae la foto en cada refresco ----
+  // Las fotos están guardadas como imagen dentro de la propia fila de `players` (~200 KB por
+  // jugadora, ~10 MB para 45) y cada refresco de la lista las volvía a descargar todas: decenas
+  // de MB por minuto por persona, lo que carga la app muy lenta y agota el tráfico del plan.
+  // Ahora la lista se pide SIN la columna `photo` (las columnas se sacan de una fila real, así no
+  // hay que mantener una lista a mano) y las fotos se piden aparte, solo las que faltan o han
+  // cambiado (se compara `updated_at`), y se guardan en memoria mientras la pestaña esté abierta.
+  var playerListColsPromise = null;
+  var playerPhotoCache = {};    // id -> { u: updated_at, photo: dataURL }
+  var playerPhotoInFlight = {};
+  function loadPlayerListColumns(){
+    if(playerListColsPromise) return playerListColsPromise;
+    playerListColsPromise = supabaseClient.from('players').select('*').limit(1).then(function(res){
+      if(res.error || !res.data || !res.data.length || !('photo' in res.data[0])){ playerListColsPromise = null; return '*'; }
+      var cols = Object.keys(res.data[0]).filter(function(k){ return k !== 'photo'; });
+      if(cols.length < 3){ playerListColsPromise = null; return '*'; }
+      return cols.join(',');
+    }).catch(function(){ playerListColsPromise = null; return '*'; });
+    return playerListColsPromise;
+  }
+  function applyPlayerPhotos(rows){
+    var missing = [];
+    rows.forEach(function(row){
+      if('photo' in row){ playerPhotoCache[row.id] = { u: row.updated_at, photo: row.photo || '' }; return; }
+      var c = playerPhotoCache[row.id];
+      if(c){ row.photo = c.photo; if(c.u !== row.updated_at) missing.push(row.id); }
+      else { row.photo = ''; missing.push(row.id); }
+    });
+    if(missing.length) fetchPlayerPhotos(missing);
+  }
+  function fetchPlayerPhotos(ids){
+    ids = ids.filter(function(id){ return !playerPhotoInFlight[id]; });
+    if(!ids.length) return;
+    ids.forEach(function(id){ playerPhotoInFlight[id] = true; });
+    var chunks = [];
+    for(var i = 0; i < ids.length; i += 15) chunks.push(ids.slice(i, i + 15));
+    var gotAny = false;
+    var chain = Promise.resolve();
+    chunks.forEach(function(chunk){
+      chain = chain.then(function(){
+        return supabaseClient.from('players').select('id,updated_at,photo').in('id', chunk).then(function(res){
+          if(res.error) throw res.error;
+          (res.data || []).forEach(function(r){ playerPhotoCache[r.id] = { u: r.updated_at, photo: r.photo || '' }; gotAny = true; });
+        }).catch(function(err){ console.warn('fotos de jugadoras: no se pudieron cargar', err); });
+      });
+    });
+    chain.then(function(){
+      ids.forEach(function(id){ delete playerPhotoInFlight[id]; });
+      if(gotAny) notifyTableListeners('players');
+    });
+  }
+
   function docRef(table, idField, idValue, extraFilter, byParentKey){
     function toSnap(row){
       return {
@@ -2073,9 +2131,20 @@ if('serviceWorker' in navigator){
         // pisaba los datos buenos con unos viejos (p. ej. sin la jugadora recién creada).
         // Solo se aplica la respuesta de la última petición lanzada.
         var seqStarted = 0;
+        // 4.72: una sola petición en vuelo por suscripción; si llegan más avisos mientras tanto
+        // (ráfaga de Realtime, flush de la cola...) se agrupan en UNA repetición al terminar.
+        var inFlight = false, dirty = false, inFlightGuard = null;
+        function finishFetch(){
+          if(inFlightGuard){ clearTimeout(inFlightGuard); inFlightGuard = null; }
+          inFlight = false;
+          if(dirty && !cancelled){ dirty = false; refetch(); }
+        }
         function refetch(){
+          if(inFlight){ dirty = true; return; }
+          inFlight = true;
+          inFlightGuard = setTimeout(function(){ inFlightGuard = null; inFlight = false; }, 30000);
           var mySeq = ++seqStarted;
-          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); });
+          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); }).then(finishFetch);
         }
         refetch();
         var off = addRealtimeListener(table, refetch);
@@ -2169,11 +2238,15 @@ if('serviceWorker' in navigator){
           var cached = ensureCollCacheEntry(table, baseFilter, orderField, orderDir);
           return Promise.resolve({ docs: cached.rows.map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) });
         }
-        var q = supabaseClient.from(table).select('*');
-        Object.keys(baseFilter || {}).forEach(function(k){ q = q.eq(k, baseFilter[k]); });
-        if(orderField) q = q.order(toSqlField(orderField), { ascending: orderDir !== 'desc' });
-        return q.then(function(res){
+        var colsP = (table === 'players') ? loadPlayerListColumns() : Promise.resolve('*');
+        return colsP.then(function(cols){
+          var q = supabaseClient.from(table).select(cols);
+          Object.keys(baseFilter || {}).forEach(function(k){ q = q.eq(k, baseFilter[k]); });
+          if(orderField) q = q.order(toSqlField(orderField), { ascending: orderDir !== 'desc' });
+          return q;
+        }).then(function(res){
           if(res.error) throw res.error;
+          if(table === 'players') applyPlayerPhotos(res.data || []);
           upsertCollCache(table, baseFilter, orderField, orderDir, res.data || []);
           return { docs: (res.data || []).map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) };
         }).catch(function(err){
@@ -2189,9 +2262,20 @@ if('serviceWorker' in navigator){
         // pisaba los datos buenos con unos viejos (p. ej. sin la jugadora recién creada).
         // Solo se aplica la respuesta de la última petición lanzada.
         var seqStarted = 0;
+        // 4.72: una sola petición en vuelo por suscripción; si llegan más avisos mientras tanto
+        // (ráfaga de Realtime, flush de la cola...) se agrupan en UNA repetición al terminar.
+        var inFlight = false, dirty = false, inFlightGuard = null;
+        function finishFetch(){
+          if(inFlightGuard){ clearTimeout(inFlightGuard); inFlightGuard = null; }
+          inFlight = false;
+          if(dirty && !cancelled){ dirty = false; refetch(); }
+        }
         function refetch(){
+          if(inFlight){ dirty = true; return; }
+          inFlight = true;
+          inFlightGuard = setTimeout(function(){ inFlightGuard = null; inFlight = false; }, 30000);
           var mySeq = ++seqStarted;
-          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); });
+          ref.get().then(function(snap){ if(!cancelled && mySeq === seqStarted) onNext(snap); }).catch(function(err){ if(!cancelled && mySeq === seqStarted && onError) onError(err); }).then(finishFetch);
         }
         refetch();
         var off = addRealtimeListener(table, refetch);
