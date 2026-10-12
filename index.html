@@ -2044,6 +2044,32 @@ if('serviceWorker' in navigator){
   function parsePath(path){ return String(path || '').split('/').filter(Boolean); }
 
 
+  // ---- 4.73 del HANDOFF: respuestas "viejas" que pisan lo que acabas de guardar ----
+  // Con peticiones lentas (la lista de jugadoras pesaba ~10 MB), un refresco lanzado ANTES de que
+  // tu cambio llegara al servidor puede terminar DESPUÉS de tu clic y devolver el valor antiguo:
+  // el semáforo/texto "vuelve atrás" aunque se guardara bien. Se recuerdan las escrituras locales
+  // y a cualquier lectura iniciada antes de que la escritura terminara se le reaplican.
+  var localWrites = [];
+  function trackLocalWrite(table, idField, idValue, patch){
+    var now = Date.now();
+    localWrites = localWrites.filter(function(w){ return w.doneAt === null || now - w.doneAt < 120000; });
+    var w = { table: table, idField: idField, id: String(idValue), patch: patch, doneAt: null };
+    localWrites.push(w);
+    return w;
+  }
+  function finishLocalWrite(w, ok){
+    if(ok){ w.doneAt = Date.now(); }
+    else { var i = localWrites.indexOf(w); if(i !== -1) localWrites.splice(i, 1); }
+  }
+  function overlayLocalWrites(table, rows, readStartedAt){
+    if(!localWrites.length || !rows) return;
+    localWrites.forEach(function(w){
+      if(w.table !== table) return;
+      if(w.doneAt !== null && w.doneAt < readStartedAt) return; // la lectura ya vio esa escritura
+      rows.forEach(function(r){ if(r && String(r[w.idField]) === w.id) Object.keys(w.patch).forEach(function(k){ r[k] = w.patch[k]; }); });
+    });
+  }
+
   // ---- 4.72 del HANDOFF: la lista de jugadoras NO trae la foto en cada refresco ----
   // Las fotos están guardadas como imagen dentro de la propia fila de `players` (~200 KB por
   // jugadora, ~10 MB para 45) y cada refresco de la lista las volvía a descargar todas: decenas
@@ -2054,12 +2080,23 @@ if('serviceWorker' in navigator){
   var playerListColsPromise = null;
   var playerPhotoCache = {};    // id -> { u: updated_at, photo: dataURL }
   var playerPhotoInFlight = {};
+  var PLAYER_COLS_LS_KEY = 'sr_players_cols_v1';
   function loadPlayerListColumns(){
     if(playerListColsPromise) return playerListColsPromise;
+    // 4.74: las columnas se recuerdan en este navegador, así el arranque NO espera a la petición
+    // de descubrimiento (con el servidor lento llegó a tardar 62 s y bloqueaba la lista).
+    try{
+      var saved = localStorage.getItem(PLAYER_COLS_LS_KEY);
+      if(saved && saved.split(',').length >= 3 && saved.indexOf('photo') === -1){
+        playerListColsPromise = Promise.resolve(saved);
+        return playerListColsPromise;
+      }
+    }catch(e){}
     playerListColsPromise = supabaseClient.from('players').select('*').limit(1).then(function(res){
       if(res.error || !res.data || !res.data.length || !('photo' in res.data[0])){ playerListColsPromise = null; return '*'; }
       var cols = Object.keys(res.data[0]).filter(function(k){ return k !== 'photo'; });
       if(cols.length < 3){ playerListColsPromise = null; return '*'; }
+      try{ localStorage.setItem(PLAYER_COLS_LS_KEY, cols.join(',')); }catch(e){}
       return cols.join(',');
     }).catch(function(){ playerListColsPromise = null; return '*'; });
     return playerListColsPromise;
@@ -2112,10 +2149,12 @@ if('serviceWorker' in navigator){
           var cached = findDocCacheEntry(table, idField, idValue, extraFilter);
           return Promise.resolve(toSnap(cached ? cached.row : null));
         }
+        var readStartedAt = Date.now();
         var q = supabaseClient.from(table).select('*').eq(idField, idValue);
         Object.keys(extraFilter || {}).forEach(function(k){ q = q.eq(k, extraFilter[k]); });
         return q.maybeSingle().then(function(res){
           if(res.error) throw res.error;
+          if(res.data) overlayLocalWrites(table, [res.data], readStartedAt);
           upsertDocCache(table, idField, idValue, extraFilter, res.data || null);
           return toSnap(res.data);
         }).catch(function(err){
@@ -2177,10 +2216,13 @@ if('serviceWorker' in navigator){
         if(!navigator.onLine){ goOffline(); return Promise.resolve(); }
         var q = supabaseClient.from(table).update(patch).eq(idField, idValue);
         Object.keys(extraFilter || {}).forEach(function(k){ q = q.eq(k, extraFilter[k]); });
+        var lw = trackLocalWrite(table, idField, idValue, patch);
         return q.then(function(res){
           if(res.error) throw res.error;
+          finishLocalWrite(lw, true);
         }).catch(function(err){
-          if(!looksLikeNetworkError(err)) throw err;
+          if(!looksLikeNetworkError(err)){ finishLocalWrite(lw, false); throw err; }
+          finishLocalWrite(lw, true); // pasa a la cola local: la caché ya lleva el cambio
           goOffline();
         });
       },
@@ -2238,6 +2280,7 @@ if('serviceWorker' in navigator){
           var cached = ensureCollCacheEntry(table, baseFilter, orderField, orderDir);
           return Promise.resolve({ docs: cached.rows.map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) });
         }
+        var readStartedAt = Date.now();
         var colsP = (table === 'players') ? loadPlayerListColumns() : Promise.resolve('*');
         return colsP.then(function(cols){
           var q = supabaseClient.from(table).select(cols);
@@ -2247,6 +2290,7 @@ if('serviceWorker' in navigator){
         }).then(function(res){
           if(res.error) throw res.error;
           if(table === 'players') applyPlayerPhotos(res.data || []);
+          overlayLocalWrites(table, res.data || [], readStartedAt);
           upsertCollCache(table, baseFilter, orderField, orderDir, res.data || []);
           return { docs: (res.data || []).map(function(row){ return { id: row.id, data: function(){ return decodeRow(row); } }; }) };
         }).catch(function(err){
