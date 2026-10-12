@@ -2291,6 +2291,7 @@ if('serviceWorker' in navigator){
   // pendiente (ver pendingFieldVal) aunque llegue un re-render de por medio por cualquier otro
   // motivo -- así ya no se puede perder en silencio un texto escrito cuyo guardado falló. Ver
   // 4.35 del HANDOFF.
+  var lastSaveError = '';
   function updateWithFeedback(ref, patch, fieldEl, label, editKey){
     var retryDelaysMs = [1200, 3000, 8000];
     function attempt(attemptIndex){
@@ -2299,11 +2300,12 @@ if('serviceWorker' in navigator){
         if(editKey) delete state.unsavedFieldEdits[editKey];
       }).catch(function(err){
         console.error('save field', label, err);
+        lastSaveError = String((err && (err.code || err.status || '')) + ' ' + ((err && err.message) || '')).trim().slice(0, 120);
         if(attemptIndex < retryDelaysMs.length){
           return new Promise(function(resolve){ setTimeout(resolve, retryDelaysMs[attemptIndex]); }).then(function(){ return attempt(attemptIndex + 1); });
         }
         if(fieldEl) fieldEl.classList.add('field-save-error');
-        showConnBanner('No se ha podido guardar "' + label + '". El texto no se ha perdido (sigue aquí), pero todavía no está guardado. Comprueba tu conexión y pulsa "Reintentar".', {
+        showConnBanner('No se ha podido guardar "' + label + '". El texto no se ha perdido (sigue aquí), pero todavía no está guardado. Comprueba tu conexión y pulsa "Reintentar".' + (lastSaveError ? ' [' + lastSaveError + ']' : ''), {
           sticky: true,
           retryLabel: 'Reintentar',
           onRetry: function(){ hideConnBanner(); attempt(retryDelaysMs.length); }
@@ -4553,7 +4555,7 @@ if('serviceWorker' in navigator){
     card.querySelectorAll('[data-shoot]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var val = btn.getAttribute('data-shoot');
-        ref.update({shootThreat: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        updateWithFeedback(ref, {shootThreat: val, updatedAt: nowIso()}, btn, 'Amenaza de tiro');
         card.querySelectorAll('[data-shoot]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
       });
     });
@@ -4561,7 +4563,7 @@ if('serviceWorker' in navigator){
     card.querySelectorAll('[data-clutch]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var val = btn.getAttribute('data-clutch');
-        ref.update({clutch: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        updateWithFeedback(ref, {clutch: val, updatedAt: nowIso()}, btn, 'Clutch');
         card.querySelectorAll('[data-clutch]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
       });
     });
@@ -4569,7 +4571,7 @@ if('serviceWorker' in navigator){
     card.querySelectorAll('[data-temple]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var val = btn.getAttribute('data-temple');
-        ref.update({temple: val, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        updateWithFeedback(ref, {temple: val, updatedAt: nowIso()}, btn, 'Templado');
         card.querySelectorAll('[data-temple]').forEach(function(b){ b.classList.toggle('selected', b === btn); });
       });
     });
@@ -4580,7 +4582,7 @@ if('serviceWorker' in navigator){
         btn.classList.toggle('selected', willSelect);
         var vals = [];
         card.querySelectorAll('[data-playertype].selected').forEach(function(b){ vals.push(b.getAttribute('data-playertype')); });
-        ref.update({playerTypes: vals, updatedAt: nowIso()}).catch(function(err){ console.error(err); });
+        updateWithFeedback(ref, {playerTypes: vals, updatedAt: nowIso()}, null, 'Tipo de jugadora');
       });
     });
 
