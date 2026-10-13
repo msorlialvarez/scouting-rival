@@ -6218,17 +6218,21 @@ if('serviceWorker' in navigator){
     }
 
     // ---- Cabecera ----
+    // 4.75 del HANDOFF: cabecera como en el ejemplo que Marta retocó a mano (13 oct): 24mm de alto,
+    // logo ~15mm, título a 20pt y texto OSCURO cuando el color del rival es claro (p. ej. amarillo).
+    var hdrLight = (0.299*accent[0] + 0.587*accent[1] + 0.114*accent[2]) > 150;
+    var hdrInk = hdrLight ? ink : [255,255,255];
     doc.setFillColor.apply(doc, accent);
-    doc.rect(0, 0, pageW, 20, 'F');
+    doc.rect(0, 0, pageW, 24, 'F');
     var titleX = margin;
     if(rival.logo){
-      try{ doc.addImage(rival.logo, 'JPEG', margin, 3, 14, 14); titleX = margin + 18; }
+      try{ doc.addImage(rival.logo, 'JPEG', margin, 4.4, 15.3, 15.3); titleX = margin + 20; }
       catch(e){ console.error('addImage logo plan', e); }
     }
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(15);
-    doc.text((rival.name || 'Rival').toUpperCase(), titleX, 11.5);
+    doc.setTextColor.apply(doc, hdrInk); doc.setFont('helvetica','bold'); doc.setFontSize(20);
+    doc.text((rival.name || 'Rival').toUpperCase(), titleX, 12.6);
     doc.setFont('helvetica','italic'); doc.setFontSize(9);
-    doc.text(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · ') || '', titleX, 17);
+    doc.text(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · ') || '', titleX, 18.6);
     doc.setFont('helvetica','bold'); doc.setFontSize(11);
     doc.text(L.gamePlanPdfTitle, pageW - margin, 12, {align:'right'});
 
@@ -6245,7 +6249,7 @@ if('serviceWorker' in navigator){
     // `imgFloorMM` (antes una constante fija de 40 en `layoutSets`) y `attackShrink` (para "a quién
     // atacar", que no tiene techo de jugadoras) dan a esas dos partes su propio margen de encogido,
     // en vez de dejar que todo recaiga en la letra -- ver el nuevo orden de fases más abajo.
-    var imgFloorMM = 40;
+    var setFactor = 1; // 4.75: factor de tamaño de las imágenes de los sets (sustituye a imgFloorMM)
     var attackShrink = 1;
 
     // ---- Contenido (independiente de la escala de letra: se calcula una sola vez) ----
@@ -6326,7 +6330,8 @@ if('serviceWorker' in navigator){
     }
 
     function layoutClaves(y0, scale, spc, draw){
-      var y = sectionLabel(margin, y0, fullW, L.gamePlanClavesTitle, accent, draw);
+      // 4.75: sin el banner "CLAVES DEL PARTIDO" (como en el ejemplo de Marta).
+      var y = y0 - 3;
       var clavesGap = 6;
       var clavesColW = fullW/2 - clavesGap/2;
       var clavesXL = margin, clavesXR = margin + clavesColW + clavesGap;
@@ -6403,68 +6408,45 @@ if('serviceWorker' in navigator){
     // línea) — cada imagen conserva su proporción real (no se deforma) dentro de un ancho fijo
     // (la columna) y una altura máxima; si el recorte es más "ancho" que alto se deja más bajo, y
     // viceversa, centrada horizontalmente.
-    function layoutSets(x, y0, w, scale, spc, draw, images){
-      var y = y0;
-      // La altura máxima de cada recorte depende de `spc` (no de `scale`): cuando el texto ya está
-      // en su tamaño mínimo legible y aun así no cabe todo, son las 3 imágenes (lo que más espacio
-      // ocupa) las que se encogen más para que quepa todo, en vez de forzar la letra por debajo de
-      // lo legible — mínimo 15mm, siguen siendo diagramas reconocibles a ese tamaño.
-      // Subido de 15/30 a 30/55 en la 4.47, y ahora otra vez a 40/62 (Marta: "que los sistemas se
-      // vean un poco más grandes", ver 4.54 del HANDOFF) -- con el orden de encogido invertido de
-      // la 4.52 (primero se aprieta `spc`, antes que la letra), estas imágenes tocan su suelo con
-      // más frecuencia que antes en un Plan de Partido denso, así que ese suelo también sube un
-      // poco para compensar. El auto-encogido sigue protegiendo igual: si no cabe todo, `spc` baja
-      // hasta su suelo (0.42) y este máximo cae a 40mm -- nunca más pequeño que eso.
-      var imgMaxH = Math.max(imgFloorMM, 80 * spc); // 4.63: tope subido de 62 a 80 al quitar el pie de página
-      // Subido un poco junto con el resto del texto de la página (ver 4.48 del HANDOFF).
+    // 4.75: cada set (imagen + notas) se mide (setGeometry) y se dibuja (drawSet) por separado para
+    // poder REPARTIRLOS: los que caben van en la columna derecha de "Cómo les defendemos" y los que
+    // no caben pasan al hueco bajo "Sus fuentes de generación" (como en el ejemplo de Marta).
+    function setGeometry(s, img, w, scale, spc){
+      var imgMaxH = 80 * setFactor;
       var notesFont = Math.max(5.8, 6.6*scale), notesLH = 3.2*scale;
-      setsSorted.forEach(function(s, i){
-        var img = images && images[i];
-        var imgH = imgMaxH, imgW = w;
-        if(img && img.width && img.height){
-          var aspect = img.width / img.height;
-          imgH = w / aspect;
-          if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+      var imgH = imgMaxH, imgW = w * setFactor;
+      if(img && img.width && img.height){
+        var aspect = img.width / img.height;
+        imgH = imgW / aspect;
+        if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+      }
+      var noteLines = [];
+      if(s.notes){ doc.setFont('helvetica','normal'); doc.setFontSize(notesFont); noteLines = doc.splitTextToSize(s.notes, w); }
+      var notesH = noteLines.length * notesLH;
+      return { imgMaxH: imgMaxH, imgW: imgW, imgH: imgH, notesFont: notesFont, notesLH: notesLH, noteLines: noteLines,
+               notesH: notesH, total: imgH + 2.4*spc + notesH + 3*spc };
+    }
+    function drawSet(x, y, w, s, img, g, scale, spc){
+      if(img){
+        try{ doc.addImage(img.dataUrl, 'JPEG', x + (w - g.imgW)/2, y, g.imgW, g.imgH); }
+        catch(e){
+          console.error('addImage set crop', e);
+          roundRect(x, y, w, g.imgMaxH, 1.5, tintColor(darkAccent, 0.9));
         }
-        var imgX = x + (w - imgW)/2;
-        if(draw){
-          if(img){
-            try{ doc.addImage(img.dataUrl, 'JPEG', imgX, y, imgW, imgH); }
-            catch(e){
-              console.error('addImage set crop', e);
-              roundRect(x, y, w, imgMaxH, 1.5, tintColor(darkAccent, 0.9));
-              imgH = imgMaxH;
-            }
-          } else {
-            roundRect(x, y, w, imgMaxH, 1.5, tintColor(darkAccent, 0.9));
-            if(doc.setLineDashPattern) doc.setLineDashPattern([1,1], 0);
-            doc.setDrawColor.apply(doc, tintColor(darkAccent, 0.6));
-            doc.rect(x+1, y+1, w-2, imgMaxH-2);
-            if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
-            doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(6*scale);
-            doc.text(L.gamePlanSinRecorte, x+w/2, y+imgMaxH/2, {align:'center'});
-            imgH = imgMaxH;
-          }
-        } else if(!img){
-          imgH = imgMaxH;
-        }
-        // El nombre del set NO se imprime en el PDF — a petición de Marta, ya se identifica solo
-        // con el propio recorte de la página (el campo de nombre en el editor es solo para uso
-        // interno, para saber cuál es cuál al elegir el recorte). Las notas van justo debajo de
-        // la imagen, alineadas a la izquierda como el resto del documento.
-        y += imgH + 2.4*spc;
-        if(s.notes){
-          doc.setFont('helvetica','normal'); doc.setFontSize(notesFont);
-          var noteLines = doc.splitTextToSize(s.notes, w);
-          if(draw){
-            doc.setTextColor.apply(doc, dim);
-            noteLines.forEach(function(line, li){ doc.text(line, x, y + notesLH*0.8 + li*notesLH); });
-          }
-          y += noteLines.length*notesLH;
-        }
-        y += 4.5*spc;
-      });
-      return y;
+      } else {
+        roundRect(x, y, w, g.imgMaxH, 1.5, tintColor(darkAccent, 0.9));
+        if(doc.setLineDashPattern) doc.setLineDashPattern([1,1], 0);
+        doc.setDrawColor.apply(doc, tintColor(darkAccent, 0.6));
+        doc.rect(x+1, y+1, w-2, g.imgMaxH-2);
+        if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
+        doc.setTextColor.apply(doc, shadeColor(darkAccent, 0.2)); doc.setFont('helvetica','normal'); doc.setFontSize(6*scale);
+        doc.text(L.gamePlanSinRecorte, x+w/2, y+g.imgMaxH/2, {align:'center'});
+      }
+      if(g.noteLines.length){
+        doc.setFont('helvetica','normal'); doc.setFontSize(g.notesFont); doc.setTextColor.apply(doc, dim);
+        var ny = y + g.imgH + 2.4*spc;
+        g.noteLines.forEach(function(line, li){ doc.text(line, x, ny + g.notesLH*0.8 + li*g.notesLH); });
+      }
     }
 
     // Cada jugadora marcada en "A quién atacar", una debajo de otra (antes eran solo pills en
@@ -6486,42 +6468,55 @@ if('serviceWorker' in navigator){
       // 4.59 del HANDOFF: `attackShrink` aprieta esta lista un poco más allá del suelo normal de
       // `scale`/`spc` cuando hace falta (lista sin techo, crece con cada jugadora marcada), sin
       // tocar el resto de la página -- mismo mecanismo que en el PowerPoint.
+      // 4.75: las jugadoras a atacar van en una REJILLA de 2 columnas (como en el ejemplo de
+      // Marta), por filas: cada fila mide lo que mida su tarjeta más alta.
       var effScale = scale * attackShrink, effSpc = spc * attackShrink;
       var pf = Math.max(6.4, 8.2*effScale), pillH = 4.8*effScale, pillGap = 1.1*effScale;
       var nf = 8.2*effScale, nlh = 3.6*effScale;
       var gap = 2.4*effSpc;
-      var y = y0;
-      attackJoined.forEach(function(item){
+      var cGap = 5.4, cW = (w - cGap) / 2;
+      function card(item, cx, cy, draw2){
+        var y = cy;
         var label = (item.player.number != null && item.player.number !== '' ? item.player.number + ' ' : '') + (fullName(item.player) || L.noName);
         doc.setFont('helvetica','bold'); doc.setFontSize(pf);
-        var wLabel = doc.getTextWidth(label) + 4.5*scale;
+        var wLabel = Math.min(cW, doc.getTextWidth(label) + 4.5*scale);
         var color = item.category === 'calidad' ? good : warnC;
-        if(draw){
-          roundRect(x0, y, wLabel, pillH, pillH/2, tintColor(color, 0.85));
+        if(draw2){
+          roundRect(cx, y, wLabel, pillH, pillH/2, tintColor(color, 0.85));
           doc.setTextColor.apply(doc, shadeColor(color, 0.35));
-          doc.text(label, x0+wLabel/2, y + pillH/2 + pf*0.13, {align:'center'});
+          doc.text(label, cx+wLabel/2, y + pillH/2 + pf*0.13, {align:'center'});
         }
         y += pillH + pillGap;
         if(item.notes){
           doc.setFont('helvetica','normal'); doc.setFontSize(nf);
-          var nLines = doc.splitTextToSize(item.notes, w);
-          if(draw){
+          var nLines = doc.splitTextToSize(item.notes, cW);
+          if(draw2){
             doc.setTextColor.apply(doc, dim);
-            nLines.forEach(function(line, li){ doc.text(line, x0, y + nlh*0.8 + li*nlh); });
+            nLines.forEach(function(line, li){ doc.text(line, cx, y + nlh*0.8 + li*nlh); });
           }
           y += nLines.length*nlh;
         }
         if(item.systems){
           doc.setFont('helvetica','italic'); doc.setFontSize(nf);
-          var sLines = doc.splitTextToSize(L.gamePlanAttackSystemsPrefix + item.systems, w);
-          if(draw){
+          var sLines = doc.splitTextToSize(L.gamePlanAttackSystemsPrefix + item.systems, cW);
+          if(draw2){
             doc.setTextColor.apply(doc, dim);
-            sLines.forEach(function(line, li){ doc.text(line, x0, y + nlh*0.8 + li*nlh); });
+            sLines.forEach(function(line, li){ doc.text(line, cx, y + nlh*0.8 + li*nlh); });
           }
           y += sLines.length*nlh;
         }
-        y += gap;
-      });
+        return y - cy;
+      }
+      var y = y0;
+      for(var ai = 0; ai < attackJoined.length; ai += 2){
+        var a1 = attackJoined[ai], a2 = attackJoined[ai+1];
+        var h1 = card(a1, x0, y, false), h2 = a2 ? card(a2, x0 + cW + cGap, y, false) : 0;
+        if(draw){
+          card(a1, x0, y, true);
+          if(a2) card(a2, x0 + cW + cGap, y, true);
+        }
+        y += Math.max(h1, h2) + gap;
+      }
       return y;
     }
 
@@ -6533,42 +6528,52 @@ if('serviceWorker' in navigator){
       var subGap = 6;
       var subColW = (colWL - subGap) / 2;
       var xFuentes = colXL, xSets = colXL + subColW + subGap;
-      // "Sus fuentes de generación" -- equivalente a "THEIR SCORING SOURCES" en el PowerPoint:
-      // subtítulo a 10.5pt, concepto a 10.5pt y notas a 10.0pt (ver 4.50 del HANDOFF).
+      // "Sus fuentes de generación" -- equivalente a "THEIR SCORING SOURCES" en el PowerPoint.
       var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw, 10.5);
       yF = layoutConceptList(xFuentes, yF, subColW, scale, spc, draw, fuentesItems, L.gamePlanFuentesEmpty, darkAccent, 10.5, 10.0);
       var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw, 9.5);
-      yS = layoutSets(xSets, yS, subColW, scale, spc, draw, images);
-      return Math.max(yF, yS);
+      // 4.75: reparto de los sets -- primero la columna derecha mientras quepan; los que no caben
+      // pasan al hueco bajo "Sus fuentes de generación" (columna izquierda).
+      var yLeftSets = yF + 2;
+      setsSorted.forEach(function(st, i){
+        var img = images && images[i];
+        var g = setGeometry(st, img, subColW, scale, spc);
+        if(yS + g.total <= bottomLimit + 0.5 || yLeftSets >= bottomLimit){
+          if(draw) drawSet(xSets, yS, subColW, st, img, g, scale, spc);
+          yS += g.total;
+        } else {
+          if(draw) drawSet(xFuentes, yLeftSets, subColW, st, img, g, scale, spc);
+          yLeftSets += g.total;
+        }
+      });
+      return Math.max(yLeftSets > yF + 2 ? yLeftSets : yF, yS);
     }
 
-    // Dentro de "Cómo les atacamos": "Cómo atacarlas" y "A quién atacar" EN PARALELO, en 2
-    // columnas una junto a otra (igual que "Sus fuentes de generación"/"Sus 3 sets" a la
-    // izquierda) -- ver 4.50 del HANDOFF: Marta pidió que el PDF tuviera "la misma estructura"
-    // que el PowerPoint en inglés, que ya coloca "HOW TO ATTACK THEM" y "WHO TO ATTACK" lado a
-    // lado en vez de uno debajo del otro (como iba antes aquí). Como beneficio adicional, esto
-    // reduce el alto total de la sección (el máximo de las dos columnas en vez de la suma de las
-    // dos), lo que da más margen al auto-encogido para no tener que apretar tanto la letra.
+    // 4.75: "Cómo atacarlas" en DOS columnas y "A quién atacar" DEBAJO, en rejilla de 2 columnas
+    // (como en el ejemplo de Marta) -- antes iban una junto a la otra.
     function layoutRightColumn(y0, scale, spc, draw){
       var y = sectionLabel(colXR, y0, colWR, L.gamePlanAttackTitle, good, draw);
-      var subGap = 6, subColW = (colWR - subGap) / 2;
-      var xAtacarlas = colXR, xQuien = colXR + subColW + subGap;
-      // "Cómo atacarlas" -- equivalente a "HOW TO ATTACK THEM" en el PowerPoint: subtítulo a
-      // 9.5pt, concepto a 9.0pt y notas/sistemas a 8.3pt -- la tabla con más texto de la página,
-      // por eso se queda por debajo de "Sus fuentes de generación" (ver 4.50 del HANDOFF).
-      var yA = subLabel(xAtacarlas, y+2, L.gamePlanHowAttackTitle, good, draw, 9.5);
-      yA = layoutConceptList(xAtacarlas, yA, subColW, scale, spc, draw, howAttackItems, L.gamePlanHowAttackEmpty, shadeColor(good, 0.15), 9.0, 8.3);
-      // "A quién atacar" -- equivalente a "WHO TO ATTACK".
-      var yQ = subLabel(xQuien, y+2, L.gamePlanWhoAttackTitle, good, draw, 9.5);
-      // La nota de "a quién atacar" es opcional — si está vacía no reserva hueco de más.
-      if(attackNote && attackNote.trim()){
-        yQ = layoutParagraph(xQuien, yQ+1, subColW, scale, spc, draw, attackNote, '');
+      var subGap = 5.4, subColW = (colWR - subGap) / 2;
+      var xCol2 = colXR + subColW + subGap;
+      var yA = subLabel(colXR, y+2, L.gamePlanHowAttackTitle, good, draw, 9.5);
+      var conceptCol = shadeColor(good, 0.15);
+      var items = howAttackItems;
+      var heights = items.map(function(it){ return layoutConceptList(0, 0, subColW, scale, spc, false, [it], '', conceptCol, 9.0, 8.3); });
+      var totalH = heights.reduce(function(a, b){ return a + b; }, 0), acc = 0, cut = items.length;
+      for(var k = 0; k < items.length; k++){
+        if(k > 0 && acc + heights[k] / 2 > totalH / 2){ cut = k; break; }
+        acc += heights[k];
       }
-      yQ = layoutAttackPlayers(xQuien, yQ+1, subColW, scale, spc, draw);
-      return Math.max(yA, yQ);
+      var yA1 = layoutConceptList(colXR, yA, subColW, scale, spc, draw, items.slice(0, cut), L.gamePlanHowAttackEmpty, conceptCol, 9.0, 8.3);
+      var yA2 = items.length > cut ? layoutConceptList(xCol2, yA, subColW, scale, spc, draw, items.slice(cut), '', conceptCol, 9.0, 8.3) : yA;
+      var yQ = subLabel(colXR, Math.max(yA1, yA2) + 3, L.gamePlanWhoAttackTitle, good, draw, 9.5);
+      if(attackNote && attackNote.trim()){
+        yQ = layoutParagraph(colXR, yQ+1, colWR, scale, spc, draw, attackNote, '');
+      }
+      return layoutAttackPlayers(colXR, yQ+1, colWR, scale, spc, draw);
     }
 
-    var startY = 25;
+    var startY = 28; // 4.75: cabecera de 24mm
     var bottomLimit = pageH - 5;
     var avail = bottomLimit - startY;
 
@@ -6576,10 +6581,11 @@ if('serviceWorker' in navigator){
     // saber CUÁL de las dos columnas es la que de verdad desborda y aplicarle solo a esa su propia
     // red de seguridad (`imgFloorMM` a la izquierda, `attackShrink` a la derecha) -- igual que en
     // el PowerPoint (ver 4.58 del HANDOFF, 2ª parte).
+    var setImages = null; // 4.75: se cargan ANTES de medir, para medir con las imágenes reales
     function measureEnds(scale, spc){
       var yAfterClaves = layoutClaves(startY, scale, spc, false);
       var yTop = yAfterClaves + 3;
-      var leftEnd = layoutLeftColumn(yTop, scale, spc, false, null);
+      var leftEnd = layoutLeftColumn(yTop, scale, spc, false, setImages);
       var rightEnd = layoutRightColumn(yTop, scale, spc, false);
       return {left: leftEnd, right: rightEnd};
     }
@@ -6599,59 +6605,52 @@ if('serviceWorker' in navigator){
     // aún quedara margen por apretar en los huecos. Ahora: 1ª fase, bajar SOLO `spc` (huecos +
     // imágenes de los sets) manteniendo la letra a tamaño completo (scale=1), hasta su propio
     // suelo (0.42).
-    var scale = 1, spc = 1;
-    for(var iter = 0; iter < 6; iter++){
-      var need = totalHeight(scale, spc);
-      if(need <= avail) break;
-      spc = Math.max(0.42, spc * (avail / need) * 0.96);
-    }
-    spc = Math.max(0.42, Math.min(1, spc));
-    // 4.59 del HANDOFF: 2ª fase (antes se pasaba directamente a encoger la letra) -- un documento
-    // real y denso, con 3 imágenes de sets anchas (aspecto ~1,46), mostró que `spc` en su suelo
-    // podía no bastar y aun así el defecto NO eran las imágenes en sí (que tienen su propio suelo
-    // "grande" de 40mm, pensado para que se vean bien) sino que ese suelo de 40mm, sumado al resto
-    // del contenido, ya no cabía -- y antes de esta fase, lo único que quedaba era encoger la letra
-    // hasta su suelo (0,62), afectando a TODO el documento por un problema que en realidad eran
-    // solo las imágenes. Ahora, si sigue sin caber, se encoge el suelo de las imágenes (hasta un
-    // mínimo de 20mm) ANTES de tocar la letra -- solo si es la columna IZQUIERDA (`ends.left`) la
-    // que de verdad desborda, para no encoger las imágenes sin necesidad si el problema fuera la
-    // derecha.
-    if(totalHeight(scale, spc) > avail){
-      for(var iterImg = 0; iterImg < 10; iterImg++){
-        var endsImg = measureEnds(scale, spc);
-        if(endsImg.left <= bottomLimit || imgFloorMM <= 20) break;
-        imgFloorMM = Math.max(20, imgFloorMM - 2);
+    // 4.75: mismo orden de fases que el PowerPoint (ver allí): letra hasta 0,82 -> imágenes hasta
+    // 0,72 -> huecos (spc) -> imágenes hasta 0,5 -> letra hasta 0,62 -> attackShrink -> y al final las
+    // imágenes vuelven a crecer todo lo que quepa. Las imágenes se cargan antes para medir con ellas.
+    return loadGamePlanSetImages(setsSorted).then(function(loadedImages){
+      setImages = loadedImages;
+      var scale = 1, spc = 1;
+      for(var iterPs = 0; iterPs < 8; iterPs++){
+        if(measureEnds(scale, spc).left <= bottomLimit || scale <= 0.82) break;
+        scale = Math.max(0.82, scale - 0.03);
       }
-    }
-    // 3ª fase (antes 2ª): solo si con `spc` Y las imágenes YA en su suelo mínimo todavía no cabe
-    // todo, se empieza a encoger también la letra (`scale`) hasta su suelo (0.62) -- así la letra
-    // se queda grande el máximo tiempo posible, y solo se toca como último recurso.
-    if(totalHeight(scale, spc) > avail){
-      for(var iter2 = 0; iter2 < 6; iter2++){
-        var need2 = totalHeight(scale, spc);
-        if(need2 <= avail) break;
-        scale = Math.max(0.62, scale * (avail / need2) * 0.96);
+      for(var iterP0 = 0; iterP0 < 8; iterP0++){
+        if(measureEnds(scale, spc).left <= bottomLimit || setFactor <= 0.72) break;
+        setFactor = Math.max(0.72, setFactor - 0.04);
       }
-      scale = Math.max(0.62, Math.min(1, scale));
-    }
-    // 4ª fase (4.59 del HANDOFF): misma idea que la de las imágenes pero para la columna DERECHA
-    // ("A quién atacar"), que no tiene techo (crece con cada jugadora marcada) -- un Plan de
-    // Partido con muchas jugadoras podía seguir sin caber aun con `scale`/`spc` en su suelo y las
-    // imágenes ya reducidas. Se encoge `attackShrink` hasta un mínimo de 0,75 SOLO si es la columna
-    // derecha (`ends.right`) la que de verdad desborda.
-    if(totalHeight(scale, spc) > avail){
-      for(var iterAtk = 0; iterAtk < 10; iterAtk++){
-        var endsAtk = measureEnds(scale, spc);
-        if(endsAtk.right <= bottomLimit || attackShrink <= 0.75) break;
-        attackShrink = Math.max(0.75, attackShrink - 0.05);
+      for(var iterP = 0; iterP < 6; iterP++){
+        var needP = totalHeight(scale, spc);
+        if(needP <= avail) break;
+        spc = Math.max(0.42, spc * (avail / needP) * 0.96);
       }
-    }
+      spc = Math.max(0.42, Math.min(1, spc));
+      if(totalHeight(scale, spc) > avail){
+        for(var iterP3 = 0; iterP3 < 20; iterP3++){
+          if(measureEnds(scale, spc).left <= bottomLimit || setFactor <= 0.5) break;
+          setFactor = Math.max(0.5, setFactor - 0.05);
+        }
+      }
+      if(totalHeight(scale, spc) > avail){
+        for(var iterP2 = 0; iterP2 < 6; iterP2++){
+          var needP2 = totalHeight(scale, spc);
+          if(needP2 <= avail) break;
+          scale = Math.max(0.62, scale * (avail / needP2) * 0.96);
+        }
+        scale = Math.max(0.62, Math.min(1, scale));
+      }
+      if(totalHeight(scale, spc) > avail){
+        for(var iterP4 = 0; iterP4 < 10; iterP4++){
+          if(measureEnds(scale, spc).right <= bottomLimit || attackShrink <= 0.75) break;
+          attackShrink = Math.max(0.75, attackShrink - 0.05);
+        }
+      }
+      for(var iterG = 0; iterG < 30 && setFactor < 1; iterG++){
+        var prevF = setFactor;
+        setFactor = Math.min(1, setFactor + 0.02);
+        if(measureEnds(scale, spc).left > bottomLimit){ setFactor = prevF; break; }
+      }
 
-    // ---- Recortes de los 3 sets: se descargan/generan en paralelo a haber calculado `scale`
-    // (no dependen de ella, solo de qué recorte tenga guardado cada set) -- factorizado en
-    // loadGamePlanSetImages (ver 4.41 del HANDOFF) para poder reutilizarlo tal cual desde el
-    // PowerPoint en inglés, sin duplicar esta lógica.
-    return loadGamePlanSetImages(setsSorted).then(function(setImages){
       // ---- Pasada real de dibujo, ya con `scale`/`spc` definitivos ----
       var yAfterClaves = layoutClaves(startY, scale, spc, true);
       var yTop = yAfterClaves + 3;
@@ -6769,11 +6768,34 @@ if('serviceWorker' in navigator){
     // realidad ocupa y provocando que se solapara con el elemento siguiente (Marta: "el texto se
     // solapa y eso no puede pasar", con datos reales que traían esos saltos manuales). Ahora se
     // cuenta cada trozo entre saltos de línea por separado y se suman sus líneas.
+    // 4.75: ya no se cuenta por nº de caracteres (todos iguales): un texto en MAYÚSCULAS (muy
+    // habitual en las claves) ocupa bastante más ancho que uno en minúsculas y se calculaba una
+    // línea de menos, solapando con el punto siguiente. Ahora se simula el salto de línea por
+    // palabras con un ancho medio por tipo de carácter (Arial).
+    function chW(c){
+      if(c === ' ') return 0.28;
+      if('il.,;:!|\'`'.indexOf(c) !== -1) return 0.28;
+      if('fjrt()[]/-'.indexOf(c) !== -1) return 0.36;
+      if(c === 'm' || c === 'w') return 0.8;
+      if(c >= 'A' && c <= 'Z') return 0.69;
+      if(c >= '0' && c <= '9') return 0.56;
+      return 0.52;
+    }
+    var maxEm = boxWidthIn * 72 / fontPt;
     var segments = text.split('\n');
     var total = 0;
     for(var i = 0; i < segments.length; i++){
       var seg = segments[i];
-      total += seg.length ? Math.ceil(seg.length / perLine) : 1;
+      if(!seg.length){ total += 1; continue; }
+      var words = seg.split(' '), lineEm = 0, lines = 1;
+      for(var wi = 0; wi < words.length; wi++){
+        var wEm = 0;
+        for(var ci = 0; ci < words[wi].length; ci++) wEm += chW(words[wi].charAt(ci));
+        var addEm = (lineEm > 0 ? 0.28 : 0) + wEm;
+        if(lineEm > 0 && lineEm + addEm > maxEm){ lines++; lineEm = wEm; }
+        else { lineEm += addEm; }
+      }
+      total += lines;
     }
     return Math.max(1, total);
   }
@@ -6831,7 +6853,8 @@ if('serviceWorker' in navigator){
     // desapercibido (el contenido que no cabe en la página simplemente no se imprime), pero que en
     // PowerPoint se nota mucho más (una imagen cortada/fuera de la diapositiva). `drawSets` lee
     // esta variable en vez de un 40 fijo.
-    var imgFloorMM = 40;
+    var imgFloorMM = 40; // (en desuso desde 4.75: ahora manda setFactor)
+    var setFactor = 1;   // 4.75: tamaño relativo de las imágenes de los sets (1 = ancho completo de columna)
     // 4.58 del HANDOFF (2ª parte): red de seguridad equivalente a `imgFloorMM` pero para la
     // columna derecha ("A quién atacar") en vez de la izquierda (los sets) -- con un Plan de
     // Partido con MUCHAS jugadoras marcadas para atacar, `scale`/`spc` podían llegar a su suelo
@@ -6844,6 +6867,12 @@ if('serviceWorker' in navigator){
     // en esa lista es preferible a texto que se sale de la diapositiva.
     var attackShrink = 1;
     function shootHex(v){ return v === 'rojo' ? DANGER : (v === 'verde' ? GOOD : WARN); }
+    function isLightHex(hex){
+      var h = String(hex || '').replace('#', '');
+      if(h.length !== 6) return false;
+      var r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+      return (0.299 * r + 0.587 * g + 0.114 * b) > 150; // luminosidad percibida: amarillos/claros -> true
+    }
 
     // 4.58 del HANDOFF: cabecera igualada al PDF -- Marta: "los textos no se ven igual que en el
     // pdf, te dije mismo tamaño y estructura/espacios". Hasta ahora la cabecera era la única parte
@@ -6854,26 +6883,30 @@ if('serviceWorker' in navigator){
     // 21/09/2026 · Pabellón..." que Marta puede rellenar) como sí hace el PDF -- así que si lo
     // había rellenado, el PDF y el PowerPoint mostraban un texto DISTINTO ahí, no solo de tamaño
     // distinto.
+    // 4.75 del HANDOFF: cabecera como en el ejemplo que Marta retocó a mano (13 oct): 24mm de alto,
+    // logo 15mm, título a 20pt y -- sobre todo -- texto OSCURO cuando el color del rival es claro
+    // (p. ej. el amarillo del Fenerbahçe: el blanco no se leía).
+    var HDR_INK = isLightHex(ACCENT) ? INK : WHITE;
     function pageHeader(slide, subtitle){
-      var headerH = 20 * MM;
+      var headerH = 24 * MM;
       slide.addShape('rect', { x: 0, y: 0, w: PAGE_W, h: headerH, fill: {color: ACCENT}, line: {type: 'none'} });
       var titleX = MARGIN;
       if(rival.logo){
-        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 3 * MM, w: 14 * MM, h: 14 * MM }); titleX = MARGIN + 18 * MM; }
+        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 4.4 * MM, w: 15.3 * MM, h: 15.3 * MM }); titleX = MARGIN + 20 * MM; }
         catch(e){ console.error('pptx game plan logo', e); }
       }
       var subtitleText = rival.gamePlanDate || [rival.season, competition].filter(Boolean).join('  ·  ') || '';
       slide.addText((rival.name || 'Rival').toUpperCase(), {
-        x: titleX, y: 0.24, w: PAGE_W - titleX - 3.6, h: 0.28, fontFace: 'Arial', fontSize: 15, bold: true,
-        color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
+        x: titleX, y: 6.1 * MM, w: PAGE_W - titleX - 3.6, h: 7.1 * MM, fontFace: 'Arial', fontSize: 20, bold: true,
+        color: HDR_INK, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
       slide.addText(subtitleText, {
-        x: titleX, y: 0.52, w: PAGE_W - titleX - 3.6, h: 0.2, fontFace: 'Arial', fontSize: 9, italic: true,
-        color: WHITE, align: 'left', valign: 'top', margin: 0, isTextBox: true
+        x: titleX, y: 13.8 * MM, w: PAGE_W - titleX - 3.6, h: 5.1 * MM, fontFace: 'Arial', fontSize: 9, italic: true,
+        color: HDR_INK, align: 'left', valign: 'top', margin: 0, isTextBox: true
       });
       slide.addText(subtitle, {
-        x: PAGE_W - MARGIN - 4, y: 0.32, w: 4, h: 0.26, fontFace: 'Arial', fontSize: 11, bold: true,
-        color: WHITE, align: 'right', valign: 'top', margin: 0, isTextBox: true
+        x: PAGE_W - MARGIN - 4, y: 8.1 * MM, w: 4, h: 6.6 * MM, fontFace: 'Arial', fontSize: 11, bold: true,
+        color: HDR_INK, align: 'right', valign: 'top', margin: 0, isTextBox: true
       });
       return headerH;
     }
@@ -7018,43 +7051,37 @@ if('serviceWorker' in navigator){
     }
     // Equivalente de `layoutSets` del PDF -- mismo suelo de altura de imagen ligado a `spc` (ver
     // 4.54 del HANDOFF: "que los sistemas se vean un poco más grandes").
-    function drawSets(slide, x, y0, w, scale, spc, draw, setsList, images){
-      var imgMaxH = Math.max(imgFloorMM, 80 * spc) * MM;
+    // 4.75: cada set (imagen + notas) se mide y se dibuja por separado para poder REPARTIRLOS:
+    // los que caben van en la columna derecha de "Cómo les defendemos" y los que no caben pasan al
+    // hueco libre bajo "Sus fuentes de generación" (como en el ejemplo de Marta, donde el 3er set
+    // está bajo el texto de la izquierda). Las imágenes ocupan todo el ancho de su columna.
+    function setGeometry(s, img, w, scale, spc){
+      var imgMaxH = 80 * setFactor * MM;
       var notesFont = Math.max(5.8, 6.6 * scale), notesLH = 3.2 * scale * MM;
-      var y = y0;
-      setsList.forEach(function(s, i){
-        var img = images && images[i];
-        var imgH = imgMaxH, imgW = w;
-        if(img && img.width && img.height){
-          var aspect = img.width / img.height;
-          imgH = w / aspect;
-          if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+      var imgH = imgMaxH, imgW = w * setFactor;
+      if(img && img.width && img.height){
+        var aspect = img.width / img.height;
+        imgH = imgW / aspect;
+        if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
+      }
+      var notesH = s.notes ? estPptxLines(s.notes, w, notesFont) * notesLH : 0;
+      return { imgMaxH: imgMaxH, imgW: imgW, imgH: imgH, notesFont: notesFont, notesH: notesH,
+               total: imgH + 2.4 * spc * MM + notesH + 3 * spc * MM };
+    }
+    function drawSet(slide, x, y, w, s, img, g, spc){
+      if(img){
+        try{ slide.addImage({ data: img.dataUrl, x: x + (w - g.imgW) / 2, y: y, w: g.imgW, h: g.imgH }); }
+        catch(e){
+          console.error('pptx set crop', e);
+          slide.addShape('roundRect', { x: x, y: y, w: w, h: g.imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
         }
-        var imgX = x + (w - imgW) / 2;
-        if(draw !== false){
-          if(img){
-            try{ slide.addImage({ data: img.dataUrl, x: imgX, y: y, w: imgW, h: imgH }); }
-            catch(e){
-              console.error('pptx set crop', e);
-              slide.addShape('roundRect', { x: x, y: y, w: w, h: imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
-              imgH = imgMaxH;
-            }
-          } else {
-            slide.addShape('roundRect', { x: x, y: y, w: w, h: imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
-            slide.addText(L.gamePlanSinRecorte, { x: x, y: y, w: w, h: imgMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-            imgH = imgMaxH;
-          }
-        } else if(!img){ imgH = imgMaxH; }
-        y += imgH + 2.4 * spc * MM;
-        if(s.notes){
-          var lines = estPptxLines(s.notes, w, notesFont);
-          var h = lines * notesLH;
-          if(draw !== false){ slide.addText(s.notes, { x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: notesFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
-          y += h;
-        }
-        y += 4.5 * spc * MM;
-      });
-      return y;
+      } else {
+        slide.addShape('roundRect', { x: x, y: y, w: w, h: g.imgMaxH, rectRadius: 0.04, fill: {color: 'EDEDEF'}, line: {color: 'C7C9CE', dashType: 'dash', width: 0.75} });
+        slide.addText(L.gamePlanSinRecorte, { x: x, y: y, w: w, h: g.imgMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+      }
+      if(s.notes){
+        slide.addText(s.notes, { x: x, y: y + g.imgH + 2.4 * spc * MM, w: w, h: g.notesH, fontFace: 'Arial', fontSize: g.notesFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      }
     }
     // Equivalente de `layoutAttackPlayers` del PDF -- TODAS las jugadoras de "A quién atacar" en
     // esta misma columna, una debajo de otra, sin paginar a diapositivas de continuación (ver
@@ -7066,49 +7093,48 @@ if('serviceWorker' in navigator){
         if(draw !== false){ slide.addText(L.gamePlanWhoAttackEmpty, { x: x, y: y0, w: w, h: 0.3, fontFace: 'Arial', fontSize: Math.max(6.4, 7 * scale), italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
         return y0 + 6 * MM;
       }
-      // 4.58 del HANDOFF (2ª parte): `attackShrink` (ver su comentario más arriba) aprieta esta
-      // lista un poco más allá del suelo normal de `scale`/`spc` cuando hace falta, sin tocar el
-      // resto de la diapositiva.
+      // 4.75: las jugadoras a atacar van en una REJILLA de 2 columnas (como en el ejemplo de
+      // Marta), por filas: cada fila mide lo que mida su tarjeta más alta. `attackShrink` (4.58)
+      // sigue aprentando la lista si hace falta.
       var effScale = scale * attackShrink, effSpc = spc * attackShrink;
       var pf = Math.max(6.4, 8.2 * effScale), pillH = 4.8 * effScale * MM, pillGap = 1.1 * effScale * MM;
       var nf = 8.2 * effScale, nlh = 3.6 * effScale * MM;
       var gap = 2.4 * effSpc * MM;
-      var y = y0;
-      content.attackJoined.forEach(function(item){
+      var cGap = 5.4 * MM, cW = (w - cGap) / 2;
+      function card(item, cx, cy, draw2){
+        var y = cy;
         var label = (item.player.number != null && item.player.number !== '' ? item.player.number + '  ' : '') + (fullName(item.player) || L.noName);
-        // 4.57 del HANDOFF: la pastilla del nombre se partía en 2 líneas con nombres reales largos
-        // en mayúsculas (p.ej. "YARDEN GARZON") aunque el ancho reservado parecía suficiente en la
-        // estimación -- el bug real era que este ancho se escalaba con `scale` directamente, pero
-        // la letra (`pf`) tiene su propio suelo (6,4pt) que NO baja en la misma proporción que
-        // `scale` en un documento muy denso (donde `scale` sí llega a su suelo, 0,62): la letra
-        // quedaba relativamente más grande de lo que este ancho preveía, y ya no cabía en una
-        // línea. Arreglado usando la proporción real de `pf` (no de `scale`) para el ancho, con más
-        // margen por carácter (mayúsculas en negrita ocupan más que el cálculo original, pensado
-        // para nombres normales) -- y `wrap:false` como red de seguridad: aunque el cálculo se
-        // quede corto alguna vez, el texto ya no puede partirse en 2 líneas (como mucho se sale un
-        // poco de la pastilla, nunca empuja el resto del contenido hacia abajo).
-        var pillW = (pf / 8.2) * (0.09 * label.length + 0.3);
+        // (4.57) ancho de la pastilla según la letra real, y `wrap:false` para que nunca parta en 2 líneas.
+        var pillW = Math.min(cW, (pf / 8.2) * (0.09 * label.length + 0.3));
         var isQuality = item.category === 'calidad';
-        if(draw !== false){
-          slide.addShape('roundRect', { x: x, y: y, w: pillW, h: pillH, rectRadius: pillH / 2, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
-          slide.addText(label, { x: x, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: pf, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true, wrap: false });
+        if(draw2){
+          slide.addShape('roundRect', { x: cx, y: y, w: pillW, h: pillH, rectRadius: pillH / 2, fill: {color: isQuality ? 'D7EFE3' : 'FDEACB'}, line: {type: 'none'} });
+          slide.addText(label, { x: cx, y: y, w: pillW, h: pillH, fontFace: 'Arial', fontSize: pf, bold: true, color: isQuality ? '17573F' : '8A5A0B', align: 'center', valign: 'middle', margin: 0, isTextBox: true, wrap: false });
         }
         y += pillH + pillGap;
         if(item.notes){
-          var nLines = estPptxLines(item.notes, w, nf);
-          var nh = nLines * nlh;
-          if(draw !== false){ slide.addText(item.notes, { x: x, y: y, w: w, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          var nh = estPptxLines(item.notes, cW, nf) * nlh;
+          if(draw2){ slide.addText(item.notes, { x: cx, y: y, w: cW, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
           y += nh;
         }
         if(item.systems){
           var sysText = L.gamePlanAttackSystemsPrefix + item.systems;
-          var sLines = estPptxLines(sysText, w, nf);
-          var sh = sLines * nlh;
-          if(draw !== false){ slide.addText(sysText, { x: x, y: y, w: w, h: sh, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          var sh = estPptxLines(sysText, cW, nf) * nlh;
+          if(draw2){ slide.addText(sysText, { x: cx, y: y, w: cW, h: sh, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
           y += sh;
         }
-        y += gap;
-      });
+        return y - cy;
+      }
+      var y = y0;
+      for(var i = 0; i < content.attackJoined.length; i += 2){
+        var a1 = content.attackJoined[i], a2 = content.attackJoined[i + 1];
+        var h1 = card(a1, x, y, false), h2 = a2 ? card(a2, x + cW + cGap, y, false) : 0;
+        if(draw !== false){
+          card(a1, x, y, true);
+          if(a2) card(a2, x + cW + cGap, y, true);
+        }
+        y += Math.max(h1, h2) + gap;
+      }
       return y;
     }
 
@@ -7119,7 +7145,9 @@ if('serviceWorker' in navigator){
     var colXL = MARGIN, colXR = MARGIN + colWL + colGap;
 
     function layoutClaves(slide, y0, scale, spc, draw){
-      var y = sectionBanner(slide, MARGIN, fullW, y0, L.gamePlanClavesTitle, ACCENT, draw);
+      // 4.75: sin el banner "CLAVES DEL PARTIDO" (como en el ejemplo de Marta): las dos columnas
+      // NUESTRA DEFENSA / NUESTRO ATAQUE van directamente bajo la cabecera.
+      var y = y0 - 3 * MM;
       var clavesGap = 6 * MM, clavesColW = (fullW - clavesGap) / 2;
       var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
       // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
@@ -7140,21 +7168,43 @@ if('serviceWorker' in navigator){
       var yF = subLabel(slide, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, y + 2 * MM, 10.5, draw);
       yF = conceptList(slide, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
       var yS = subLabel(slide, xSets, subColW, L.gamePlanSetsTitle, DARK, y + 2 * MM, 9.5, draw);
-      yS = drawSets(slide, xSets, yS, subColW, scale, spc, draw, content.setsSorted, images);
-      return Math.max(yF, yS);
+      // 4.75: reparto de los sets -- primero la columna derecha mientras quepan; los que no caben
+      // pasan al hueco bajo "Sus fuentes de generación" (columna izquierda).
+      var yLeftSets = yF + 2 * MM;
+      content.setsSorted.forEach(function(st, i){
+        var img = images && images[i];
+        var g = setGeometry(st, img, subColW, scale, spc);
+        if(yS + g.total <= bottomLimit + 0.5 * MM || yLeftSets >= bottomLimit){
+          if(draw !== false) drawSet(slide, xSets, yS, subColW, st, img, g, spc);
+          yS += g.total;
+        } else {
+          if(draw !== false) drawSet(slide, xFuentes, yLeftSets, subColW, st, img, g, spc);
+          yLeftSets += g.total;
+        }
+      });
+      return Math.max(yLeftSets > yF + 2 * MM ? yLeftSets : yF, yS);
     }
     function layoutRightColumn(slide, y0, scale, spc, draw){
       var y = sectionBanner(slide, colXR, colWR, y0, L.gamePlanAttackTitle, GOOD, draw);
-      var subGap = 6 * MM, subColW = (colWR - subGap) / 2;
-      var xAtacarlas = colXR, xQuien = colXR + subColW + subGap;
-      var yA = subLabel(slide, xAtacarlas, subColW, L.gamePlanHowAttackTitle, GOOD, y + 2 * MM, 9.5, draw);
-      yA = conceptList(slide, xAtacarlas, subColW, content.howAttackItems, yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3, scale, spc, draw);
-      var yQ = subLabel(slide, xQuien, subColW, L.gamePlanWhoAttackTitle, GOOD, y + 2 * MM, 9.5, draw);
-      if(content.attackNote && content.attackNote.trim()){
-        yQ = layoutParagraph(slide, xQuien, yQ + 1 * MM, subColW, scale, spc, draw, content.attackNote, '');
+      var subGap = 5.4 * MM, subColW = (colWR - subGap) / 2;
+      var xCol2 = colXR + subColW + subGap;
+      var yA = subLabel(slide, colXR, colWR, L.gamePlanHowAttackTitle, GOOD, y + 2 * MM, 9.5, draw);
+      // 4.75: "Cómo atacarlas" en DOS columnas (como en el ejemplo): se reparten los conceptos por
+      // alto estimado, la 1ª columna hasta la mitad aprox. y el resto en la 2ª.
+      var items = content.howAttackItems;
+      var heights = items.map(function(it){ return conceptList(null, 0, subColW, [it], 0, '17573F', '', 9.0, 8.3, scale, spc, false); });
+      var totalH = heights.reduce(function(a, b){ return a + b; }, 0), acc = 0, cut = items.length;
+      for(var k = 0; k < items.length; k++){
+        if(k > 0 && acc + heights[k] / 2 > totalH / 2){ cut = k; break; }
+        acc += heights[k];
       }
-      yQ = layoutAttackPlayers(slide, xQuien, yQ + 1 * MM, subColW, scale, spc, draw);
-      return Math.max(yA, yQ);
+      var yA1 = conceptList(slide, colXR, subColW, items.slice(0, cut), yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3, scale, spc, draw);
+      var yA2 = items.length > cut ? conceptList(slide, xCol2, subColW, items.slice(cut), yA, '17573F', '', 9.0, 8.3, scale, spc, draw) : yA;
+      var yQ = subLabel(slide, colXR, colWR, L.gamePlanWhoAttackTitle, GOOD, Math.max(yA1, yA2) + 2 * MM, 9.5, draw);
+      if(content.attackNote && content.attackNote.trim()){
+        yQ = layoutParagraph(slide, colXR, yQ + 1 * MM, colWR, scale, spc, draw, content.attackNote, '');
+      }
+      return layoutAttackPlayers(slide, colXR, yQ + 1 * MM, colWR, scale, spc, draw);
     }
 
     // ---- Diapositiva 1: Claves del partido + Cómo les defendemos/atacamos, TODO junto, en UNA
@@ -7162,7 +7212,7 @@ if('serviceWorker' in navigator){
     // que el PDF (25mm de margen superior de contenido, 11mm de margen inferior) y el MISMO bucle
     // de encogido en 2 fases (primero `spc`, huecos e imágenes de los sets, hasta su suelo 0.42;
     // solo si con eso no basta, `scale`, la letra, hasta su suelo 0.62 -- ver 4.52 del HANDOFF).
-    var startY = 25 * MM;
+    var startY = 28 * MM; // 4.75: cabecera de 24mm
     var bottomLimit = PAGE_H - 5 * MM; // 4.63: sin pie de página
     var avail = bottomLimit - startY;
 
@@ -7175,7 +7225,7 @@ if('serviceWorker' in navigator){
     function measureEnds(scale, spc){
       var yAfterClaves = layoutClaves(null, startY, scale, spc, false);
       var yTop = yAfterClaves + 3 * MM;
-      var leftEnd = layoutLeftColumn(null, yTop, scale, spc, false, null);
+      var leftEnd = layoutLeftColumn(null, yTop, scale, spc, false, setImages); // 4.75: se mide con las imágenes REALES (antes, con huecos de 80mm)
       var rightEnd = layoutRightColumn(null, yTop, scale, spc, false);
       return { left: leftEnd, right: rightEnd };
     }
@@ -7194,6 +7244,19 @@ if('serviceWorker' in navigator){
     // tocar la letra (`scale`) -- solo si con `spc` en su suelo y las imágenes YA en su mínimo
     // absoluto sigue sin caber, se encoge la letra como último recurso.
     var scale = 1, spc = 1;
+    // 4.75 -- fase 0: lo primero que cede son las IMÁGENES de los sets (hasta 0,72 de su tamaño),
+    // antes que los huecos (spc) o la letra: Marta las quiere grandes, pero un set de más puede
+    // pasar al hueco bajo "Sus fuentes de generación" y eso solo funciona si el reparto cabe.
+    // (y antes de eso, la letra baja hasta 0,82: en el ejemplo de Marta el texto va a ~8pt y las
+    // imágenes ocupan todo el ancho -- prefiere letra algo más pequeña a imágenes pequeñas)
+    for(var iterPs = 0; iterPs < 8; iterPs++){
+      if(measureEnds(scale, spc).left <= bottomLimit || scale <= 0.82) break;
+      scale = Math.max(0.82, scale - 0.03);
+    }
+    for(var iterP0 = 0; iterP0 < 8; iterP0++){
+      if(measureEnds(scale, spc).left <= bottomLimit || setFactor <= 0.72) break;
+      setFactor = Math.max(0.72, setFactor - 0.04);
+    }
     for(var iterP = 0; iterP < 6; iterP++){
       var needP = totalHeight(scale, spc);
       if(needP <= avail) break;
@@ -7207,10 +7270,10 @@ if('serviceWorker' in navigator){
     // columnas): si la que desborda es la derecha, encoger las imágenes no soluciona nada y solo
     // las deja más pequeñas sin necesidad.
     if(totalHeight(scale, spc) > avail){
-      for(var iterP3 = 0; iterP3 < 10; iterP3++){
+      for(var iterP3 = 0; iterP3 < 20; iterP3++){
         var ends3 = measureEnds(scale, spc);
-        if(ends3.left <= bottomLimit || imgFloorMM <= 20) break;
-        imgFloorMM = Math.max(20, imgFloorMM - 2);
+        if(ends3.left <= bottomLimit || setFactor <= 0.5) break;
+        setFactor = Math.max(0.5, setFactor - 0.05);
       }
     }
     // 3ª fase (antes 2ª): solo si con `spc` Y las imágenes YA en su suelo mínimo todavía no cabe
@@ -7235,6 +7298,16 @@ if('serviceWorker' in navigator){
         if(ends4.right <= bottomLimit || attackShrink <= 0.75) break;
         attackShrink = Math.max(0.75, attackShrink - 0.05);
       }
+    }
+
+    // 4.75 -- fase final: con la letra y los huecos ya definitivos, se vuelve a AGRANDAR el tamaño de
+    // las imágenes de los sets todo lo posible mientras siga cabiendo (antes bajaban a su mínimo en
+    // una fase temprana y ya no recuperaban el espacio que luego liberaba el encogido de la letra).
+    for(var iterG = 0; iterG < 30 && setFactor < 1; iterG++){
+      var prevF = setFactor;
+      setFactor = Math.min(1, setFactor + 0.02);
+      var endsG = measureEnds(scale, spc);
+      if(endsG.left > bottomLimit){ setFactor = prevF; break; }
     }
 
     var s2 = pptx.addSlide();
@@ -7267,7 +7340,7 @@ if('serviceWorker' in navigator){
       var stripeW = 2.2 * MM;
       slide.addShape('rect', { x: x, y: yTop, w: stripeW, h: h - 1.5 * MM, fill: {color: shootHex(p.shootThreat)}, line: {type: 'none'} });
 
-      var photoX = x + stripeW + 1.3 * MM, photoW = 17 * MM, photoH = 20 * MM;
+      var photoX = x + stripeW + 1.3 * MM, photoW = 18 * MM, photoH = 22 * MM;
       if(p.photo){
         try{ slide.addImage({ data: p.photo, x: photoX, y: yTop, w: photoW, h: photoH, sizing: {type: 'cover', w: photoW, h: photoH} }); }
         catch(e){ console.error('pptx player photo', e); }
@@ -7292,12 +7365,14 @@ if('serviceWorker' in navigator){
         { text: (fullName(p) || L.noName).toUpperCase(), options: {bold: true, color: INK} }
       ], { x: tx, y: yTop - 0.02, w: rowW - 8 * MM, h: 3.6 * MM, fontFace: 'Arial', fontSize: 8.2, align: 'left', valign: 'top', margin: 0, isTextBox: true });
 
-      // "Jugadora clave" (importancia): 3 puntos llenos/vacíos, NO el carácter ★ -- ver comentario
-      // más abajo sobre por qué (glifos de estrella no fiables junto a emoji en la misma línea).
+      // "Jugadora clave" (importancia): 3 ESTRELLAS llenas/vacías, como en el PDF (Marta, 13 oct: "quiero
+      // que se queden las 3 estrellas"). Antes (4.55) eran 3 puntos porque el carácter ★ no era fiable
+      // junto a emoji en la misma línea; ahora son FORMAS de estrella de PowerPoint (`star5`), que no
+      // dependen de ninguna fuente.
       var filled = p.threat === 'alta' ? 3 : (p.threat === 'baja' ? 1 : 2);
-      var starsW = 2.6 * MM, starsX0 = x + w - starsW * 3 - 1 * MM;
+      var starsW = 3.1 * MM, starsX0 = x + w - starsW * 3 - 0.6 * MM;
       for(var si = 0; si < 3; si++){
-        slide.addShape('ellipse', { x: starsX0 + si * starsW, y: yTop + 0.4 * MM, w: 1.9 * MM, h: 1.9 * MM, fill: {color: si < filled ? shadeColorHex(ACCENT, 0.15) : 'D9D9D9'}, line: {type: 'none'} });
+        slide.addShape('star5', { x: starsX0 + si * starsW, y: yTop + 0.2 * MM, w: 2.8 * MM, h: 2.8 * MM, fill: {color: si < filled ? shadeColorHex(ACCENT, 0.15) : 'D9D9D9'}, line: {type: 'none'} });
       }
 
       var rightInfo = [positionAbbr(p.position), formatHeight(p.height)].filter(Boolean).join('  ·  ');
@@ -7309,15 +7384,15 @@ if('serviceWorker' in navigator){
 
       // Párrafo de "Informe" -- máx. 3 líneas, igual que wrapCapped en drawPlayerFacingReport
       // (mismo hueco vertical disponible: de aquí a que empieza la tabla de stats).
-      var paraText = truncatePptxText(p.informe, rowW, 6.6, 3);
-      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 9.5 * MM, fontFace: 'Arial', fontSize: 6.6, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      var paraText = truncatePptxText(p.informe, rowW, 6.8, 4);
+      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 11.8 * MM, fontFace: 'Arial', fontSize: 6.8, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
 
-      var tableY = yTop + 17.3 * MM, tableH1 = 3.0 * MM, tableH2 = 5.2 * MM;
+      var tableY = yTop + 19.2 * MM, tableH1 = 3.0 * MM, tableH2 = 5.2 * MM;
       var colW2 = rowW / STAT_COLS.length;
       var statsBlock = pickStatsForExport(item.stats, competition);
       slide.addShape('rect', { x: tx, y: tableY, w: rowW, h: tableH1, fill: {color: ACCENT}, line: {type: 'none'} });
       STAT_COLS.forEach(function(c, i){
-        slide.addText(c.label, { x: tx + i * colW2, y: tableY, w: colW2, h: tableH1, fontFace: 'Arial', fontSize: 4.4, bold: true, color: WHITE, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(c.label, { x: tx + i * colW2, y: tableY, w: colW2, h: tableH1, fontFace: 'Arial', fontSize: 4.4, bold: true, color: HDR_INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       });
       slide.addShape('rect', { x: tx, y: tableY + tableH1, w: rowW, h: tableH2, fill: {color: tintColorHex(ACCENT, 0.9)}, line: {type: 'none'} });
       STAT_COLS.forEach(function(c, i){
@@ -7350,7 +7425,7 @@ if('serviceWorker' in navigator){
       slide.background = { color: WHITE };
       var hy = pageHeader(slide, L.reportFallback);
       var gridTop = hy + 0.16;
-      var rowH = 28 * MM;
+      var rowH = 29 * MM;
       var colGapP = 8 * MM, colWP = (fullW - colGapP) / 2;
       chunk.forEach(function(item, idx){
         var col = idx % 2, row = Math.floor(idx / 2);
@@ -10187,8 +10262,9 @@ if('serviceWorker' in navigator){
     // 6 filas) en una sola hoja sin saltar de página — pedido explícito de Marta. La foto y el
     // resto de elementos se han escalado hacia abajo en proporción.
     var stripeW = 2.2;
-    var photoW = 17, photoH = 20;
-    var rowH = 28;
+    // 4.76: sin pie de página las fichas crecen: rowH 28->29, foto 17x20 -> 18x22, párrafo de 4 líneas.
+    var photoW = 18, photoH = 22;
+    var rowH = 29;
 
     sorted.forEach(function(item, idx){
       var col = idx % 2;
@@ -10286,9 +10362,9 @@ if('serviceWorker' in navigator){
       // 3.3mm mientras se queda en 3 líneas — el ancho de envoltura sigue siendo rowW, el mismo
       // que usa la tabla de stats, así que la línea llega hasta la misma columna TO.
       var paraText = (p.informe || '').trim() || '—';
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
       doc.setTextColor.apply(doc, textDim);
-      var paraLines = wrapCapped(paraText, rowW, 3);
+      var paraLines = wrapCapped(paraText, rowW, 4);
       // Justificado (como pidió Marta): todas las líneas menos la última, que se queda alineada a
       // la izquierda sin estirar — es la convención tipográfica habitual (si se justificase
       // también la última línea, con poco texto jsPDF separaría muchísimo las pocas palabras).
@@ -10309,7 +10385,7 @@ if('serviceWorker' in navigator){
       // 3.0mm + valores 5.2mm = 8.2mm, antes 2.9+3.1=6mm) para que la tarjeta entera —texto +
       // tabla— llegue hasta el final de la fila en vez de dejar un hueco en blanco debajo de la
       // tabla; de paso los números de la tabla quedan más grandes y legibles.
-      var tableY = rowY + 17.3;
+      var tableY = rowY + 19.2;
       var tableHeaderH = 3.0, tableValueH = 5.2;
       var tableX = tx, tableW = rowW;
       var colW2 = tableW / STAT_COLS.length;
