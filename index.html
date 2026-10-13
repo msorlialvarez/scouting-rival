@@ -1405,6 +1405,35 @@ if('serviceWorker' in navigator){
     b.hidden = false; b.textContent = msg;
   }
   function playerRef(id){ return db.doc('players/' + id); }
+  // 4.77: ¿el escudo se confunde con el color de la cabecera? (p. ej. escudo azul sobre cabecera azul).
+  // Se muestrea el borde y el conjunto de la imagen; si predomina un color casi igual al de la
+  // cabecera, el escudo se pinta sobre una placa blanca. Devuelve una Promise<boolean> que NUNCA
+  // falla (ante cualquier error, false = sin placa).
+  function logoBlendsWithColor(dataUrl, rgb){
+    return new Promise(function(resolve){
+      if(!dataUrl){ resolve(false); return; }
+      try{
+        var img = new Image();
+        img.onload = function(){
+          try{
+            var N = 40, cv = document.createElement('canvas'); cv.width = N; cv.height = N;
+            var cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, N, N);
+            var d = cx.getImageData(0, 0, N, N).data;
+            function near(i){ var dr = d[i]-rgb[0], dg = d[i+1]-rgb[1], db = d[i+2]-rgb[2]; return Math.sqrt(dr*dr+dg*dg+db*db) < 60; }
+            var ringN = 0, ringNear = 0, allN = 0, allNear = 0;
+            for(var y = 0; y < N; y++){ for(var x = 0; x < N; x++){
+              var i = (y*N + x)*4; if(d[i+3] < 128) continue;
+              allN++; var nr = near(i); if(nr) allNear++;
+              if(x < 3 || y < 3 || x >= N-3 || y >= N-3){ ringN++; if(nr) ringNear++; }
+            }}
+            resolve((ringN > 0 && ringNear / ringN > 0.6) || (allN > 0 && allNear / allN > 0.5));
+          }catch(e){ resolve(false); }
+        };
+        img.onerror = function(){ resolve(false); };
+        img.src = dataUrl;
+      }catch(e){ resolve(false); }
+    });
+  }
   function hexToRgb(hex){
     hex = String(hex || '').replace('#','');
     if(hex.length === 3){ hex = hex.split('').map(function(c){ return c+c; }).join(''); }
@@ -6217,16 +6246,20 @@ if('serviceWorker' in navigator){
       return y + 3.0 + fs*0.125;
     }
 
-    // ---- Cabecera ----
+    // ---- Cabecera ---- (4.77: función, se pinta tras detectar si el escudo se confunde con el fondo)
+    var hdrInk;
+    function drawHeader(logoPlate){
     // 4.75 del HANDOFF: cabecera como en el ejemplo que Marta retocó a mano (13 oct): 24mm de alto,
     // logo ~15mm, título a 20pt y texto OSCURO cuando el color del rival es claro (p. ej. amarillo).
     var hdrLight = (0.299*accent[0] + 0.587*accent[1] + 0.114*accent[2]) > 150;
-    var hdrInk = hdrLight ? ink : [255,255,255];
+    hdrInk = hdrLight ? ink : [255,255,255];
     doc.setFillColor.apply(doc, accent);
     doc.rect(0, 0, pageW, 24, 'F');
     var titleX = margin;
     if(rival.logo){
-      try{ doc.addImage(rival.logo, 'JPEG', margin, 4.4, 15.3, 15.3); titleX = margin + 20; }
+      try{
+        if(logoPlate){ roundRect(margin - 1.2, 3.2, 17.7, 17.7, 1.8, [255,255,255]); }
+        doc.addImage(rival.logo, 'JPEG', margin, 4.4, 15.3, 15.3); titleX = margin + 20; }
       catch(e){ console.error('addImage logo plan', e); }
     }
     doc.setTextColor.apply(doc, hdrInk); doc.setFont('helvetica','bold'); doc.setFontSize(20);
@@ -6235,6 +6268,7 @@ if('serviceWorker' in navigator){
     doc.text(rival.gamePlanDate || [rival.season, competition].filter(Boolean).join(' · ') || '', titleX, 18.6);
     doc.setFont('helvetica','bold'); doc.setFontSize(11);
     doc.text(L.gamePlanPdfTitle, pageW - margin, 12, {align:'right'});
+    }
 
     var pageH = doc.internal.pageSize.getHeight();
     var fullW = pageW - margin*2;
@@ -6341,8 +6375,8 @@ if('serviceWorker' in navigator){
       // DEFENSA", a la derecha "NUESTRO ATAQUE" (antes iba Ataque a la izquierda y Defensa a la
       // derecha). Los nombres también cambian, de "ATAQUE"/"DEFENSA" a "NUESTRO ATAQUE"/"NUESTRA
       // DEFENSA" -- letra a 16pt, la más grande de todos los subtítulos de la página (ver 4.50).
-      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesDefenseLabel, good, draw, 16);
-      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesAttackLabel, accent, draw, 16);
+      var yLabelL = subLabel(clavesXL, y+3, L.gamePlanClavesDefenseLabel, good, draw, 13);
+      var yLabelR = subLabel(clavesXR, y+3, L.gamePlanClavesAttackLabel, accent, draw, 13);
       var yTop = Math.max(yLabelL, yLabelR);
       var yL = layoutClaveColumn(clavesXL, yTop, clavesColW, defenseList, L.gamePlanClavesEmpty, scale, spc, draw);
       var yR = layoutClaveColumn(clavesXR, yTop, clavesColW, attackList, L.gamePlanClavesEmpty, scale, spc, draw);
@@ -6573,7 +6607,7 @@ if('serviceWorker' in navigator){
       return layoutAttackPlayers(colXR, yQ+1, colWR, scale, spc, draw);
     }
 
-    var startY = 28; // 4.75: cabecera de 24mm
+    var startY = 33; // 4.75: cabecera de 24mm; 4.77: +5mm para que "OUR DEFENSE/OFFENSE" no toque la cabecera
     var bottomLimit = pageH - 5;
     var avail = bottomLimit - startY;
 
@@ -6608,8 +6642,10 @@ if('serviceWorker' in navigator){
     // 4.75: mismo orden de fases que el PowerPoint (ver allí): letra hasta 0,82 -> imágenes hasta
     // 0,72 -> huecos (spc) -> imágenes hasta 0,5 -> letra hasta 0,62 -> attackShrink -> y al final las
     // imágenes vuelven a crecer todo lo que quepa. Las imágenes se cargan antes para medir con ellas.
-    return loadGamePlanSetImages(setsSorted).then(function(loadedImages){
+    return Promise.all([loadGamePlanSetImages(setsSorted), logoBlendsWithColor(rival.logo, accent)]).then(function(pre){
+      var loadedImages = pre[0];
       setImages = loadedImages;
+      drawHeader(pre[1]); // 4.77: placa blanca tras el escudo si se confunde con el color de la cabecera
       var scale = 1, spc = 1;
       for(var iterPs = 0; iterPs < 8; iterPs++){
         if(measureEnds(scale, spc).left <= bottomLimit || scale <= 0.82) break;
@@ -6827,7 +6863,7 @@ if('serviceWorker' in navigator){
   // contenido se reparte en VARIAS diapositivas con más aire cada una (Claves del partido aparte
   // de Cómo les defendemos/atacamos), y las fichas de jugadora van 2x3 por diapositiva (6, no las
   // 12 del PDF) para dejar más margen de sobra. Se avisa de esto en el HANDOFF.
-  function buildGamePlanTranslatedPptx(rival, content, rosterJoined, competition, setImages){
+  function buildGamePlanTranslatedPptx(rival, content, rosterJoined, competition, setImages, logoPlate){
     var L = tr('en');
     var pptx = new window.PptxGenJS();
     var PAGE_W = 11.69, PAGE_H = 8.27, MARGIN = 0.47; // misma proporción A4 apaisado que el PDF
@@ -6892,7 +6928,9 @@ if('serviceWorker' in navigator){
       slide.addShape('rect', { x: 0, y: 0, w: PAGE_W, h: headerH, fill: {color: ACCENT}, line: {type: 'none'} });
       var titleX = MARGIN;
       if(rival.logo){
-        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 4.4 * MM, w: 15.3 * MM, h: 15.3 * MM }); titleX = MARGIN + 20 * MM; }
+        try{
+          if(logoPlate){ slide.addShape('roundRect', { x: MARGIN - 1.2 * MM, y: 3.2 * MM, w: 17.7 * MM, h: 17.7 * MM, rectRadius: 0.06, fill: {color: 'FFFFFF'}, line: {type: 'none'} }); }
+          slide.addImage({ data: rival.logo, x: MARGIN, y: 4.4 * MM, w: 15.3 * MM, h: 15.3 * MM }); titleX = MARGIN + 20 * MM; }
         catch(e){ console.error('pptx game plan logo', e); }
       }
       var subtitleText = rival.gamePlanDate || [rival.season, competition].filter(Boolean).join('  ·  ') || '';
@@ -6909,6 +6947,29 @@ if('serviceWorker' in navigator){
         color: HDR_INK, align: 'right', valign: 'top', margin: 0, isTextBox: true
       });
       return headerH;
+    }
+
+    // 4.78: cabecera de la 2.ª diapositiva IGUAL que la de la 2.ª página del PDF (drawPlayerFacingReport):
+    // fondo blanco, escudo + nombre + temporada·competición a la izquierda, leyenda de los 4 tipos de
+    // jugadora a la derecha y línea de color debajo. Devuelve la Y (pulgadas) donde empieza la rejilla.
+    function reportHeader(slide){
+      var titleX = MARGIN;
+      if(rival.logo){
+        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 8 * MM, w: 14 * MM, h: 14 * MM }); titleX = MARGIN + 19 * MM; }
+        catch(e){ console.error('pptx report logo', e); }
+      }
+      slide.addText((rival.name || 'Rival').toUpperCase(), { x: titleX, y: 9.6 * MM, w: 120 * MM, h: 6.6 * MM, fontFace: 'Arial', fontSize: 15, bold: true, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      var sub = ([rival.season, competition].filter(Boolean).join(' · ') || L.reportFallback).toUpperCase();
+      slide.addText(sub, { x: titleX, y: 16.6 * MM, w: 120 * MM, h: 4 * MM, fontFace: 'Arial', fontSize: 8.5, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      var boxW = 22 * MM, n = PLAYER_TYPE_ORDER.length, x0 = PAGE_W - MARGIN - n * boxW;
+      PLAYER_TYPE_ORDER.forEach(function(t, i){
+        var lx = x0 + i * boxW, bw = boxW - 3 * MM;
+        slide.addShape('roundRect', { x: lx, y: 8 * MM, w: bw, h: 9 * MM, rectRadius: 0.06, fill: {color: 'FCFCFD'}, line: {color: tintColorHex(ACCENT, 0.55), width: 0.75} });
+        slide.addText(PLAYER_TYPE_ICONS[t] || '', { x: lx, y: 8.4 * MM, w: bw, h: 8.2 * MM, fontFace: 'Arial', fontSize: 12, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(((L.playerTypeNames && L.playerTypeNames[t]) || PLAYER_TYPE_LABELS_ES[t] || '').toUpperCase(), { x: lx - 1 * MM, y: 17.5 * MM, w: bw + 2 * MM, h: 3 * MM, fontFace: 'Arial', fontSize: 4.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
+      });
+      slide.addShape('rect', { x: MARGIN, y: 25.6 * MM, w: PAGE_W - 2 * MARGIN, h: 0.9 * MM, fill: {color: ACCENT}, line: {type: 'none'} });
+      return 28 * MM;
     }
     // 4.58 del HANDOFF: pie de página igualado al PDF (`addFooters`) -- Marta: "los textos no se
     // ven igual que en el pdf... estructura/espacios". El PDF pinta una franja oscura de 10mm a
@@ -7152,8 +7213,8 @@ if('serviceWorker' in navigator){
       var clavesXL = MARGIN, clavesXR = MARGIN + clavesColW + clavesGap;
       // Orden invertido a petición de Marta (ver 4.53 del HANDOFF): izquierda "NUESTRA DEFENSA",
       // derecha "NUESTRO ATAQUE" -- igual que en el PDF, para que ambos coincidan.
-      var yLabelL = subLabel(slide, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y + 3 * MM, 16, draw);
-      var yLabelR = subLabel(slide, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y + 3 * MM, 16, draw);
+      var yLabelL = subLabel(slide, clavesXL, clavesColW, L.gamePlanClavesDefenseLabel, GOOD, y + 3 * MM, 13, draw);
+      var yLabelR = subLabel(slide, clavesXR, clavesColW, L.gamePlanClavesAttackLabel, ACCENT, y + 3 * MM, 13, draw);
       var yTop = Math.max(yLabelL, yLabelR);
       var attackList = content.clavesItems.filter(function(k){ return k.category !== 'defensa'; }).map(function(k){ return k.text; });
       var defenseList = content.clavesItems.filter(function(k){ return k.category === 'defensa'; }).map(function(k){ return k.text; });
@@ -7212,7 +7273,7 @@ if('serviceWorker' in navigator){
     // que el PDF (25mm de margen superior de contenido, 11mm de margen inferior) y el MISMO bucle
     // de encogido en 2 fases (primero `spc`, huecos e imágenes de los sets, hasta su suelo 0.42;
     // solo si con eso no basta, `scale`, la letra, hasta su suelo 0.62 -- ver 4.52 del HANDOFF).
-    var startY = 28 * MM; // 4.75: cabecera de 24mm
+    var startY = 32 * MM; // 4.75: cabecera de 24mm; 4.77: +4mm de aire bajo la cabecera
     var bottomLimit = PAGE_H - 5 * MM; // 4.63: sin pie de página
     var avail = bottomLimit - startY;
 
@@ -7416,15 +7477,14 @@ if('serviceWorker' in navigator){
     if(!sorted.length){
       var sEmpty = pptx.addSlide();
       sEmpty.background = { color: WHITE };
-      var hyEmpty = pageHeader(sEmpty, L.reportFallback);
+      var hyEmpty = reportHeader(sEmpty);
       sEmpty.addText(L.noRosterYet, { x: MARGIN, y: hyEmpty + 0.3, w: fullW, h: 0.3, fontFace: 'Arial', fontSize: 11, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
     }
     for(var i = 0; i < sorted.length; i += PER_SLIDE){
       var chunk = sorted.slice(i, i + PER_SLIDE);
       var slide = pptx.addSlide();
       slide.background = { color: WHITE };
-      var hy = pageHeader(slide, L.reportFallback);
-      var gridTop = hy + 0.16;
+      var gridTop = reportHeader(slide);
       var rowH = 29 * MM;
       var colGapP = 8 * MM, colWP = (fullW - colGapP) / 2;
       chunk.forEach(function(item, idx){
@@ -7464,9 +7524,9 @@ if('serviceWorker' in navigator){
     translateGamePlanContent(content).then(function(tc){
       translatedContent = tc;
       btn.textContent = 'Generando…';
-      return Promise.all([gatherCollectiveRosterJoined(), loadGamePlanSetImages(translatedContent.setsSorted)]);
+      return Promise.all([gatherCollectiveRosterJoined(), loadGamePlanSetImages(translatedContent.setsSorted), logoBlendsWithColor(rival.logo, hexToRgb(rival.color))]);
     }).then(function(results){
-      var pptx = buildGamePlanTranslatedPptx(rival, translatedContent, results[0], competition, results[1]);
+      var pptx = buildGamePlanTranslatedPptx(rival, translatedContent, results[0], competition, results[1], results[2]);
       return pptx.write({outputType: 'blob'});
     }).then(function(blob){
       return downloadsCap.save({filename: 'plan_partido_' + slug(rival.name) + '_en.pptx', data: blob});
