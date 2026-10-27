@@ -260,6 +260,11 @@ if('serviceWorker' in navigator){
   .collective-notes{ display:grid; grid-template-columns:1fr 1fr; gap:.9rem; margin-bottom:1.6rem; }
   @media (max-width: 900px){ .collective-notes{ grid-template-columns:1fr; } }
   .collective-player-list{ display:flex; flex-direction:column; gap:.5rem; }
+  /* 4.79: jugadoras del scouting individual que se pueden excluir de los documentos sin quitarlas de la plantilla */
+  .player-card.excluded{ opacity:.55; }
+  .include-toggle{ display:inline-flex; align-items:center; gap:.35rem; font-size:.74rem; font-weight:600; color:var(--text-dim); cursor:pointer; padding:.3rem .5rem; border-radius:6px; background:var(--surface-2); border:1px solid var(--border); }
+  .include-toggle input{ margin:0; }
+  .player-card.excluded .include-toggle{ color:var(--danger); border-color:var(--danger); }
   .collective-player-row{ display:flex; align-items:center; gap:.7rem; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.55rem .8rem; box-shadow:var(--shadow); }
   .collective-player-row .cpr-avatar{ width:34px; height:34px; border-radius:8px; background:var(--surface-2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:.7rem; font-weight:700; color:var(--text-dim); flex:none; }
   .collective-player-row .cpr-avatar img{ width:100%; height:100%; object-fit:cover; }
@@ -4401,7 +4406,7 @@ if('serviceWorker' in navigator){
     var focus = captureFocus(grid);
     grid.innerHTML = state.roster.map(function(r){
       var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
-      return p ? playerCardHtml(p, {mode:'roster', rosterId:r.id, number:r.number}) : orphanCardHtml(r);
+      return p ? playerCardHtml(p, {mode:'roster', rosterId:r.id, number:r.number, inIndividual: r.inIndividual !== false}) : orphanCardHtml(r);
     }).join('');
     state.roster.forEach(function(r){
       var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
@@ -4580,7 +4585,11 @@ if('serviceWorker' in navigator){
       ? '<button class="btn-del" type="button" data-remove-roster>Quitar del equipo</button>'
       : '<button class="btn-del" type="button" data-del-player>Eliminar jugadora</button>';
 
-    return '<div class="player-card' + (isProfile ? ' profile-card' : '') + '" data-id="' + esc(p.id) + '">' +
+    var includeHtml = mode === 'roster'
+      ? '<label class="include-toggle" title="Si la desmarcas, esta jugadora NO aparece en los informes de scouting individual (PDF, PowerPoint, portadas, página 2 del Plan de Partido), pero sigue en la plantilla."><input type="checkbox" data-include-individual' + (ctx.inIndividual !== false ? ' checked' : '') + '> Incluir en el scouting</label>'
+      : '';
+    var excludedCls = (mode === 'roster' && ctx.inIndividual === false) ? ' excluded' : '';
+    return '<div class="player-card' + (isProfile ? ' profile-card' : '') + excludedCls + '" data-id="' + esc(p.id) + '">' +
       '<div class="player-top">' +
         '<div class="avatar-wrap' + (p.photo ? ' has-photo' : '') + '">' +
           '<div class="avatar">' + avatarInner + '</div>' +
@@ -4639,7 +4648,7 @@ if('serviceWorker' in navigator){
         '</div>' +
       '</div>' +
 
-      '<div class="card-foot">' + footLeft + footRight + '<span class="export-error" data-export-error></span></div>' +
+      '<div class="card-foot">' + footLeft + includeHtml + footRight + '<span class="export-error" data-export-error></span></div>' +
     '</div>';
   }
 
@@ -4780,6 +4789,14 @@ if('serviceWorker' in navigator){
         if(mainEl) mainEl.scrollTop = 0;
       });
 
+      var inclCb = card.querySelector('[data-include-individual]');
+      if(inclCb){
+        inclCb.addEventListener('change', function(){
+          var on = inclCb.checked;
+          card.classList.toggle('excluded', !on);
+          updateWithFeedback(currentRivalRef().collection('roster').doc(rosterId), {inIndividual: on}, null, 'Incluir en el scouting');
+        });
+      }
       var delRosterBtn = card.querySelector('[data-remove-roster]');
       delRosterBtn.addEventListener('click', function(){
         if(!delRosterBtn.classList.contains('confirm')){
@@ -6713,7 +6730,7 @@ if('serviceWorker' in navigator){
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
     var competition = state.exportCompetition || rivalCompetitions(rival)[0];
-    gatherCollectiveRosterJoined().then(function(rosterJoined){
+    gatherCollectiveRosterJoined(true).then(function(rosterJoined){
       var accent = hexToRgb(rival.color);
       return buildGamePlanDoc(rival, rosterJoined, accent, lang, competition);
     }).then(function(doc){
@@ -7524,7 +7541,7 @@ if('serviceWorker' in navigator){
     translateGamePlanContent(content).then(function(tc){
       translatedContent = tc;
       btn.textContent = 'Generando…';
-      return Promise.all([gatherCollectiveRosterJoined(), loadGamePlanSetImages(translatedContent.setsSorted), logoBlendsWithColor(rival.logo, hexToRgb(rival.color))]);
+      return Promise.all([gatherCollectiveRosterJoined(true), loadGamePlanSetImages(translatedContent.setsSorted), logoBlendsWithColor(rival.logo, hexToRgb(rival.color))]);
     }).then(function(results){
       var pptx = buildGamePlanTranslatedPptx(rival, translatedContent, results[0], competition, results[1], results[2]);
       return pptx.write({outputType: 'blob'});
@@ -7713,8 +7730,11 @@ if('serviceWorker' in navigator){
   }
 
 
-  function gatherCollectiveRosterJoined(){
-    return gatherRosterJoined().then(function(all){
+  function gatherCollectiveRosterJoined(onlyIndividual){
+    return gatherRosterJoined(onlyIndividual).catch(function(err){
+      if(err && err.code === 'no_selected') return [];
+      throw err;
+    }).then(function(all){
       var byRosterId = {};
       state.roster.forEach(function(r){ byRosterId[r.playerId] = r.inCollective !== false; });
       return all.filter(function(item){ return byRosterId[item.player.id] !== false; });
@@ -8276,8 +8296,10 @@ if('serviceWorker' in navigator){
       });
   }
 
-  function gatherRosterJoined(){
-    var jobs = state.roster.map(function(r){
+  // 4.79: `onlyIndividual` deja fuera las jugadoras desmarcadas en Scout Individual ("Incluir en el
+  // scouting", campo roster.inIndividual; ausente = incluida). Scout Colectivo NO lo usa.
+  function gatherRosterJoined(onlyIndividual){
+    var jobs = state.roster.filter(function(r){ return !onlyIndividual || r.inIndividual !== false; }).map(function(r){
       var p = state.allPlayers.find(function(pl){ return pl.id === r.playerId; });
       if(!p) return Promise.resolve(null);
       return playerRef(r.playerId).collection('stats').orderBy('order', 'asc').get().then(function(snap){
@@ -8285,7 +8307,11 @@ if('serviceWorker' in navigator){
         return { player: p, number: r.number, stats: filterStatsForRival(allBlocks, state.rival) };
       });
     });
-    return Promise.all(jobs).then(function(results){ return results.filter(Boolean); });
+    return Promise.all(jobs).then(function(results){
+      var out = results.filter(Boolean);
+      if(onlyIndividual && !out.length && state.roster.length){ var e = new Error('no_selected'); e.code = 'no_selected'; throw e; }
+      return out;
+    });
   }
 
   function runTeamExport(btn, filenamePrefix, buildDocFn){
@@ -8295,7 +8321,7 @@ if('serviceWorker' in navigator){
     var rival = state.rival || {name: 'Rival'};
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
-    gatherRosterJoined().then(function(rosterJoined){
+    gatherRosterJoined(true).then(function(rosterJoined){
       var doc = buildDocFn(rival, rosterJoined);
       return downloadsCap.save({filename: filenamePrefix + slug(rival.name) + '.pdf', data: doc.output('blob')});
     }).then(function(){ btn.disabled = false; btn.textContent = original; })
@@ -8303,6 +8329,7 @@ if('serviceWorker' in navigator){
         btn.disabled = false; btn.textContent = original;
         if(err && err.code === 'declined') return;
         var msg = 'No se pudo generar el informe.';
+        if(err && err.code === 'no_selected') msg = 'No hay ninguna jugadora marcada en "Incluir en el scouting".';
         if(err && err.code === 'too_large') msg = 'El informe pesa demasiado (revisa fotos y el escudo).';
         if(err && err.code === 'rate_limited') msg = 'Ya hay una exportación en curso, espera un momento.';
         showTeamExportMsg(msg);
@@ -8364,7 +8391,7 @@ if('serviceWorker' in navigator){
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
     var competition = state.exportCompetition || rivalCompetitions(rival)[0];
-    gatherRosterJoined().then(function(rosterJoined){
+    gatherRosterJoined(true).then(function(rosterJoined){
       var compLogoEntry = findCompetitionLogo(competition);
       var pptx = buildScoutingPptx(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data, competition);
       return pptx.write({outputType: 'blob'});
@@ -8375,6 +8402,7 @@ if('serviceWorker' in navigator){
         btn.disabled = false; btn.textContent = original;
         if(err && err.code === 'declined') return;
         var msg = 'No se pudo generar el PowerPoint.';
+        if(err && err.code === 'no_selected') msg = 'No hay ninguna jugadora marcada en "Incluir en el scouting".';
         if(err && err.code === 'too_large') msg = 'El archivo pesa demasiado (revisa fotos y el escudo).';
         if(err && err.code === 'rate_limited') msg = 'Ya hay una exportación en curso, espera un momento.';
         if(err && err.code === 'rejected_extension') msg = 'Este formato de archivo no está disponible aquí.';
@@ -9096,7 +9124,7 @@ if('serviceWorker' in navigator){
     var original = btn.textContent;
     btn.disabled = true; btn.textContent = 'Generando…';
     var competition = state.exportCompetition || rivalCompetitions(rival)[0];
-    gatherRosterJoined().then(function(rosterJoined){
+    gatherRosterJoined(true).then(function(rosterJoined){
       var compLogoEntry = findCompetitionLogo(competition);
       return buildScoutingImagesZip(rival, rosterJoined, lang, compLogoEntry && compLogoEntry.data, competition);
     }).then(function(blob){
@@ -9105,7 +9133,7 @@ if('serviceWorker' in navigator){
       .catch(function(err){
         btn.disabled = false; btn.textContent = original;
         if(err && err.code === 'declined') return;
-        showTeamExportMsg('No se pudieron generar las imágenes.');
+        showTeamExportMsg(err && err.code === 'no_selected' ? 'No hay ninguna jugadora marcada en "Incluir en el scouting".' : 'No se pudieron generar las imágenes.');
         console.error('export scouting images', err);
       });
   }
