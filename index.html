@@ -6373,7 +6373,12 @@ if('serviceWorker' in navigator){
           doc.setTextColor.apply(doc, accent);
           doc.text('•', x, y + klh*0.85);
           doc.setTextColor.apply(doc, ink);
-          lines.forEach(function(line, li){ doc.text(line, x+indent, y + klh*0.85 + li*klh); });
+          // 4.80: claves JUSTIFICADAS (como en el PowerPoint de Marta): todas las líneas menos la última.
+          lines.forEach(function(line, li){
+            var yy = y + klh*0.85 + li*klh;
+            if(li < lines.length - 1 && line.indexOf(' ') !== -1) doc.text(line, x+indent, yy, {maxWidth: w - indent, align: 'justify'});
+            else doc.text(line, x+indent, yy);
+          });
         }
         y += lines.length*klh + gap;
       });
@@ -6576,12 +6581,13 @@ if('serviceWorker' in navigator){
     // blanco y hacían el documento mucho más largo de lo necesario.
     function layoutLeftColumn(y0, scale, spc, draw, images){
       var y = sectionLabel(colXL, y0, colWL, L.gamePlanDefendTitle, darkAccent, draw);
-      var subGap = 6;
-      var subColW = (colWL - subGap) / 2;
-      var xFuentes = colXL, xSets = colXL + subColW + subGap;
+      // 4.81: fuentes más anchas (58 %) y sets más estrechos (42 %), con menos hueco entre ambas.
+      var subGap = 4;
+      var srcColW = (colWL - subGap) * 0.58, subColW = (colWL - subGap) - srcColW;
+      var xFuentes = colXL, xSets = colXL + srcColW + subGap;
       // "Sus fuentes de generación" -- equivalente a "THEIR SCORING SOURCES" en el PowerPoint.
       var yF = subLabel(xFuentes, y+2, L.gamePlanFuentesTitle, darkAccent, draw, 10.5);
-      yF = layoutConceptList(xFuentes, yF, subColW, scale, spc, draw, fuentesItems, L.gamePlanFuentesEmpty, darkAccent, 10.5, 10.0);
+      yF = layoutConceptList(xFuentes, yF, srcColW, scale, spc, draw, fuentesItems, L.gamePlanFuentesEmpty, darkAccent, 10.5, 10.0);
       var yS = subLabel(xSets, y+2, L.gamePlanSetsTitle, darkAccent, draw, 9.5);
       // 4.75: reparto de los sets -- primero la columna derecha mientras quepan; los que no caben
       // pasan al hueco bajo "Sus fuentes de generación" (columna izquierda).
@@ -6593,8 +6599,9 @@ if('serviceWorker' in navigator){
           if(draw) drawSet(xSets, yS, subColW, st, img, g, scale, spc);
           yS += g.total;
         } else {
-          if(draw) drawSet(xFuentes, yLeftSets, subColW, st, img, g, scale, spc);
-          yLeftSets += g.total;
+          var gL = setGeometry(st, img, srcColW, scale, spc);
+          if(draw) drawSet(xFuentes, yLeftSets, srcColW, st, img, gL, scale, spc);
+          yLeftSets += gL.total;
         }
       });
       return Math.max(yLeftSets > yF + 2 ? yLeftSets : yF, yS);
@@ -6617,14 +6624,14 @@ if('serviceWorker' in navigator){
       }
       var yA1 = layoutConceptList(colXR, yA, subColW, scale, spc, draw, items.slice(0, cut), L.gamePlanHowAttackEmpty, conceptCol, 9.0, 8.3);
       var yA2 = items.length > cut ? layoutConceptList(xCol2, yA, subColW, scale, spc, draw, items.slice(cut), '', conceptCol, 9.0, 8.3) : yA;
-      var yQ = subLabel(colXR, Math.max(yA1, yA2) + 3, L.gamePlanWhoAttackTitle, good, draw, 9.5);
+      var yQ = subLabel(colXR, Math.max(yA1, yA2) + 4.5, L.gamePlanWhoAttackTitle, good, draw, 9.5);
       if(attackNote && attackNote.trim()){
         yQ = layoutParagraph(colXR, yQ+1, colWR, scale, spc, draw, attackNote, '');
       }
       return layoutAttackPlayers(colXR, yQ+1, colWR, scale, spc, draw);
     }
 
-    var startY = 33; // 4.75: cabecera de 24mm; 4.77: +5mm para que "OUR DEFENSE/OFFENSE" no toque la cabecera
+    var startY = 31; // 4.82: 33 -> 31 (4.75: cabecera de 24mm; 4.77: +5mm para que "OUR DEFENSE/OFFENSE" no toque la cabecera
     var bottomLimit = pageH - 5;
     var avail = bottomLimit - startY;
 
@@ -6633,11 +6640,15 @@ if('serviceWorker' in navigator){
     // red de seguridad (`imgFloorMM` a la izquierda, `attackShrink` a la derecha) -- igual que en
     // el PowerPoint (ver 4.58 del HANDOFF, 2ª parte).
     var setImages = null; // 4.75: se cargan ANTES de medir, para medir con las imágenes reales
-    function measureEnds(scale, spc){
-      var yAfterClaves = layoutClaves(startY, scale, spc, false);
+    // 4.80: `m` = multiplicadores de letra POR BLOQUE (claves / izquierda / derecha), ver el bucle
+    // de crecimiento más abajo.
+    var growMult = { c: 1, l: 1, r: 1 };
+    function measureEnds(scale, spc, m){
+      m = m || growMult;
+      var yAfterClaves = layoutClaves(startY, scale * m.c, spc, false);
       var yTop = yAfterClaves + 3;
-      var leftEnd = layoutLeftColumn(yTop, scale, spc, false, setImages);
-      var rightEnd = layoutRightColumn(yTop, scale, spc, false);
+      var leftEnd = layoutLeftColumn(yTop, scale * m.l, spc, false, setImages);
+      var rightEnd = layoutRightColumn(yTop, scale * m.r, spc, false);
       return {left: leftEnd, right: rightEnd};
     }
     function totalHeight(scale, spc){
@@ -6704,11 +6715,30 @@ if('serviceWorker' in navigator){
         if(measureEnds(scale, spc).left > bottomLimit){ setFactor = prevF; break; }
       }
 
+      // 4.80 -- Marta: "que la letra se pueda hacer más grande si hay espacio, sin que se solapen los
+      // cuadros de texto". Los 3 bloques crecen POR SEPARADO y por turnos (de 0,03 en 0,03) mientras
+      // su parte siga cabiendo con 2 mm de margen; la derecha, normalmente más corta, ya no se queda
+      // con letra pequeña y un hueco en blanco debajo.
+      var GROW_CAP = { c: 1.4, l: 1.4, r: 1.3 };
+      for(var iterGr = 0; iterGr < 40; iterGr++){
+        var grewAny = false;
+        ['c', 'l', 'r'].forEach(function(k){
+          if(growMult[k] >= GROW_CAP[k]) return;
+          var prevM = growMult[k];
+          growMult[k] = Math.min(GROW_CAP[k], prevM + 0.03);
+          var eg = measureEnds(scale, spc, growMult);
+          var limG = bottomLimit - 2;
+          var okG = k === 'r' ? eg.right <= limG : (k === 'l' ? eg.left <= limG : Math.max(eg.left, eg.right) <= limG);
+          if(!okG){ growMult[k] = prevM; } else { grewAny = true; }
+        });
+        if(!grewAny) break;
+      }
+
       // ---- Pasada real de dibujo, ya con `scale`/`spc` definitivos ----
-      var yAfterClaves = layoutClaves(startY, scale, spc, true);
+      var yAfterClaves = layoutClaves(startY, scale * growMult.c, spc, true);
       var yTop = yAfterClaves + 3;
-      layoutLeftColumn(yTop, scale, spc, true, setImages);
-      layoutRightColumn(yTop, scale, spc, true);
+      layoutLeftColumn(yTop, scale * growMult.l, spc, true, setImages);
+      layoutRightColumn(yTop, scale * growMult.r, spc, true);
 
       // ---- Página 2: informe de jugadoras de Scout Individual, reutilizado tal cual ----
       doc.addPage();
@@ -7068,7 +7098,7 @@ if('serviceWorker' in navigator){
         var h = lines * klh;
         if(draw !== false){
           slide.addText(text, {
-            x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: kf, color: INK, align: 'left', valign: 'top',
+            x: x, y: y, w: w, h: h, fontFace: 'Arial', fontSize: kf, color: INK, align: 'justify', valign: 'top',
             margin: 0, isTextBox: true, bullet: { code: '2022', indent: Math.round(indent * 72) }
           });
         }
@@ -7241,10 +7271,12 @@ if('serviceWorker' in navigator){
     }
     function layoutLeftColumn(slide, y0, scale, spc, draw, images){
       var y = sectionBanner(slide, colXL, colWL, y0, L.gamePlanDefendTitle, DARK, draw);
-      var subGap = 6 * MM, subColW = (colWL - subGap) / 2;
-      var xFuentes = colXL, xSets = colXL + subColW + subGap;
-      var yF = subLabel(slide, xFuentes, subColW, L.gamePlanFuentesTitle, DARK, y + 2 * MM, 10.5, draw);
-      yF = conceptList(slide, xFuentes, subColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
+      // 4.81: "Sus fuentes de generación" más ancha (58 %) y la columna de sets más estrecha (42 %), y
+      // menos hueco entre ambas -- los sets ya no flotan con aire a los lados, y el texto gana sitio.
+      var subGap = 4 * MM, srcColW = (colWL - subGap) * 0.58, subColW = (colWL - subGap) - srcColW;
+      var xFuentes = colXL, xSets = colXL + srcColW + subGap;
+      var yF = subLabel(slide, xFuentes, srcColW, L.gamePlanFuentesTitle, DARK, y + 2 * MM, 10.5, draw);
+      yF = conceptList(slide, xFuentes, srcColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
       var yS = subLabel(slide, xSets, subColW, L.gamePlanSetsTitle, DARK, y + 2 * MM, 9.5, draw);
       // 4.75: reparto de los sets -- primero la columna derecha mientras quepan; los que no caben
       // pasan al hueco bajo "Sus fuentes de generación" (columna izquierda).
@@ -7256,8 +7288,9 @@ if('serviceWorker' in navigator){
           if(draw !== false) drawSet(slide, xSets, yS, subColW, st, img, g, spc);
           yS += g.total;
         } else {
-          if(draw !== false) drawSet(slide, xFuentes, yLeftSets, subColW, st, img, g, spc);
-          yLeftSets += g.total;
+          var gL = setGeometry(st, img, srcColW, scale, spc);
+          if(draw !== false) drawSet(slide, xFuentes, yLeftSets, srcColW, st, img, gL, spc);
+          yLeftSets += gL.total;
         }
       });
       return Math.max(yLeftSets > yF + 2 * MM ? yLeftSets : yF, yS);
@@ -7278,7 +7311,7 @@ if('serviceWorker' in navigator){
       }
       var yA1 = conceptList(slide, colXR, subColW, items.slice(0, cut), yA, '17573F', L.gamePlanHowAttackEmpty, 9.0, 8.3, scale, spc, draw);
       var yA2 = items.length > cut ? conceptList(slide, xCol2, subColW, items.slice(cut), yA, '17573F', '', 9.0, 8.3, scale, spc, draw) : yA;
-      var yQ = subLabel(slide, colXR, colWR, L.gamePlanWhoAttackTitle, GOOD, Math.max(yA1, yA2) + 2 * MM, 9.5, draw);
+      var yQ = subLabel(slide, colXR, colWR, L.gamePlanWhoAttackTitle, GOOD, Math.max(yA1, yA2) + 3.5 * MM, 9.5, draw);
       if(content.attackNote && content.attackNote.trim()){
         yQ = layoutParagraph(slide, colXR, yQ + 1 * MM, colWR, scale, spc, draw, content.attackNote, '');
       }
@@ -7290,7 +7323,7 @@ if('serviceWorker' in navigator){
     // que el PDF (25mm de margen superior de contenido, 11mm de margen inferior) y el MISMO bucle
     // de encogido en 2 fases (primero `spc`, huecos e imágenes de los sets, hasta su suelo 0.42;
     // solo si con eso no basta, `scale`, la letra, hasta su suelo 0.62 -- ver 4.52 del HANDOFF).
-    var startY = 32 * MM; // 4.75: cabecera de 24mm; 4.77: +4mm de aire bajo la cabecera
+    var startY = 26.5 * MM; // 4.75: cabecera de 24mm; 4.82: 32 -> 26,5 (había ~11 mm en blanco bajo la cabecera)
     var bottomLimit = PAGE_H - 5 * MM; // 4.63: sin pie de página
     var avail = bottomLimit - startY;
 
@@ -7300,11 +7333,15 @@ if('serviceWorker' in navigator){
     // tocar la que ya cabía -- antes, con un documento donde solo desbordaba la derecha, la 3ª fase
     // encogía las imágenes de los sets igualmente (sin necesidad, ya que no era esa columna la que
     // sobraba) porque solo miraba el máximo de las dos.
-    function measureEnds(scale, spc){
-      var yAfterClaves = layoutClaves(null, startY, scale, spc, false);
+    // 4.80: `m` = multiplicadores de letra POR BLOQUE (claves / columna izquierda / columna derecha):
+    // tras el encogido, cada bloque puede agrandar su letra por separado si sobra sitio.
+    var growMult = { c: 1, l: 1, r: 1 };
+    function measureEnds(scale, spc, m){
+      m = m || growMult;
+      var yAfterClaves = layoutClaves(null, startY, scale * m.c, spc, false);
       var yTop = yAfterClaves + 3 * MM;
-      var leftEnd = layoutLeftColumn(null, yTop, scale, spc, false, setImages); // 4.75: se mide con las imágenes REALES (antes, con huecos de 80mm)
-      var rightEnd = layoutRightColumn(null, yTop, scale, spc, false);
+      var leftEnd = layoutLeftColumn(null, yTop, scale * m.l, spc, false, setImages); // 4.75: se mide con las imágenes REALES (antes, con huecos de 80mm)
+      var rightEnd = layoutRightColumn(null, yTop, scale * m.r, spc, false);
       return { left: leftEnd, right: rightEnd };
     }
     function totalHeight(scale, spc){
@@ -7388,13 +7425,33 @@ if('serviceWorker' in navigator){
       if(endsG.left > bottomLimit){ setFactor = prevF; break; }
     }
 
+    // 4.80 -- Marta: "que la letra se pueda hacer más grande si hay espacio, sin que se solapen los
+    // cuadros de texto". Los 3 bloques (claves, columna izquierda, columna derecha) crecen POR
+    // SEPARADO, de 0,03 en 0,03 y por turnos, mientras todo siga cabiendo con 2 mm de margen
+    // (hasta x1,5). Así la columna derecha, normalmente más corta, ya no se queda con letra
+    // pequeña y un hueco en blanco debajo solo porque la izquierda tuvo que encogerse.
+    var GROW_CAP = { c: 1.4, l: 1.4, r: 1.3 };
+    for(var iterGr = 0; iterGr < 40; iterGr++){
+      var grewAny = false;
+      ['c', 'l', 'r'].forEach(function(k){
+        if(growMult[k] >= GROW_CAP[k]) return;
+        var prevM = growMult[k];
+        growMult[k] = Math.min(GROW_CAP[k], prevM + 0.03);
+        var eg = measureEnds(scale, spc, growMult);
+        var limG = bottomLimit - 2 * MM;
+        var okG = k === 'r' ? eg.right <= limG : (k === 'l' ? eg.left <= limG : Math.max(eg.left, eg.right) <= limG);
+        if(!okG){ growMult[k] = prevM; } else { grewAny = true; }
+      });
+      if(!grewAny) break;
+    }
+
     var s2 = pptx.addSlide();
     s2.background = { color: WHITE };
     pageHeader(s2, L.gamePlanPdfTitle);
-    var yAfterClavesDraw = layoutClaves(s2, startY, scale, spc, true);
+    var yAfterClavesDraw = layoutClaves(s2, startY, scale * growMult.c, spc, true);
     var yTopDraw = yAfterClavesDraw + 3 * MM;
-    layoutLeftColumn(s2, yTopDraw, scale, spc, true, setImages);
-    layoutRightColumn(s2, yTopDraw, scale, spc, true);
+    layoutLeftColumn(s2, yTopDraw, scale * growMult.l, spc, true, setImages);
+    layoutRightColumn(s2, yTopDraw, scale * growMult.r, spc, true);
 
     // ---- Diapositiva 2: fichas de jugadora, 2 columnas x 6 filas (12 por diapositiva) -- a
     // petición de Marta, la MISMA densidad que la página 2 del PDF (drawPlayerFacingReport), no
