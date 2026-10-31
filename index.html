@@ -285,6 +285,24 @@ if('serviceWorker' in navigator){
   .essence-card textarea{ width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:.6rem .65rem; font-size:.85rem; line-height:1.45; min-height:5rem; resize:vertical; }
   .essence-items{ display:flex; flex-direction:column; gap:.45rem; }
   .essence-items:not(:empty){ margin-bottom:.7rem; }
+  /* 4.84: partidos 2-4 contra el mismo rival (rojo / azul / violeta) */
+  :root{ --g2:#c73434; --g3:#2563eb; --g4:#7c3aed; }
+  .game-chip{ border:none; border-radius:999px; font-size:.62rem; font-weight:800; padding:.18rem .5rem; cursor:pointer; color:#fff; background:var(--text-dim); flex:none; line-height:1.2; }
+  .game-chip.g2{ background:var(--g2); } .game-chip.g3{ background:var(--g3); } .game-chip.g4{ background:var(--g4); }
+  .essence-item-row.g2 input[type="text"], .src-row.g2 textarea, .src-row.g2 select{ color:var(--g2); }
+  .essence-item-row.g3 input[type="text"], .src-row.g3 textarea, .src-row.g3 select{ color:var(--g3); }
+  .essence-item-row.g4 input[type="text"], .src-row.g4 textarea, .src-row.g4 select{ color:var(--g4); }
+  .essence-item-row.g2 .item-bullet{ background:var(--g2); } .essence-item-row.g3 .item-bullet{ background:var(--g3); } .essence-item-row.g4 .item-bullet{ background:var(--g4); }
+  textarea.game-extra{ margin-top:.5rem; }
+  textarea.game-extra.g2{ color:var(--g2); border-color:var(--g2); } textarea.game-extra.g3{ color:var(--g3); border-color:var(--g3); } textarea.game-extra.g4{ color:var(--g4); border-color:var(--g4); }
+  .game-review-card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.8rem .9rem; margin-bottom:.8rem; box-shadow:var(--shadow); }
+  .game-review-head{ display:flex; align-items:center; gap:.6rem; margin-bottom:.6rem; flex-wrap:wrap; }
+  .game-review-head input[type="text"]{ flex:1; min-width:12rem; }
+  .game-review-table{ display:grid; grid-template-columns:5rem repeat(3, 1fr); gap:.4rem; align-items:stretch; }
+  .game-review-table .grt-head{ font-size:.7rem; font-weight:800; letter-spacing:.04em; color:var(--text-dim); text-transform:uppercase; padding:.2rem .3rem; }
+  .game-review-table .grt-row{ font-size:.75rem; font-weight:800; color:var(--text); display:flex; align-items:center; }
+  .game-review-table textarea{ resize:none; overflow:hidden; font-size:.85rem; min-height:3.4rem; }
+  @media (max-width:700px){ .game-review-table{ grid-template-columns:1fr; } }
   .essence-item-row{ display:flex; align-items:center; gap:.6rem; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:.45rem .6rem; }
   .essence-item-row .item-bullet{ width:8px; height:8px; border-radius:50%; flex:none; background:var(--accent); }
   .essence-item-row.def .item-bullet{ background:var(--text-dim); }
@@ -842,6 +860,9 @@ if('serviceWorker' in navigator){
         </div>
         <div class="essence-card">
           <textarea data-teamfield="offEssenceNotes" rows="3" placeholder="Notas libres sobre la esencia ofensiva…"></textarea>
+          <textarea class="game-extra g2" data-teamfield="offEssenceNotesG2" data-game-extra="2" rows="3" hidden placeholder="Notas del 2º partido…"></textarea>
+          <textarea class="game-extra g3" data-teamfield="offEssenceNotesG3" data-game-extra="3" rows="3" hidden placeholder="Notas del 3er partido…"></textarea>
+          <textarea class="game-extra g4" data-teamfield="offEssenceNotesG4" data-game-extra="4" rows="3" hidden placeholder="Notas del 4º partido…"></textarea>
         </div>
 
         <div class="essence-sub">
@@ -888,6 +909,9 @@ if('serviceWorker' in navigator){
         </div>
         <div class="essence-card">
           <textarea data-teamfield="defSpecialDefenses" rows="3" placeholder="Zonas, cambios, ayudas especiales…"></textarea>
+          <textarea class="game-extra g2" data-teamfield="defSpecialDefensesG2" data-game-extra="2" rows="3" hidden placeholder="Defensas especiales del 2º partido…"></textarea>
+          <textarea class="game-extra g3" data-teamfield="defSpecialDefensesG3" data-game-extra="3" rows="3" hidden placeholder="Defensas especiales del 3er partido…"></textarea>
+          <textarea class="game-extra g4" data-teamfield="defSpecialDefensesG4" data-game-extra="4" rows="3" hidden placeholder="Defensas especiales del 4º partido…"></textarea>
         </div>
 
         <div class="essence-sub">
@@ -907,6 +931,14 @@ if('serviceWorker' in navigator){
             <div class="attack-add-row"><select data-attack-add="desgaste"><option value="">+ Añadir jugadora…</option></select></div>
           </div>
         </div>
+      </section>
+
+      <section class="essence-block" id="gameReviewsBlock">
+        <div class="essence-title defense"><span class="essence-bar"></span><h2>Valoración de partidos anteriores</h2></div>
+        <p class="game-plan-hint">Cuando volvéis a jugar contra este rival: añade aquí la valoración del partido ya jugado (resultado, qué funcionó, qué no y qué del plan no se ejecutó). Al añadirla aparece en cada item, fuente y nota el selector <b>P1 / P2…</b> para marcar a qué partido pertenece (P2 en rojo, P3 en azul, P4 en violeta). No se borra nada de lo anterior.</p>
+        <div id="gameReviewsList"></div>
+        <button type="button" class="link-btn src-add-row" id="btnAddGameReview">+ Añadir valoración del partido 1</button>
+        <span class="export-error" id="gameReviewError" style="display:none;"></span>
       </section>
 
       <section class="essence-block">
@@ -1147,6 +1179,8 @@ if('serviceWorker' in navigator){
       cardStrengthsLabel: 'Fortalezas:', cardDefendLabel: 'Cómo defenderla:', cardInformeLabel: 'Informe:',
       informe: 'Informe',
       noNotes: 'Sin notas.',
+      gameReviewsTitle: 'VALORACIÓN DE PARTIDOS ANTERIORES', gameWord: 'Partido', gameResultLabel: 'Resultado', gameColOk: 'OK', gameColNok: 'No OK', gameColNoexec: 'No se ejecutó', gameRowAtk: 'Ataque', gameRowDef: 'Defensa',
+      gameLegend: 'Negro = 1er partido · Rojo = 2º · Azul = 3º · Violeta = 4º',
       statsTitle: 'ESTADÍSTICAS POR COMPETICIÓN',
       competitionFallback: 'Competición',
       threatsToWatch: 'AMENAZAS A VIGILAR',
@@ -1213,6 +1247,8 @@ if('serviceWorker' in navigator){
       cardStrengthsLabel: 'Strengths:', cardDefendLabel: 'How to defend her:', cardInformeLabel: 'Report:',
       informe: 'Report',
       noNotes: 'No notes.',
+      gameReviewsTitle: 'REVIEW OF PREVIOUS GAMES', gameWord: 'Game', gameResultLabel: 'Result', gameColOk: 'OK', gameColNok: 'Not OK', gameColNoexec: 'Not executed', gameRowAtk: 'Offense', gameRowDef: 'Defense',
+      gameLegend: 'Black = 1st game · Red = 2nd · Blue = 3rd · Purple = 4th',
       statsTitle: 'STATS BY COMPETITION',
       competitionFallback: 'Competition',
       threatsToWatch: 'THREATS TO WATCH',
@@ -1291,7 +1327,7 @@ if('serviceWorker' in navigator){
     offSourceOptions: [], defSourceOptions: [],
     offSources: [], defSources: [], attackPlayers: [],
     offEssenceItems: [], defEssenceItems: [],
-    startingFives: [],
+    startingFives: [], gameReviews: [],
     gamePlanSets: [], gamePlanSeeding: false,
     gamePlanClavesItems: [], gamePlanFuentesItems: [], gamePlanHowAttackItems: [],
     advancedStatsMeta: null, advancedStatsFileData: null, advancedStatsFileDataFor: null, advancedStatsLoading: false,
@@ -1588,6 +1624,7 @@ if('serviceWorker' in navigator){
     offEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'off' } },
     defEssenceItems:    { table: 'essence_items', parentKey: 'rival_id', extra: { side: 'def' } },
     startingFives:      { table: 'starting_fives', parentKey: 'rival_id' },
+    gameReviews:        { table: 'game_reviews', parentKey: 'rival_id' },
     gamePlanSets:       { table: 'game_plan_sets', parentKey: 'rival_id' },
     gamePlanClavesItems:    { table: 'game_plan_claves_items', parentKey: 'rival_id' },
     gamePlanFuentesItems:   { table: 'game_plan_fuentes_items', parentKey: 'rival_id' },
@@ -2759,7 +2796,7 @@ if('serviceWorker' in navigator){
     state.rivalId = null; state.rival = null; state.roster = [];
     state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.gamePlanClavesItems = []; state.gamePlanFuentesItems = []; state.gamePlanHowAttackItems = [];
-    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = [];
+    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = []; state.gameReviews = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = null;
@@ -3123,6 +3160,12 @@ if('serviceWorker' in navigator){
       renderStartingFives();
     }, function(err){ console.error('startingFives onSnapshot', err); });
 
+    // 4.84: valoraciones de partidos anteriores (resultado + tabla ataque/defensa x ok / no ok / no se ejecutó).
+    var unsubGameReviews = rivalRef.collection('gameReviews').orderBy('gameNo', 'asc').onSnapshot(function(snap){
+      state.gameReviews = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      refreshGameUi();
+    }, function(err){ console.error('gameReviews onSnapshot', err); });
+
     // Solo el pequeño documento "meta" (nombre/tamaño/ruta) se mantiene sincronizado en vivo,
     // así cualquiera del cuerpo técnico ve al momento si hay un informe subido sin tener que
     // descargarlo. El PDF en sí vive en Supabase Storage (bucket "reports") y se pide una vez,
@@ -3155,7 +3198,7 @@ if('serviceWorker' in navigator){
       renderGamePlanConceptList('gamePlanHowAttackItems');
     }, function(err){ console.error('gamePlanHowAttackItems onSnapshot', err); });
 
-    state.rivalSub.push(unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubStartingFives, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta, unsubGamePlanSets, unsubGamePlanClaves, unsubGamePlanFuentes, unsubGamePlanHowAttack);
+    state.rivalSub.push(unsubGameReviews, unsubRival, unsubRoster, unsubOffSources, unsubDefSources, unsubAttackPlayers, unsubOffEssenceItems, unsubDefEssenceItems, unsubStartingFives, unsubOffSystemsPdfMeta, unsubAdvancedStatsMeta, unsubGamePlanSets, unsubGamePlanClaves, unsubGamePlanFuentes, unsubGamePlanHowAttack);
   }
 
   // Botón "Refrescar": vuelve a suscribirse a todo lo del rival actual (mismo mecanismo que abrir
@@ -3346,7 +3389,7 @@ if('serviceWorker' in navigator){
     state.rivalId = null; state.rival = null; state.roster = [];
     state.offSources = []; state.defSources = []; state.attackPlayers = []; state.gamePlanSets = [];
     state.gamePlanClavesItems = []; state.gamePlanFuentesItems = []; state.gamePlanHowAttackItems = [];
-    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = [];
+    state.offEssenceItems = []; state.defEssenceItems = []; state.startingFives = []; state.gameReviews = [];
     state.advancedStatsMeta = null; state.advancedStatsFileData = null; state.advancedStatsFileDataFor = null; state.advancedStatsLoading = false; state.advancedStatsUploading = false;
     state.offSystemsPdfMeta = null; state.offSystemsPdfFileData = null; state.offSystemsPdfFileDataFor = null; state.offSystemsPdfLoading = false; state.offSystemsPdfUploading = false;
     state.selectedPlayerId = id;
@@ -3430,6 +3473,7 @@ if('serviceWorker' in navigator){
     $('#btnExportPlayersPdf').addEventListener('click', exportPlayersTeamPdf);
     $('#btnExportScoutingImages').addEventListener('click', exportScoutingImages);
     $('#btnExportCollectivePdf').addEventListener('click', exportCollectivePdf);
+    $('#btnAddGameReview').addEventListener('click', addGameReview);
     $all('#collectiveView [data-teamfield]').forEach(function(el){
       el.addEventListener('change', function(){ saveRivalField(el.getAttribute('data-teamfield'), el.value); });
       if(el.tagName === 'TEXTAREA') el.addEventListener('input', function(){ autoGrowTextarea(el); });
@@ -4999,6 +5043,7 @@ if('serviceWorker' in navigator){
       if(document.activeElement !== el) el.value = state.rival[field] || '';
       if(el.tagName === 'TEXTAREA') autoGrowTextarea(el);
     });
+    updateGameExtras();
     var pdfCfg = getPlayersPdfConfig();
     $all('#playersPdfPanel [data-pdf-section]').forEach(function(cb){
       cb.checked = !!pdfCfg[cb.getAttribute('data-pdf-section')];
@@ -5165,12 +5210,13 @@ if('serviceWorker' in navigator){
           '</div>')
         : '<div class="item-reorder"></div>';
       var planTitle = kind === 'off' ? 'Incluir en "Sus fuentes de generación" del Plan de Partido' : 'Incluir en "Cómo atacarlas" del Plan de Partido';
-      return '<div class="src-row" data-src-id="' + esc(r.id) + '">' +
+      return '<div class="src-row g' + itemGameNo(r) + '" data-src-id="' + esc(r.id) + '">' +
         '<select data-src-field="source">' + optionsHtml(r.source) + '</select>' +
         '<textarea data-src-field="notes" rows="1" placeholder="Notas">' + esc(r.notes || '') + '</textarea>' +
         '<textarea data-src-field="' + extraField + '" rows="1" placeholder="' + esc(extraPlaceholder) + '">' + esc(r[extraField] || '') + '</textarea>' +
         '<textarea data-src-field="systems" rows="1" placeholder="Sistemas">' + esc(r.systems || '') + '</textarea>' +
         '<div class="src-row-actions">' +
+          gameChipHtml(r) +
           '<label class="attack-player-plan" title="' + esc(planTitle) + '"><input type="checkbox" data-src-plan' + (r.id ? '' : ' disabled') + (r.inGamePlan ? ' checked' : '') + '> Plan</label>' +
           reorderHtml +
           '<button type="button" class="btn-del" data-src-del title="Eliminar fila">✕</button>' +
@@ -5182,6 +5228,7 @@ if('serviceWorker' in navigator){
       autoGrowTextarea(ta);
       ta.addEventListener('input', function(){ autoGrowTextarea(ta); });
     });
+    wireGameChips(container, '[data-src-id]', 'data-src-id', collName);
     container.querySelectorAll('[data-src-up]').forEach(function(btn, idx){
       btn.addEventListener('click', function(){ reorderItem(rows, idx, -1, collName); });
     });
@@ -5199,6 +5246,7 @@ if('serviceWorker' in navigator){
           // Fila fantasma: al tocar cualquier campo se crea de verdad, con lo que ya
           // hubiera en el resto de campos de esa misma fila.
           var data = { source: '', notes: '', systems: '', order: Date.now() };
+          if(gamesCount() > 1) data.gameNo = gamesCount();
           row.querySelectorAll('[data-src-field]').forEach(function(f){ data[f.getAttribute('data-src-field')] = f.value; });
           ref.collection(collName).add(data).catch(function(err){ console.error('add src row', err); });
           return;
@@ -5247,6 +5295,7 @@ if('serviceWorker' in navigator){
     var ref = currentRivalRef();
     if(!ref) return;
     var data = { source: '', notes: '', systems: '', order: Date.now() };
+    if(gamesCount() > 1) data.gameNo = gamesCount();
     data[SRC_TABLE_EXTRA_FIELD[kind]] = '';
     ref.collection(kind + 'Sources').add(data).catch(function(err){ console.error('add src row', err); });
   }
@@ -5728,6 +5777,117 @@ if('serviceWorker' in navigator){
   }
 
   // ---------------- Scout Colectivo: cuadro inicial de esencia ofensiva/defensiva (lista visual) ----------------
+  // ---------------- 4.84: varios partidos contra el mismo rival ----------------
+  // Cada item / fuente / fila "Cómo atacarlas" lleva `gameNo` (ausente = 1). El partido 1 se ve en
+  // negro; 2, 3 y 4 en rojo, azul y violeta. El nº de partidos = 1 + valoraciones añadidas (o el
+  // mayor gameNo que ya tenga algún item). Con un solo partido no se ve ningún selector.
+  var GAME_UI_COLORS = { 1: '', 2: '#c73434', 3: '#2563eb', 4: '#7c3aed' };
+  var MAX_GAMES = 4;
+  function itemGameNo(it){ var n = Number(it && it.gameNo); return (n >= 2 && n <= MAX_GAMES) ? n : 1; }
+  function gamesCount(){
+    var n = 1 + (state.gameReviews || []).length;
+    [state.offEssenceItems, state.defEssenceItems, state.offSources, state.defSources].forEach(function(arr){
+      (arr || []).forEach(function(it){ n = Math.max(n, itemGameNo(it)); });
+    });
+    return Math.min(MAX_GAMES, n);
+  }
+  function gameChipHtml(it){
+    if(gamesCount() < 2) return '';
+    var g = itemGameNo(it);
+    return '<button type="button" class="game-chip g' + g + '" data-game-chip title="Partido al que pertenece (clic para cambiar)">P' + g + '</button>';
+  }
+  function wireGameChips(container, rowSel, idAttr, collName){
+    container.querySelectorAll('[data-game-chip]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var row = btn.closest(rowSel);
+        var id = row && row.getAttribute(idAttr);
+        var ref = currentRivalRef();
+        if(!id || !ref) return;
+        var cur = Number(btn.textContent.replace('P', '')) || 1;
+        var next = cur >= gamesCount() ? 1 : cur + 1;
+        ref.collection(collName).doc(id).update({gameNo: next}).catch(function(err){ showGameReviewError(err, 'cambiar el partido de este item'); });
+      });
+    });
+  }
+  function showGameReviewError(err, what){
+    console.error('game reviews', what, err);
+    var el = $('#gameReviewError');
+    if(!el) return;
+    el.textContent = 'No se ha podido ' + what + '. ¿Se ha ejecutado supabase_schema_patch17.sql? ' + ((err && err.message) ? '[' + err.message + ']' : '');
+    el.style.display = 'block';
+    setTimeout(function(){ el.style.display = 'none'; }, 9000);
+  }
+  function updateGameExtras(){
+    var n = gamesCount();
+    $all('#collectiveView [data-game-extra]').forEach(function(ta){
+      var g = Number(ta.getAttribute('data-game-extra'));
+      var show = g <= n;
+      ta.hidden = !show;
+      if(show) autoGrowTextarea(ta);
+    });
+  }
+  function refreshGameUi(){
+    renderEssenceItems('off'); renderEssenceItems('def');
+    renderSrcTable('off'); renderSrcTable('def');
+    renderGameReviews();
+    updateGameExtras();
+    var btn = $('#btnAddGameReview');
+    if(btn){
+      var played = (state.gameReviews || []).length + 1;
+      btn.hidden = played >= MAX_GAMES;
+      btn.textContent = '+ Añadir valoración del partido ' + played;
+    }
+  }
+  var GAME_REVIEW_COLS = [
+    { key: 'Ok', label: 'OK' }, { key: 'Nok', label: 'No OK' }, { key: 'Noexec', label: 'No se ejecutó' }
+  ];
+  function renderGameReviews(){
+    var box = $('#gameReviewsList');
+    if(!box) return;
+    var focus = captureFocus(box, 'data-gr-id', 'data-gr-field');
+    box.innerHTML = (state.gameReviews || []).map(function(r){
+      var g = itemGameNo({gameNo: r.gameNo});
+      var cells = ['atk', 'def'].map(function(side){
+        return '<div class="grt-row">' + (side === 'atk' ? 'Ataque' : 'Defensa') + '</div>' + GAME_REVIEW_COLS.map(function(c){
+          var f = side + c.key;
+          return '<textarea rows="2" data-gr-field="' + f + '" placeholder="' + esc(c.label) + '">' + esc(r[f] || '') + '</textarea>';
+        }).join('');
+      }).join('');
+      return '<div class="game-review-card" data-gr-id="' + esc(r.id) + '">' +
+        '<div class="game-review-head"><span class="game-chip g' + g + '">P' + r.gameNo + '</span>' +
+          '<input type="text" class="mini-input" data-gr-field="result" value="' + esc(r.result || '') + '" placeholder="Resultado del partido ' + r.gameNo + ' (ej. VBC 72 – 65 Rival · 28/10)">' +
+          '<button type="button" class="btn-del" data-gr-del title="Quitar esta valoración">✕</button></div>' +
+        '<div class="game-review-table"><span></span>' + GAME_REVIEW_COLS.map(function(c){ return '<span class="grt-head">' + esc(c.label) + '</span>'; }).join('') + cells + '</div>' +
+      '</div>';
+    }).join('');
+    box.querySelectorAll('textarea').forEach(function(ta){ autoGrowTextarea(ta); ta.addEventListener('input', function(){ autoGrowTextarea(ta); }); });
+    box.querySelectorAll('[data-gr-field]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var id = el.closest('[data-gr-id]').getAttribute('data-gr-id');
+        var ref = currentRivalRef();
+        if(!ref) return;
+        var patch = {}; patch[el.getAttribute('data-gr-field')] = el.value;
+        ref.collection('gameReviews').doc(id).update(patch).catch(function(err){ showGameReviewError(err, 'guardar la valoración'); });
+      });
+    });
+    box.querySelectorAll('[data-gr-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if(!btn.classList.contains('confirm')){ btn.classList.add('confirm'); btn.textContent = '¿Seguro?'; setTimeout(function(){ btn.classList.remove('confirm'); btn.textContent = '✕'; }, 3000); return; }
+        var id = btn.closest('[data-gr-id]').getAttribute('data-gr-id');
+        var ref = currentRivalRef();
+        if(ref) ref.collection('gameReviews').doc(id).delete().catch(function(err){ showGameReviewError(err, 'quitar la valoración'); });
+      });
+    });
+    restoreFocus(box, focus);
+  }
+  function addGameReview(){
+    var ref = currentRivalRef();
+    if(!ref) return;
+    var played = (state.gameReviews || []).length + 1;
+    if(played >= MAX_GAMES) return;
+    ref.collection('gameReviews').add({ gameNo: played, result: '' }).catch(function(err){ showGameReviewError(err, 'añadir la valoración'); });
+  }
+
   function renderEssenceItems(kind){
     var list = $('#' + kind + 'EssenceItems');
     if(!list) return;
@@ -5741,9 +5901,10 @@ if('serviceWorker' in navigator){
 
     var focus = captureFocus(list);
     list.innerHTML = items.map(function(it, idx){
-      return '<div class="essence-item-row ' + kind + '" data-id="' + esc(it.id) + '">' +
+      return '<div class="essence-item-row ' + kind + ' g' + itemGameNo(it) + '" data-id="' + esc(it.id) + '">' +
         '<span class="item-bullet"></span>' +
         '<input type="text" data-field="text" value="' + esc(it.text || '') + '">' +
+        gameChipHtml(it) +
         '<label class="attack-player-plan" title="Incluir esta idea en Claves del partido (Plan de Partido)"><input type="checkbox" data-essence-plan' + (it.inGamePlan ? ' checked' : '') + '> Plan</label>' +
         '<div class="item-reorder">' +
           '<button type="button" class="btn-reorder" data-item-up' + (idx === 0 ? ' disabled' : '') + ' title="Subir">▲</button>' +
@@ -5753,6 +5914,7 @@ if('serviceWorker' in navigator){
       '</div>';
     }).join('');
 
+    wireGameChips(list, '[data-id]', 'data-id', collName);
     list.querySelectorAll('[data-field]').forEach(function(el){
       el.addEventListener('change', function(){
         var id = el.closest('[data-id]').getAttribute('data-id');
@@ -5812,7 +5974,9 @@ if('serviceWorker' in navigator){
   function addEssenceItem(kind, text){
     var ref = currentRivalRef();
     if(!ref || !text) return;
-    ref.collection(kind + 'EssenceItems').add({text: text, order: Date.now()}).catch(function(err){ console.error('add essence item', err); });
+    var newItem = {text: text, order: Date.now()};
+    if(gamesCount() > 1) newItem.gameNo = gamesCount(); // 4.84: lo nuevo se marca con el último partido
+    ref.collection(kind + 'EssenceItems').add(newItem).catch(function(err){ console.error('add essence item', err); });
   }
 
   // ---------------- Plan de Partido: 3 sets defensivos + recorte del PDF de Sistemas de juego ----------------
@@ -6220,6 +6384,24 @@ if('serviceWorker' in navigator){
     var darkAccent = [58,62,70];
     var L = tr(lang);
 
+    // 4.83: texto JUSTIFICADO (Marta): cada párrafo (separado por salto de línea manual) se justifica
+    // salvo su última línea. wrapJ mide como splitTextToSize (mismo nº de líneas), putJ las pinta.
+    function wrapJ(text, w){
+      var out = [];
+      String(text || '').split('\n').forEach(function(par){
+        var ls = doc.splitTextToSize(par, w);
+        if(!ls.length) ls = [''];
+        ls.forEach(function(l, i){ out.push({t: l, j: i < ls.length - 1}); });
+      });
+      return out;
+    }
+    function putJ(arr, x, y, lh, w){
+      arr.forEach(function(o, i){
+        if(o.j && o.t.indexOf(' ') !== -1) doc.text(o.t, x, y + i*lh, {maxWidth: w, align: 'justify'});
+        else doc.text(o.t, x, y + i*lh);
+      });
+    }
+
     function roundRect(x,y,w,h,r,color){
       doc.setFillColor.apply(doc, color);
       doc.roundedRect(x, y, w, h, r, r, 'F');
@@ -6344,10 +6526,10 @@ if('serviceWorker' in navigator){
         return y0 + 6;
       }
       doc.setFont('helvetica','normal'); doc.setFontSize(bf);
-      var lines = doc.splitTextToSize(text, w);
+      var lines = wrapJ(text, w);
       if(draw){
         doc.setTextColor.apply(doc, ink);
-        lines.forEach(function(line, li){ doc.text(line, x, y0 + blh*0.85 + li*blh); });
+        putJ(lines, x, y0 + blh*0.85, blh, w);
       }
       return y0 + lines.length*blh + 2*spc;
     }
@@ -6437,10 +6619,10 @@ if('serviceWorker' in navigator){
         }
         if(item.notes){
           doc.setFont('helvetica','normal'); doc.setFontSize(nf);
-          var nLines = doc.splitTextToSize(item.notes, w);
+          var nLines = wrapJ(item.notes, w);
           if(draw){
             doc.setTextColor.apply(doc, dim);
-            nLines.forEach(function(line, li){ doc.text(line, x, y + nlh*0.8 + li*nlh); });
+            putJ(nLines, x, y + nlh*0.8, nlh, w);
           }
           y += nLines.length*nlh;
         }
@@ -6448,10 +6630,10 @@ if('serviceWorker' in navigator){
         // cursiva y con prefijo, para distinguirlo del mensaje jugadoras de arriba.
         if(item.systems){
           doc.setFont('helvetica','italic'); doc.setFontSize(nf);
-          var sLines = doc.splitTextToSize(L.gamePlanSystemsPrefixDef + item.systems, w);
+          var sLines = wrapJ(L.gamePlanSystemsPrefixDef + item.systems, w);
           if(draw){
             doc.setTextColor.apply(doc, dim);
-            sLines.forEach(function(line, li){ doc.text(line, x, y + nlh*0.8 + li*nlh); });
+            putJ(sLines, x, y + nlh*0.8, nlh, w);
           }
           y += sLines.length*nlh;
         }
@@ -6477,7 +6659,7 @@ if('serviceWorker' in navigator){
         if(imgH > imgMaxH){ imgH = imgMaxH; imgW = imgH * aspect; }
       }
       var noteLines = [];
-      if(s.notes){ doc.setFont('helvetica','normal'); doc.setFontSize(notesFont); noteLines = doc.splitTextToSize(s.notes, w); }
+      if(s.notes){ doc.setFont('helvetica','normal'); doc.setFontSize(notesFont); noteLines = wrapJ(s.notes, w); }
       var notesH = noteLines.length * notesLH;
       return { imgMaxH: imgMaxH, imgW: imgW, imgH: imgH, notesFont: notesFont, notesLH: notesLH, noteLines: noteLines,
                notesH: notesH, total: imgH + 2.4*spc + notesH + 3*spc };
@@ -6501,7 +6683,7 @@ if('serviceWorker' in navigator){
       if(g.noteLines.length){
         doc.setFont('helvetica','normal'); doc.setFontSize(g.notesFont); doc.setTextColor.apply(doc, dim);
         var ny = y + g.imgH + 2.4*spc;
-        g.noteLines.forEach(function(line, li){ doc.text(line, x, ny + g.notesLH*0.8 + li*g.notesLH); });
+        putJ(g.noteLines, x, ny + g.notesLH*0.8, g.notesLH, w);
       }
     }
 
@@ -6545,19 +6727,19 @@ if('serviceWorker' in navigator){
         y += pillH + pillGap;
         if(item.notes){
           doc.setFont('helvetica','normal'); doc.setFontSize(nf);
-          var nLines = doc.splitTextToSize(item.notes, cW);
+          var nLines = wrapJ(item.notes, cW);
           if(draw2){
             doc.setTextColor.apply(doc, dim);
-            nLines.forEach(function(line, li){ doc.text(line, cx, y + nlh*0.8 + li*nlh); });
+            putJ(nLines, cx, y + nlh*0.8, nlh, cW);
           }
           y += nLines.length*nlh;
         }
         if(item.systems){
           doc.setFont('helvetica','italic'); doc.setFontSize(nf);
-          var sLines = doc.splitTextToSize(L.gamePlanAttackSystemsPrefix + item.systems, cW);
+          var sLines = wrapJ(L.gamePlanAttackSystemsPrefix + item.systems, cW);
           if(draw2){
             doc.setTextColor.apply(doc, dim);
-            sLines.forEach(function(line, li){ doc.text(line, cx, y + nlh*0.8 + li*nlh); });
+            putJ(sLines, cx, y + nlh*0.8, nlh, cW);
           }
           y += sLines.length*nlh;
         }
@@ -6937,6 +7119,7 @@ if('serviceWorker' in navigator){
     // PowerPoint se nota mucho más (una imagen cortada/fuera de la diapositiva). `drawSets` lee
     // esta variable en vez de un 40 fijo.
     var imgFloorMM = 40; // (en desuso desde 4.75: ahora manda setFactor)
+    var SOURCES_2COL = false; // PRUEBA: true = "Sus fuentes de generación" en 2 columnas (aún no pedido como definitivo)
     var setFactor = 1;   // 4.75: tamaño relativo de las imágenes de los sets (1 = ancho completo de columna)
     // 4.58 del HANDOFF (2ª parte): red de seguridad equivalente a `imgFloorMM` pero para la
     // columna derecha ("A quién atacar") en vez de la izquierda (los sets) -- con un Plan de
@@ -7129,7 +7312,7 @@ if('serviceWorker' in navigator){
         if(item.notes){
           var nLines = estPptxLines(item.notes, w, nf);
           var nh = nLines * nlh;
-          if(draw !== false){ slide.addText(item.notes, { x: x, y: y, w: w, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          if(draw !== false){ slide.addText(item.notes, { x: x, y: y, w: w, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true }); }
           y += nh;
         }
         // "Sistemas para explotarlo" (solo en Cómo atacarlas, ver 4.43 del HANDOFF).
@@ -7137,7 +7320,7 @@ if('serviceWorker' in navigator){
           var sysText = L.gamePlanSystemsPrefixDef + item.systems;
           var sysLines = estPptxLines(sysText, w, nf);
           var sysH = sysLines * nlh;
-          if(draw !== false){ slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          if(draw !== false){ slide.addText(sysText, { x: x, y: y, w: w, h: sysH, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true }); }
           y += sysH;
         }
         y += gap;
@@ -7154,7 +7337,7 @@ if('serviceWorker' in navigator){
       }
       var lines = estPptxLines(text, w, bf);
       var h = lines * blh;
-      if(draw !== false){ slide.addText(text, { x: x, y: y0, w: w, h: h, fontFace: 'Arial', fontSize: bf, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+      if(draw !== false){ slide.addText(text, { x: x, y: y0, w: w, h: h, fontFace: 'Arial', fontSize: bf, color: INK, align: 'justify', valign: 'top', margin: 0, isTextBox: true }); }
       return y0 + h + 2 * spc * MM;
     }
     // Equivalente de `layoutSets` del PDF -- mismo suelo de altura de imagen ligado a `spc` (ver
@@ -7188,7 +7371,7 @@ if('serviceWorker' in navigator){
         slide.addText(L.gamePlanSinRecorte, { x: x, y: y, w: w, h: g.imgMaxH, fontFace: 'Arial', fontSize: 8, italic: true, color: '9AA0AC', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       }
       if(s.notes){
-        slide.addText(s.notes, { x: x, y: y + g.imgH + 2.4 * spc * MM, w: w, h: g.notesH, fontFace: 'Arial', fontSize: g.notesFont, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+        slide.addText(s.notes, { x: x, y: y + g.imgH + 2.4 * spc * MM, w: w, h: g.notesH, fontFace: 'Arial', fontSize: g.notesFont, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true });
       }
     }
     // Equivalente de `layoutAttackPlayers` del PDF -- TODAS las jugadoras de "A quién atacar" en
@@ -7222,13 +7405,13 @@ if('serviceWorker' in navigator){
         y += pillH + pillGap;
         if(item.notes){
           var nh = estPptxLines(item.notes, cW, nf) * nlh;
-          if(draw2){ slide.addText(item.notes, { x: cx, y: y, w: cW, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          if(draw2){ slide.addText(item.notes, { x: cx, y: y, w: cW, h: nh, fontFace: 'Arial', fontSize: nf, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true }); }
           y += nh;
         }
         if(item.systems){
           var sysText = L.gamePlanAttackSystemsPrefix + item.systems;
           var sh = estPptxLines(sysText, cW, nf) * nlh;
-          if(draw2){ slide.addText(sysText, { x: cx, y: y, w: cW, h: sh, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
+          if(draw2){ slide.addText(sysText, { x: cx, y: y, w: cW, h: sh, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true }); }
           y += sh;
         }
         return y - cy;
@@ -7273,10 +7456,25 @@ if('serviceWorker' in navigator){
       var y = sectionBanner(slide, colXL, colWL, y0, L.gamePlanDefendTitle, DARK, draw);
       // 4.81: "Sus fuentes de generación" más ancha (58 %) y la columna de sets más estrecha (42 %), y
       // menos hueco entre ambas -- los sets ya no flotan con aire a los lados, y el texto gana sitio.
-      var subGap = 4 * MM, srcColW = (colWL - subGap) * 0.58, subColW = (colWL - subGap) - srcColW;
+      // PRUEBA (no activa por defecto): "Sus fuentes de generación" en 2 columnas (SOURCES_2COL).
+      var subGap = 4 * MM, srcColW = (colWL - subGap) * (SOURCES_2COL ? 0.68 : 0.58), subColW = (colWL - subGap) - srcColW;
       var xFuentes = colXL, xSets = colXL + srcColW + subGap;
       var yF = subLabel(slide, xFuentes, srcColW, L.gamePlanFuentesTitle, DARK, y + 2 * MM, 10.5, draw);
-      yF = conceptList(slide, xFuentes, srcColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
+      if(SOURCES_2COL){
+        var sc2W = (srcColW - subGap) / 2, sx2 = xFuentes + sc2W + subGap;
+        var sItems = content.fuentesItems;
+        var sH = sItems.map(function(it){ return conceptList(null, 0, sc2W, [it], 0, DARK, '', 10.5, 10.0, scale, spc, false); });
+        var sTot = sH.reduce(function(a, b){ return a + b; }, 0), sAcc = 0, sCut = sItems.length;
+        for(var sk = 0; sk < sItems.length; sk++){
+          if(sk > 0 && sAcc + sH[sk] / 2 > sTot / 2){ sCut = sk; break; }
+          sAcc += sH[sk];
+        }
+        var yF1 = conceptList(slide, xFuentes, sc2W, sItems.slice(0, sCut), yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
+        var yF2 = sItems.length > sCut ? conceptList(slide, sx2, sc2W, sItems.slice(sCut), yF, DARK, '', 10.5, 10.0, scale, spc, draw) : yF;
+        yF = Math.max(yF1, yF2);
+      } else {
+        yF = conceptList(slide, xFuentes, srcColW, content.fuentesItems, yF, DARK, L.gamePlanFuentesEmpty, 10.5, 10.0, scale, spc, draw);
+      }
       var yS = subLabel(slide, xSets, subColW, L.gamePlanSetsTitle, DARK, y + 2 * MM, 9.5, draw);
       // 4.75: reparto de los sets -- primero la columna derecha mientras quepan; los que no caben
       // pasan al hueco bajo "Sus fuentes de generación" (columna izquierda).
@@ -7520,7 +7718,7 @@ if('serviceWorker' in navigator){
       // Párrafo de "Informe" -- máx. 3 líneas, igual que wrapCapped en drawPlayerFacingReport
       // (mismo hueco vertical disponible: de aquí a que empieza la tabla de stats).
       var paraText = truncatePptxText(p.informe, rowW, 6.8, 4);
-      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 11.8 * MM, fontFace: 'Arial', fontSize: 6.8, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 11.8 * MM, fontFace: 'Arial', fontSize: 6.8, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true });
 
       var tableY = yTop + 19.2 * MM, tableH1 = 3.0 * MM, tableH2 = 5.2 * MM;
       var colW2 = rowW / STAT_COLS.length;
@@ -7860,7 +8058,7 @@ if('serviceWorker' in navigator){
         return { text: names.length ? (head + ':  ' + names.join(', ')) : head };
       });
       drawItemsList(doc, cursor, accent, lang, L.startingFivesLabel, startingFivesForPdf);
-      drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes);
+      drawNotesBox(doc, cursor, accent, lang, L.offEssenceNotesLabel, rival.offEssenceNotes, gameExtras(rival, 'offEssenceNotes'));
       if(cfg.offSources){
         drawSourcesTable(doc, cursor, lang, L.offSourcesLabel, state.offSources, [L.colSource, L.colNotes, L.colDefensiveProposal, L.colOffSystemsCol], ['source', 'notes', 'defensiveProposal', 'systems']);
         cursor.y += TABLE_GAP_EXTRA;
@@ -7901,7 +8099,7 @@ if('serviceWorker' in navigator){
         drawSourcesTable(doc, cursor, lang, L.defSourcesLabel, state.defSources, [L.colHowToAttack, L.colNotes, L.colPlayerMessage, L.colDefSystemsCol], ['source', 'notes', 'playerMessage', 'systems']);
         cursor.y += TABLE_GAP_EXTRA;
       }
-      if(cfg.defSpecial) drawNotesBox(doc, cursor, accent, lang, L.defSpecialDefensesLabel, rival.defSpecialDefenses);
+      if(cfg.defSpecial) drawNotesBox(doc, cursor, accent, lang, L.defSpecialDefensesLabel, rival.defSpecialDefenses, gameExtras(rival, 'defSpecialDefenses'));
       if(cfg.attackPlayers){
         // Se lleva también la nota de cada jugadora (a.notes), no solo su nombre -- pedido de
         // Marta, antes se perdía al quedarse solo con el objeto `player`.
@@ -7914,6 +8112,14 @@ if('serviceWorker' in navigator){
         };
         drawAttackPlayersSection(doc, cursor, lang, attackItemsFor('calidad'), attackItemsFor('desgaste'));
       }
+      drewAnySection = true;
+    }
+
+    // 4.84: valoración de partidos anteriores (resultado + tabla ataque/defensa x ok / no ok / no se ejecutó).
+    if(state.gameReviews && state.gameReviews.length){
+      if(drewAnySection && cursor.y > 22) cursor.y += SECTION_GAP_MAIN;
+      drawSectionHeader(doc, cursor, accent, lang, L.gameReviewsTitle, true);
+      drawGameReviews(doc, cursor, lang);
       drewAnySection = true;
     }
 
@@ -9361,7 +9567,7 @@ if('serviceWorker' in navigator){
 
   // Generic wrapped free-text box, used for every "cuadro" of notes (esencia ofensiva/defensiva,
   // defensas especiales…).
-  function drawNotesBox(doc, cursor, accent, lang, title, body){
+  function drawNotesBox(doc, cursor, accent, lang, title, body, extras){
     var L = tr(lang);
     var pageW = 210, margin = 16;
     ensureSpace(doc, cursor, 10);
@@ -9373,11 +9579,65 @@ if('serviceWorker' in navigator){
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     var lines = doc.splitTextToSize((body && body.trim()) ? body : L.noNotes, pageW - margin*2);
     lines.forEach(function(line){ ensureSpace(doc, cursor, 5.5); doc.text(line, margin, cursor.y); cursor.y += 5; });
+    // 4.84: texto añadido en partidos 2-4, cada uno en su color (solo si no está vacío).
+    (extras || []).forEach(function(ex){
+      if(!ex.text || !ex.text.trim()) return;
+      cursor.y += 1.5;
+      doc.setTextColor.apply(doc, gamePdfColor(ex.game));
+      doc.splitTextToSize(ex.text, pageW - margin*2).forEach(function(line){ ensureSpace(doc, cursor, 5.5); doc.text(line, margin, cursor.y); cursor.y += 5; });
+    });
     cursor.y += SUBSECTION_GAP;
   }
 
   // Visual bulleted list, used for the "cuadro inicial" of esencia ofensiva/defensiva —
   // a set of distinct items rather than a paragraph of free text.
+  // 4.84: color de cada partido en el PDF de staff (1 = negro/normal, 2 rojo, 3 azul, 4 violeta).
+  function gameExtras(rival, base){
+    return [2, 3, 4].map(function(g){ return { game: g, text: rival[base + 'G' + g] }; });
+  }
+  var GAME_PDF_COLORS = { 1: [20,23,28], 2: [199,52,52], 3: [37,99,235], 4: [124,58,237] };
+  function gamePdfColor(n){ return GAME_PDF_COLORS[n] || GAME_PDF_COLORS[1]; }
+
+  function drawGameReviews(doc, cursor, lang){
+    var L = tr(lang);
+    var pageW = 210, margin = 16, totalW = pageW - margin*2;
+    var ink = [20,23,28], dim = [91,98,112];
+    var firstW = 20, colW = (totalW - firstW) / 3;
+    var heads = [L.gameColOk, L.gameColNok, L.gameColNoexec];
+    var keys = ['Ok', 'Nok', 'Noexec'];
+    (state.gameReviews || []).forEach(function(r){
+      var g = itemGameNo({gameNo: r.gameNo});
+      ensureSpace(doc, cursor, 30);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+      doc.setTextColor.apply(doc, gamePdfColor(g));
+      var head = (L.gameWord + ' ' + r.gameNo).toUpperCase() + ((r.result && r.result.trim()) ? '  ·  ' + r.result.trim() : '');
+      doc.splitTextToSize(head, totalW).forEach(function(line){ doc.text(line, margin, cursor.y); cursor.y += 5; });
+      cursor.y += 1;
+      ensureSpace(doc, cursor, 7);
+      doc.setFillColor(245,245,245); doc.rect(margin, cursor.y, totalW, 7, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor.apply(doc, dim);
+      heads.forEach(function(h, i){ doc.text(h.toUpperCase(), margin + firstW + i*colW + 2, cursor.y + 4.8); });
+      cursor.y += 7;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      [['atk', L.gameRowAtk], ['def', L.gameRowDef]].forEach(function(row, ri){
+        var wraps = keys.map(function(k){ return doc.splitTextToSize((r[row[0] + k] && r[row[0] + k].trim()) ? r[row[0] + k] : '—', colW - 4); });
+        var lineCount = Math.max.apply(Math, wraps.map(function(w){ return w.length; }).concat([1]));
+        var rowH = Math.max(8, lineCount * 4.2 + 2.5);
+        ensureSpace(doc, cursor, rowH);
+        if(ri % 2 === 1){ doc.setFillColor(250,250,250); doc.rect(margin, cursor.y, totalW, rowH, 'F'); }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, ink);
+        doc.text(row[1].toUpperCase(), margin + 2, cursor.y + 4.6);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+        wraps.forEach(function(lines, ci){
+          lines.forEach(function(line, li){ doc.text(line, margin + firstW + ci*colW + 2, cursor.y + 4.6 + li*4.2); });
+        });
+        cursor.y += rowH;
+      });
+      cursor.y += 4;
+    });
+    cursor.y += SUBSECTION_GAP;
+  }
+
   function drawItemsList(doc, cursor, accent, lang, title, items){
     var L = tr(lang);
     var pageW = 210, margin = 16;
@@ -9402,9 +9662,10 @@ if('serviceWorker' in navigator){
       var wrapped = doc.splitTextToSize(text, maxW);
       var rowH = Math.max(6, wrapped.length * 4.6 + 1.5);
       ensureSpace(doc, cursor, rowH);
-      doc.setFillColor.apply(doc, accent);
+      var itGame = itemGameNo(it);
+      doc.setFillColor.apply(doc, itGame > 1 ? gamePdfColor(itGame) : accent);
       doc.circle(margin + 1, cursor.y - 1.3, 1, 'F');
-      doc.setTextColor(20,23,28);
+      doc.setTextColor.apply(doc, gamePdfColor(itGame));
       wrapped.forEach(function(line, li){ doc.text(line, margin + 5, cursor.y + li*4.6); });
       cursor.y += rowH;
     });
@@ -9466,7 +9727,7 @@ if('serviceWorker' in navigator){
       ensureSpace(doc, cursor, rowH);
       if(idx % 2 === 1){ doc.setFillColor(250,250,250); doc.rect(margin, cursor.y, totalW, rowH, 'F'); }
       x = margin;
-      doc.setTextColor.apply(doc, ink);
+      doc.setTextColor.apply(doc, itemGameNo(r) > 1 ? gamePdfColor(itemGameNo(r)) : ink);
       wraps.forEach(function(lines, ci){
         lines.forEach(function(line, li){ doc.text(line, x + 2, cursor.y + 4.6 + li*4.2); });
         x += cols[ci].w * colScale;
