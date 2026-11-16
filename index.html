@@ -7187,23 +7187,25 @@ if('serviceWorker' in navigator){
     // fondo blanco, escudo + nombre + temporada·competición a la izquierda, leyenda de los 4 tipos de
     // jugadora a la derecha y línea de color debajo. Devuelve la Y (pulgadas) donde empieza la rejilla.
     function reportHeader(slide){
+      // 4.86: márgenes más pequeños en la hoja de jugadoras (6mm, cabecera 3mm más arriba), como el PDF.
+      var MARGIN = 6 * MM, DY = -3 * MM;
       var titleX = MARGIN;
       if(rival.logo){
-        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 8 * MM, w: 14 * MM, h: 14 * MM }); titleX = MARGIN + 19 * MM; }
+        try{ slide.addImage({ data: rival.logo, x: MARGIN, y: 8 * MM + DY, w: 14 * MM, h: 14 * MM }); titleX = MARGIN + 19 * MM; }
         catch(e){ console.error('pptx report logo', e); }
       }
-      slide.addText((rival.name || 'Rival').toUpperCase(), { x: titleX, y: 9.6 * MM, w: 120 * MM, h: 6.6 * MM, fontFace: 'Arial', fontSize: 15, bold: true, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      slide.addText((rival.name || 'Rival').toUpperCase(), { x: titleX, y: 9.6 * MM + DY, w: 120 * MM, h: 6.6 * MM, fontFace: 'Arial', fontSize: 15, bold: true, color: INK, align: 'left', valign: 'top', margin: 0, isTextBox: true });
       var sub = ([rival.season, competition].filter(Boolean).join(' · ') || L.reportFallback).toUpperCase();
-      slide.addText(sub, { x: titleX, y: 16.6 * MM, w: 120 * MM, h: 4 * MM, fontFace: 'Arial', fontSize: 8.5, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      slide.addText(sub, { x: titleX, y: 16.6 * MM + DY, w: 120 * MM, h: 4 * MM, fontFace: 'Arial', fontSize: 8.5, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
       var boxW = 22 * MM, n = PLAYER_TYPE_ORDER.length, x0 = PAGE_W - MARGIN - n * boxW;
       PLAYER_TYPE_ORDER.forEach(function(t, i){
         var lx = x0 + i * boxW, bw = boxW - 3 * MM;
-        slide.addShape('roundRect', { x: lx, y: 8 * MM, w: bw, h: 9 * MM, rectRadius: 0.06, fill: {color: 'FCFCFD'}, line: {color: tintColorHex(ACCENT, 0.55), width: 0.75} });
-        slide.addText(PLAYER_TYPE_ICONS[t] || '', { x: lx, y: 8.4 * MM, w: bw, h: 8.2 * MM, fontFace: 'Arial', fontSize: 12, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
-        slide.addText(((L.playerTypeNames && L.playerTypeNames[t]) || PLAYER_TYPE_LABELS_ES[t] || '').toUpperCase(), { x: lx - 1 * MM, y: 17.5 * MM, w: bw + 2 * MM, h: 3 * MM, fontFace: 'Arial', fontSize: 4.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
+        slide.addShape('roundRect', { x: lx, y: 8 * MM + DY, w: bw, h: 9 * MM, rectRadius: 0.06, fill: {color: 'FCFCFD'}, line: {color: tintColorHex(ACCENT, 0.55), width: 0.75} });
+        slide.addText(PLAYER_TYPE_ICONS[t] || '', { x: lx, y: 8.4 * MM + DY, w: bw, h: 8.2 * MM, fontFace: 'Arial', fontSize: 12, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(((L.playerTypeNames && L.playerTypeNames[t]) || PLAYER_TYPE_LABELS_ES[t] || '').toUpperCase(), { x: lx - 1 * MM, y: 17.5 * MM + DY, w: bw + 2 * MM, h: 3 * MM, fontFace: 'Arial', fontSize: 4.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
       });
-      slide.addShape('rect', { x: MARGIN, y: 25.6 * MM, w: PAGE_W - 2 * MARGIN, h: 0.9 * MM, fill: {color: ACCENT}, line: {type: 'none'} });
-      return 28 * MM;
+      slide.addShape('rect', { x: MARGIN, y: 25.6 * MM + DY, w: PAGE_W - 2 * MARGIN, h: 0.9 * MM, fill: {color: ACCENT}, line: {type: 'none'} });
+      return 25 * MM;
     }
     // 4.58 del HANDOFF: pie de página igualado al PDF (`addFooters`) -- Marta: "los textos no se
     // ven igual que en el pdf... estructura/espacios". El PDF pinta una franja oscura de 10mm a
@@ -7672,7 +7674,9 @@ if('serviceWorker' in navigator){
       {label:'DR', get:function(s){ return (s.reb != null && s.offReb != null) ? (s.reb - s.offReb) : null; }},
       {label:'AS', get:function(s){ return s.ast; }}, {label:'TO', get:function(s){ return s.to; }}
     ];
-    function drawPlayerCard(slide, item, x, yTop, w, h){
+    function drawPlayerCard(slide, item, x, yTop, w, h, k){
+      k = k || 1;
+      var MM = k / 25.4; // 4.86: todas las medidas de la tarjeta se escalan con k (ver PDF)
       var p = item.player;
       var stripeW = 2.2 * MM;
       slide.addShape('rect', { x: x, y: yTop, w: stripeW, h: h - 1.5 * MM, fill: {color: shootHex(p.shootThreat)}, line: {type: 'none'} });
@@ -7683,12 +7687,12 @@ if('serviceWorker' in navigator){
         catch(e){ console.error('pptx player photo', e); }
       } else {
         slide.addShape('rect', { x: photoX, y: yTop, w: photoW, h: photoH, fill: {color: 'E8E8E8'}, line: {type: 'none'} });
-        slide.addText(initialsFor(p), { x: photoX, y: yTop, w: photoW, h: photoH, fontFace: 'Arial', fontSize: 9, bold: true, color: '969696', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(initialsFor(p), { x: photoX, y: yTop, w: photoW, h: photoH, fontFace: 'Arial', fontSize: 9 * k, bold: true, color: '969696', align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       }
       var dotLabelY = yTop + photoH + 1.4 * MM;
       ['CLUTCH', 'MENTAL'].forEach(function(lab, i){
         var dx = photoX + i * (photoW / 2);
-        slide.addText(lab, { x: dx, y: dotLabelY, w: photoW / 2, h: 2.6 * MM, fontFace: 'Arial', fontSize: 3.6, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
+        slide.addText(lab, { x: dx, y: dotLabelY, w: photoW / 2, h: 2.6 * MM, fontFace: 'Arial', fontSize: 3.6 * k, bold: true, color: DIM, align: 'center', valign: 'top', margin: 0, isTextBox: true });
         var val = i === 0 ? p.clutch : p.temple;
         var c = shootHex(val); // rojo/amarillo/verde, igual que el PDF (antes comparaba con alta/baja y siempre salía ámbar)
         slide.addShape('ellipse', { x: dx + photoW / 4 - 1.15 * MM, y: dotLabelY + 2.6 * MM, w: 2.3 * MM, h: 2.3 * MM, fill: {color: c}, line: {type: 'none'} });
@@ -7700,7 +7704,7 @@ if('serviceWorker' in navigator){
       slide.addText([
         { text: numLabel + '  ', options: {bold: true, color: shadeColorHex(ACCENT, 0.15)} },
         { text: (fullName(p) || L.noName).toUpperCase(), options: {bold: true, color: INK} }
-      ], { x: tx, y: yTop - 0.02, w: rowW - 8 * MM, h: 3.6 * MM, fontFace: 'Arial', fontSize: 8.2, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      ], { x: tx, y: yTop - 0.02 * k, w: rowW - 8 * MM, h: 3.6 * MM, fontFace: 'Arial', fontSize: 8.2 * k, align: 'left', valign: 'top', margin: 0, isTextBox: true });
 
       // "Jugadora clave" (importancia): 3 ESTRELLAS llenas/vacías, como en el PDF (Marta, 13 oct: "quiero
       // que se queden las 3 estrellas"). Antes (4.55) eran 3 puntos porque el carácter ★ no era fiable
@@ -7717,25 +7721,32 @@ if('serviceWorker' in navigator){
       var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
       var typeIcons = typesArr.map(function(t){ return PLAYER_TYPE_ICONS[t] || ''; }).join(' ');
       var subLine = [rightInfo, handTxt, typeIcons].filter(Boolean).join('   ');
-      slide.addText(subLine, { x: tx, y: yTop + 3.9 * MM, w: rowW, h: 3 * MM, fontFace: 'Arial', fontSize: 6.4, bold: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      slide.addText(subLine, { x: tx, y: yTop + 3.9 * MM, w: rowW, h: 3 * MM, fontFace: 'Arial', fontSize: 6.4 * k, bold: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
 
       // Párrafo de "Informe" -- máx. 3 líneas, igual que wrapCapped en drawPlayerFacingReport
       // (mismo hueco vertical disponible: de aquí a que empieza la tabla de stats).
-      var paraText = truncatePptxText(p.informe, rowW, 6.8, 4);
-      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 11.8 * MM, fontFace: 'Arial', fontSize: 6.8, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true });
+      // 4.86: letra del informe 6.8*k; si el texto no cabe así, baja hasta 6.8 (el tamaño de antes).
+      var paraFs = 6.8 * k, paraMax = 4;
+      for(;;){
+        paraMax = Math.max(4, Math.floor((13.2 * k) / (paraFs * 0.485) + 0.02));
+        if(paraFs <= 6.8 + 0.001 || estPptxLines((p.informe || '').trim(), rowW, paraFs) <= paraMax) break;
+        paraFs = Math.max(6.8, paraFs - 0.2);
+      }
+      var paraText = truncatePptxText(p.informe, rowW, paraFs, paraMax);
+      slide.addText(paraText || '—', { x: tx, y: yTop + 7.4 * MM, w: rowW, h: 11.8 * MM, fontFace: 'Arial', fontSize: paraFs, color: DIM, align: 'justify', valign: 'top', margin: 0, isTextBox: true });
 
       var tableY = yTop + 19.2 * MM, tableH1 = 3.0 * MM, tableH2 = 5.2 * MM;
       var colW2 = rowW / STAT_COLS.length;
       var statsBlock = pickStatsForExport(item.stats, competition);
       slide.addShape('rect', { x: tx, y: tableY, w: rowW, h: tableH1, fill: {color: ACCENT}, line: {type: 'none'} });
       STAT_COLS.forEach(function(c, i){
-        slide.addText(c.label, { x: tx + i * colW2, y: tableY, w: colW2, h: tableH1, fontFace: 'Arial', fontSize: 4.4, bold: true, color: HDR_INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(c.label, { x: tx + i * colW2, y: tableY, w: colW2, h: tableH1, fontFace: 'Arial', fontSize: 4.4 * k, bold: true, color: HDR_INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       });
       slide.addShape('rect', { x: tx, y: tableY + tableH1, w: rowW, h: tableH2, fill: {color: tintColorHex(ACCENT, 0.9)}, line: {type: 'none'} });
       STAT_COLS.forEach(function(c, i){
         var txt = '—';
         if(statsBlock){ txt = formatStatValue(c.get(statsBlock), c.pct); }
-        slide.addText(txt, { x: tx + i * colW2, y: tableY + tableH1, w: colW2, h: tableH2, fontFace: 'Arial', fontSize: 5.6, color: INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
+        slide.addText(txt, { x: tx + i * colW2, y: tableY + tableH1, w: colW2, h: tableH2, fontFace: 'Arial', fontSize: 5.6 * k, color: INK, align: 'center', valign: 'middle', margin: 0, isTextBox: true });
       });
     }
 
@@ -7754,20 +7765,23 @@ if('serviceWorker' in navigator){
       var sEmpty = pptx.addSlide();
       sEmpty.background = { color: WHITE };
       var hyEmpty = reportHeader(sEmpty);
-      sEmpty.addText(L.noRosterYet, { x: MARGIN, y: hyEmpty + 0.3, w: fullW, h: 0.3, fontFace: 'Arial', fontSize: 11, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
+      sEmpty.addText(L.noRosterYet, { x: 6 * MM, y: hyEmpty + 0.3, w: fullW, h: 0.3, fontFace: 'Arial', fontSize: 11, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true });
     }
     for(var i = 0; i < sorted.length; i += PER_SLIDE){
       var chunk = sorted.slice(i, i + PER_SLIDE);
       var slide = pptx.addSlide();
       slide.background = { color: WHITE };
       var gridTop = reportHeader(slide);
-      var rowH = 29 * MM;
-      var colGapP = 8 * MM, colWP = (fullW - colGapP) / 2;
+      // 4.86: alto de tarjeta variable según nº de jugadoras (mismo cálculo que drawPlayerFacingReport).
+      var PMARGIN = 6 * MM, rowsOnSlide = sorted.length > 12 ? 6 : Math.ceil(sorted.length / 2);
+      var rowH = Math.min((PAGE_H - gridTop - 4 * MM) / Math.max(1, rowsOnSlide), 29 * 1.55 * MM);
+      var kCard = rowH / (29 * MM);
+      var colGapP = 5 * MM, colWP = (PAGE_W - PMARGIN * 2 - colGapP) / 2;
       chunk.forEach(function(item, idx){
         var col = idx % 2, row = Math.floor(idx / 2);
-        var cx = MARGIN + col * (colWP + colGapP);
+        var cx = PMARGIN + col * (colWP + colGapP);
         var cy = gridTop + row * rowH;
-        drawPlayerCard(slide, item, cx, cy, colWP, rowH);
+        drawPlayerCard(slide, item, cx, cy, colWP, rowH, kCard);
       });
     }
 
@@ -10525,7 +10539,7 @@ if('serviceWorker' in navigator){
     lang = lang || 'es';
     var L = tr(lang);
     var pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
-    var margin = 12;
+    var margin = 6; // 4.86: márgenes más pequeños (antes 12)
     var accent = hexToRgb(rival.color);
     var textInk = [20,23,28], textDim = [91,98,112];
     var good = [31,138,95], warn = [245,166,35], danger = [199,52,52];
@@ -10536,7 +10550,7 @@ if('serviceWorker' in navigator){
     // tiene la app, con su emoji real) a la derecha — como el bloque de iconos "Shot Creator /
     // Midrange Assassin…" de la referencia, con las etiquetas que sí tenemos en vez de las 11
     // suyas.
-    var headY = 8;
+    var headY = 5;
     var logoSize = 14;
     var titleX = margin;
     if(rival.logo){
@@ -10571,7 +10585,7 @@ if('serviceWorker' in navigator){
     doc.setLineWidth(0.2);
 
     var topY = headY + logoSize + 6;
-    var colGap = 8;
+    var colGap = 5;
     var colW = (pageW - margin * 2 - colGap) / 2;
     var colX = [margin, margin + colW + colGap];
     var y = [topY, topY];
@@ -10600,10 +10614,10 @@ if('serviceWorker' in navigator){
     // → línea-base que ya usa el resto de chips del código, ver drawSectionHeader más abajo).
     function pill(text, x0, rectTop, h){
       h = h || 4.3;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
-      var w = doc.getTextWidth(text) + 4;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2*k);
+      var w = doc.getTextWidth(text) + 4*k;
       doc.setFillColor(235,236,238);
-      doc.roundedRect(x0, rectTop, w, h, 1.2, 1.2, 'F');
+      doc.roundedRect(x0, rectTop, w, h, 1.2*k, 1.2*k, 'F');
       doc.setTextColor.apply(doc, textDim);
       doc.text(text, x0 + w / 2, rectTop + h * 0.68, {align: 'center'});
       return w;
@@ -10616,9 +10630,9 @@ if('serviceWorker' in navigator){
       // PDF real) \u2014 se usa la misma t\u00e9cnica de canvas->imagen que los emojis (ver drawGlyphIcon).
       var filled = level === 'alta' ? 3 : (level === 'baja' ? 1 : 2);
       for(var i = 0; i < 3; i++){
-        drawGlyphIcon(doc, '\u2605', x0 + i * 2.5 + 1.0, y0 - 1.6, 2.6, i < filled ? numberInk : [212,212,212]);
+        drawGlyphIcon(doc, '\u2605', x0 + (i * 2.5 + 1.0)*k, y0 - 1.6*k, 2.6*k, i < filled ? numberInk : [212,212,212]);
       }
-      return 3 * 2.5;
+      return 3 * 2.5 * k;
     }
 
     // Color según el semáforo (rojo/ámbar/verde) de amenaza de tiro / clutch / temple — un único
@@ -10631,11 +10645,11 @@ if('serviceWorker' in navigator){
     // mitad del ancho de la foto, con un único círculo relleno del color que toque justo debajo
     // — antes era una abreviatura (CL/TE) + círculo en la misma línea.
     function statusDot(x0, w, labelY, label, colorRgb){
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(3.6);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(3.6*k);
       doc.setTextColor.apply(doc, textDim);
       doc.text(label, x0 + w / 2, labelY, {align: 'center'});
       doc.setFillColor.apply(doc, colorRgb);
-      doc.circle(x0 + w / 2, labelY + 1.9, 1.15, 'F');
+      doc.circle(x0 + w / 2, labelY + 1.9*k, 1.15*k, 'F');
     }
 
     // Envuelve el texto a como mucho maxLines líneas y, si no cabe entero, recorta la última con
@@ -10671,20 +10685,26 @@ if('serviceWorker' in navigator){
     // rowH reducido a propósito para que quepan las 12 jugadoras de una plantilla (2 columnas x
     // 6 filas) en una sola hoja sin saltar de página — pedido explícito de Marta. La foto y el
     // resto de elementos se han escalado hacia abajo en proporción.
-    var stripeW = 2.2;
-    // 4.76: sin pie de página las fichas crecen: rowH 28->29, foto 17x20 -> 18x22, párrafo de 4 líneas.
-    var photoW = 18, photoH = 22;
-    var rowH = 29;
+    // 4.86 (Marta): "que se vea todo más grande... que si hay 10 jugadoras ocupe toda la hoja". El alto
+    // de cada tarjeta ya no es fijo (29mm): se reparte la hoja entre las filas que hay (2 columnas) y
+    // TODO lo de dentro (foto, letra, tabla) se escala con el mismo factor `k` (1 = tamaño de 4.76).
+    // Tope k=1,55 para que con muy pocas jugadoras no salgan tarjetas gigantes; >12 jugadoras: 6 filas/hoja.
+    var BASE_ROW_H = 29, bottomPad = 4;
+    var rowsOnPage = sorted.length > 12 ? 6 : Math.ceil(sorted.length / 2);
+    var rowH = Math.min((pageH - topY - bottomPad) / Math.max(1, rowsOnPage), BASE_ROW_H * 1.55);
+    var k = rowH / BASE_ROW_H;
+    var stripeW = 2.2 * k;
+    var photoW = 18 * k, photoH = 22 * k;
 
     sorted.forEach(function(item, idx){
       var col = idx % 2;
-      if(y[col] + rowH > pageH - 6){
+      if(y[col] + rowH > pageH - bottomPad + 0.01){
         // Un salto de página aquí afecta a las DOS columnas por igual (jsPDF no tiene flujo
         // multi-columna nativo): se empieza página nueva y las dos columnas vuelven arriba a la
         // vez, para que nunca queden desalineadas entre sí. Con rowH=28 y 12 jugadoras esto ya
         // no debería activarse con una plantilla normal, pero se deja como red de seguridad.
         doc.addPage();
-        y[0] = 14; y[1] = 14;
+        y[0] = 8; y[1] = 8;
       }
       var x = colX[col];
       var rowY = y[col];
@@ -10693,26 +10713,26 @@ if('serviceWorker' in navigator){
       // Tira lateral de color = amenaza de tiro (antes era uno de los 3 semáforos bajo la foto;
       // ahora tiene su propio hueco, a todo lo alto de la fila, bien visible de un vistazo).
       doc.setFillColor.apply(doc, colorForThreat(p.shootThreat));
-      doc.rect(x, rowY, stripeW, rowH - 1.5, 'F');
+      doc.rect(x, rowY, stripeW, rowH - 1.5*k, 'F');
 
-      var px = x + stripeW + 1.3;
+      var px = x + stripeW + 1.3*k;
       if(p.photo){ try{ doc.addImage(p.photo, 'JPEG', px, rowY, photoW, photoH); }catch(e){} }
       else {
         doc.setFillColor(232,232,232);
         doc.rect(px, rowY, photoW, photoH, 'F');
-        doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9);
-        doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6, {align:'center'});
+        doc.setTextColor(150,150,150); doc.setFont('helvetica','bold'); doc.setFontSize(9*k);
+        doc.text(initialsFor(p), px + photoW/2, rowY + photoH/2 + 2.6*k, {align:'center'});
       }
 
       // Clutch y mental, debajo de la foto — palabra completa + círculo de color debajo (ver
       // statusDot). La amenaza de tiro ya no va aquí, ahora es la tira lateral.
-      var dotLabelY = rowY + photoH + 2.8;
+      var dotLabelY = rowY + photoH + 2.8*k;
       var dotHalf = photoW / 2;
       statusDot(px, dotHalf, dotLabelY, semLabels[0], colorForThreat(p.clutch));
       statusDot(px + dotHalf, dotHalf, dotLabelY, semLabels[1], colorForThreat(p.temple));
 
-      var tx = px + photoW + 3;
-      var rowW = colW - stripeW - 1.3 - photoW - 3;
+      var tx = px + photoW + 3*k;
+      var rowW = colW - stripeW - 1.3*k - photoW - 3*k;
 
       // Fila 1 (única): dorsal + nombre a la izquierda; estrellas + mano + tipo + posición·altura
       // ancladas a la derecha, TODO en la misma línea (antes el nombre iba solo y estrellas/mano/
@@ -10724,46 +10744,46 @@ if('serviceWorker' in navigator){
       // (el sitio equivalente del PDF de Scout Colectivo). La tabla de plantilla sigue mostrando
       // la posición completa (translatePosition), eso no cambia.
       var rightInfo = [positionAbbr(p.position), formatHeight(p.height)].filter(Boolean).join(' · ');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4*k);
       var rightInfoW = rightInfo ? doc.getTextWidth(rightInfo) : 0;
 
       var handTxt = translateHand(lang, p.hand);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2);
-      var pillW = handTxt ? (doc.getTextWidth(handTxt.toUpperCase()) + 4) : 0;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2*k);
+      var pillW = handTxt ? (doc.getTextWidth(handTxt.toUpperCase()) + 4*k) : 0;
 
       var typesArr = Array.isArray(p.playerTypes) ? p.playerTypes : [];
-      var iconsW = typesArr.length * 3.8;
-      var starsW = 3 * 2.5;
+      var iconsW = typesArr.length * 3.8 * k;
+      var starsW = 3 * 2.5 * k;
 
-      var trailingW = (starsW + 1.6) + (pillW ? pillW + 1.6 : 0) + (iconsW ? iconsW + 1.6 : 0) + (rightInfoW ? rightInfoW + 2.0 : 0);
+      var trailingW = (starsW + 1.6*k) + (pillW ? pillW + 1.6*k : 0) + (iconsW ? iconsW + 1.6*k : 0) + (rightInfoW ? rightInfoW + 2.0*k : 0);
 
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2*k);
       doc.setTextColor.apply(doc, numberInk);
-      doc.text(String(item.number != null ? item.number : '-'), tx, rowY + 4.3);
-      var numW = doc.getTextWidth(String(item.number != null ? item.number : '-')) + 2.2;
+      doc.text(String(item.number != null ? item.number : '-'), tx, rowY + 4.3*k);
+      var numW = doc.getTextWidth(String(item.number != null ? item.number : '-')) + 2.2*k;
       doc.setTextColor.apply(doc, textInk);
       var nameStr = truncateForWidth(doc, (fullName(p) || L.noName).toUpperCase(), rowW - numW - trailingW);
-      doc.text(nameStr, tx + numW, rowY + 4.3);
+      doc.text(nameStr, tx + numW, rowY + 4.3*k);
 
       var rx = tx + rowW;
       if(rightInfo){
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.4*k);
         doc.setTextColor.apply(doc, textInk);
-        doc.text(rightInfo, rx, rowY + 4.1, {align: 'right'});
-        rx -= rightInfoW + 2.0;
+        doc.text(rightInfo, rx, rowY + 4.1*k, {align: 'right'});
+        rx -= rightInfoW + 2.0*k;
       }
       typesArr.slice().reverse().forEach(function(t){
-        rx -= 3.8;
-        drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9, rowY + 3.1, 3.2);
+        rx -= 3.8*k;
+        drawEmojiIcon(doc, PLAYER_TYPE_ICONS[t], rx + 1.9*k, rowY + 3.1*k, 3.2*k);
       });
-      if(typesArr.length) rx -= 1.6;
+      if(typesArr.length) rx -= 1.6*k;
       if(handTxt){
         rx -= pillW;
-        pill(handTxt.toUpperCase(), rx, rowY + 1.6, 3.0);
-        rx -= 1.6;
+        pill(handTxt.toUpperCase(), rx, rowY + 1.6*k, 3.0*k);
+        rx -= 1.6*k;
       }
       rx -= starsW;
-      importanceMarks(rx, rowY + 4.0, p.threat);
+      importanceMarks(rx, rowY + 4.0*k, p.threat);
 
       // Párrafo: el campo "Informe" (texto pensado para que lo lean las jugadoras — antes se
       // fundían aquí fortalezas + cómo defenderla, pero esos dos campos son ahora solo para los
@@ -10772,16 +10792,26 @@ if('serviceWorker' in navigator){
       // 3.3mm mientras se queda en 3 líneas — el ancho de envoltura sigue siendo rowW, el mismo
       // que usa la tabla de stats, así que la línea llega hasta la misma columna TO.
       var paraText = (p.informe || '').trim() || '—';
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
+      // 4.86: la letra del informe crece con la tarjeta (6.8*k), pero si así el texto no cabe en su
+      // hueco se va bajando (hasta 6.8, el tamaño de antes) para no recortar texto que antes cabía.
+      var paraBoxH = 13.2 * k, paraFs = 6.8 * k, paraMax = 4, paraLH = 3.3 * k;
+      doc.setFont('helvetica', 'normal');
+      for(;;){
+        paraLH = paraFs * 0.485;
+        paraMax = Math.max(4, Math.floor(paraBoxH / paraLH + 0.02));
+        doc.setFontSize(paraFs);
+        if(paraFs <= 6.8 + 0.001 || doc.splitTextToSize(paraText, rowW).length <= paraMax) break;
+        paraFs = Math.max(6.8, paraFs - 0.2);
+      }
       doc.setTextColor.apply(doc, textDim);
-      var paraLines = wrapCapped(paraText, rowW, 4);
+      var paraLines = wrapCapped(paraText, rowW, paraMax);
       // Justificado (como pidió Marta): todas las líneas menos la última, que se queda alineada a
       // la izquierda sin estirar — es la convención tipográfica habitual (si se justificase
       // también la última línea, con poco texto jsPDF separaría muchísimo las pocas palabras).
       // jsPDF soporta esto de forma nativa con {align:'justify', maxWidth}.
       paraLines.forEach(function(line, li){
         var isLast = li === paraLines.length - 1;
-        var y = rowY + 7.8 + li * 3.3;
+        var y = rowY + 5.4*k + paraFs*0.353 + li * paraLH;
         if(isLast) doc.text(line, tx, y);
         else doc.text(line, tx, y, {maxWidth: rowW, align: 'justify'});
       });
@@ -10795,19 +10825,19 @@ if('serviceWorker' in navigator){
       // 3.0mm + valores 5.2mm = 8.2mm, antes 2.9+3.1=6mm) para que la tarjeta entera —texto +
       // tabla— llegue hasta el final de la fila en vez de dejar un hueco en blanco debajo de la
       // tabla; de paso los números de la tabla quedan más grandes y legibles.
-      var tableY = rowY + 19.2;
-      var tableHeaderH = 3.0, tableValueH = 5.2;
+      var tableY = rowY + 19.2*k;
+      var tableHeaderH = 3.0*k, tableValueH = 5.2*k;
       var tableX = tx, tableW = rowW;
       var colW2 = tableW / STAT_COLS.length;
       doc.setFillColor.apply(doc, shadeColor(accent, 0.15));
       doc.rect(tableX, tableY, tableW, tableHeaderH, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(4.4*k);
       doc.setTextColor.apply(doc, contrastInk(shadeColor(accent, 0.15)));
-      STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05, {align:'center'}); });
+      STAT_COLS.forEach(function(c, i){ doc.text(c.label, tableX + i*colW2 + colW2/2, tableY + 2.05*k, {align:'center'}); });
 
       doc.setFillColor.apply(doc, tintColor(accent, 0.92));
       doc.rect(tableX, tableY + tableHeaderH, tableW, tableValueH, 'F');
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(5.6*k);
       doc.setTextColor.apply(doc, textInk);
       var valueTextY = tableY + tableHeaderH + tableValueH * 0.62;
       if(statsBlock){
@@ -10824,7 +10854,7 @@ if('serviceWorker' in navigator){
       // una simple regla horizontal en vez de una caja con borde).
       doc.setDrawColor(225,225,225);
       doc.setLineWidth(0.15);
-      doc.line(x, rowY + rowH - 1.5, x + colW, rowY + rowH - 1.5);
+      doc.line(x, rowY + rowH - 1.5*k, x + colW, rowY + rowH - 1.5*k);
 
       y[col] += rowH;
     });
