@@ -6375,6 +6375,10 @@ if('serviceWorker' in navigator){
     return chain.then(function(){ return setImages; });
   }
 
+  // 4.85: Marta pidió letra más grande en el texto del Plan de Partido (PDF y PPTX), NO en títulos ni
+  // subtítulos (banners, etiquetas, nombres de concepto, píldoras). Este factor multiplica solo el
+  // texto de cuerpo; el encogido/crecimiento automático sigue ajustando para que todo quepa.
+  var BODY_BOOST = 1.15;
   function buildGamePlanDoc(rival, rosterJoined, accent, lang, competition, content){
     var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', orientation:'landscape'});
     var pageW = doc.internal.pageSize.getWidth();
@@ -6517,7 +6521,7 @@ if('serviceWorker' in navigator){
       // -- el suelo de encogido (`scale` nunca baja de 0.62) no se toca, así que en un Plan de
       // Partido muy denso el tamaño final sigue pudiendo llegar a ese mismo suelo, pero ahora el
       // suelo también es más grande que antes.
-      var bf = 9.5*scale, blh = 4.2*scale;
+      var bf = 9.5*BODY_BOOST*scale, blh = 4.2*BODY_BOOST*scale;
       if(!text || !text.trim()){
         if(draw && emptyMsg){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(bf);
@@ -6540,7 +6544,7 @@ if('serviceWorker' in navigator){
     function layoutClaveColumn(x, y0, w, list, emptyMsg, scale, spc, draw){
       var y = y0;
       // Tamaño igualado al de "claves del partido" en el PowerPoint (9.5pt, ver 4.50 del HANDOFF).
-      var kf = 9.5*scale, klh = 4.2*scale, indent = 4, gap = 2.2*spc;
+      var kf = 9.5*BODY_BOOST*scale, klh = 4.2*BODY_BOOST*scale, indent = 4, gap = 2.2*spc;
       if(!list.length){
         if(draw){
           doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(kf);
@@ -6601,7 +6605,7 @@ if('serviceWorker' in navigator){
     function layoutConceptList(x, y0, w, scale, spc, draw, list, emptyMsg, conceptColor, cfBase, nfBase){
       var y = y0;
       var cf = (cfBase || 9.0)*scale, clh = (cfBase ? cfBase*0.444 : 4.0)*scale;
-      var nf = (nfBase || 8.3)*scale, nlh = (nfBase ? nfBase*0.446 : 3.7)*scale;
+      var nf = (nfBase || 8.3)*BODY_BOOST*scale, nlh = (nfBase ? nfBase*0.446 : 3.7)*BODY_BOOST*scale;
       var gap = 3.0*spc;
       if(!list.length){
         if(draw){ doc.setTextColor.apply(doc, dim); doc.setFont('helvetica','italic'); doc.setFontSize(nf); doc.text(emptyMsg, x, y+3); }
@@ -6651,7 +6655,7 @@ if('serviceWorker' in navigator){
     // no caben pasan al hueco bajo "Sus fuentes de generación" (como en el ejemplo de Marta).
     function setGeometry(s, img, w, scale, spc){
       var imgMaxH = 80 * setFactor;
-      var notesFont = Math.max(5.8, 6.6*scale), notesLH = 3.2*scale;
+      var notesFont = Math.max(5.8, 6.6*BODY_BOOST*scale), notesLH = 3.2*BODY_BOOST*scale;
       var imgH = imgMaxH, imgW = w * setFactor;
       if(img && img.width && img.height){
         var aspect = img.width / img.height;
@@ -6710,7 +6714,7 @@ if('serviceWorker' in navigator){
       // Marta), por filas: cada fila mide lo que mida su tarjeta más alta.
       var effScale = scale * attackShrink, effSpc = spc * attackShrink;
       var pf = Math.max(6.4, 8.2*effScale), pillH = 4.8*effScale, pillGap = 1.1*effScale;
-      var nf = 8.2*effScale, nlh = 3.6*effScale;
+      var nf = 8.2*BODY_BOOST*effScale, nlh = 3.6*BODY_BOOST*effScale;
       var gap = 2.4*effSpc;
       var cGap = 5.4, cW = (w - cGap) / 2;
       function card(item, cx, cy, draw2){
@@ -7268,7 +7272,7 @@ if('serviceWorker' in navigator){
     // (en vez del bloque único de texto que se usaba antes, que no podía reservar un alto preciso
     // por punto).
     function claveColumn(slide, x, w, list, yPos, emptyMsg, scale, spc, draw){
-      var kf = 9.5 * scale, klh = 4.2 * scale * MM, indent = 4 * MM, gap = 2.2 * spc * MM;
+      var kf = 9.5 * BODY_BOOST * scale, klh = 4.2 * BODY_BOOST * scale * MM, indent = 4 * MM, gap = 2.2 * spc * MM;
       var y = yPos;
       if(!list.length){
         if(draw !== false){
@@ -7295,7 +7299,7 @@ if('serviceWorker' in navigator){
     // `layoutConceptList` del PDF, con las mismas fórmulas en mm.
     function conceptList(slide, x, w, items, yPos, conceptColor, emptyMsg, cfBase, nfBase, scale, spc, draw){
       var cf = (cfBase || 9.0) * scale, clh = (cfBase ? cfBase * 0.444 : 4.0) * scale * MM;
-      var nf = (nfBase || 8.3) * scale, nlh = (nfBase ? nfBase * 0.446 : 3.7) * scale * MM;
+      var nf = (nfBase || 8.3) * BODY_BOOST * scale, nlh = (nfBase ? nfBase * 0.446 : 3.7) * BODY_BOOST * scale * MM;
       var gap = 3.0 * spc * MM;
       if(!items.length){
         if(draw !== false){ slide.addText(emptyMsg, { x: x, y: yPos, w: w, h: 0.3, fontFace: 'Arial', fontSize: nf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
@@ -7330,7 +7334,7 @@ if('serviceWorker' in navigator){
     // Equivalente de `layoutParagraph` del PDF -- párrafo libre (usado por la nota de "A quién
     // atacar"), con su alto real reservado en vez de una caja fija.
     function layoutParagraph(slide, x, y0, w, scale, spc, draw, text, emptyMsg){
-      var bf = 9.5 * scale, blh = 4.2 * scale * MM;
+      var bf = 9.5 * BODY_BOOST * scale, blh = 4.2 * BODY_BOOST * scale * MM;
       if(!text || !text.trim()){
         if(draw !== false && emptyMsg){ slide.addText(emptyMsg, { x: x, y: y0, w: w, h: 0.3, fontFace: 'Arial', fontSize: bf, italic: true, color: DIM, align: 'left', valign: 'top', margin: 0, isTextBox: true }); }
         return y0 + 6 * MM;
@@ -7348,7 +7352,7 @@ if('serviceWorker' in navigator){
     // está bajo el texto de la izquierda). Las imágenes ocupan todo el ancho de su columna.
     function setGeometry(s, img, w, scale, spc){
       var imgMaxH = 80 * setFactor * MM;
-      var notesFont = Math.max(5.8, 6.6 * scale), notesLH = 3.2 * scale * MM;
+      var notesFont = Math.max(5.8, 6.6 * BODY_BOOST * scale), notesLH = 3.2 * BODY_BOOST * scale * MM;
       var imgH = imgMaxH, imgW = w * setFactor;
       if(img && img.width && img.height){
         var aspect = img.width / img.height;
@@ -7389,7 +7393,7 @@ if('serviceWorker' in navigator){
       // sigue aprentando la lista si hace falta.
       var effScale = scale * attackShrink, effSpc = spc * attackShrink;
       var pf = Math.max(6.4, 8.2 * effScale), pillH = 4.8 * effScale * MM, pillGap = 1.1 * effScale * MM;
-      var nf = 8.2 * effScale, nlh = 3.6 * effScale * MM;
+      var nf = 8.2 * BODY_BOOST * effScale, nlh = 3.6 * BODY_BOOST * effScale * MM;
       var gap = 2.4 * effSpc * MM;
       var cGap = 5.4 * MM, cW = (w - cGap) / 2;
       function card(item, cx, cy, draw2){
