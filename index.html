@@ -1139,9 +1139,11 @@ if('serviceWorker' in navigator){
   // límite habría anulado la mejora. También lo usan el escudo del rival y el logo de
   // competición (mucho más pequeños, nunca se acercan a este límite).
   var MAX_PHOTO_CHARS = 350000;
-  // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it —
-  // comfortably above the "under 10MB" reports Marta actually uploads.
-  var MAX_STATS_PDF_BYTES = 12 * 1024 * 1024;
+  // Raw file-size cap for the uploaded "Estadística avanzada" PDF, checked before reading it.
+  // 4.87: 12MB -> 50MB (Marta: "con 12MB no nos da"). 50MB es el máximo por archivo que deja
+  // Supabase Storage en el plan gratuito; si el proyecto tiene un límite más bajo (Storage >
+  // Settings, o el bucket 'reports'), el aviso de error de subida lo dice.
+  var MAX_STATS_PDF_BYTES = 50 * 1024 * 1024;
   var STATSLIVE_URL = 'https://rajivi.ddns.net/statslife2/scouting/pre-partido';
   var DEFAULT_COLOR = '#c9540c';
 
@@ -7998,7 +8000,11 @@ if('serviceWorker' in navigator){
       console.error('save ' + kind + ' pdf', err);
       state[kindDef.uploadingField] = false;
       renderUploadedPdfBox(kind);
-      showErr('No se pudo guardar el PDF.');
+      var em = String((err && (err.message || err.error)) || '');
+      var tooBig = (err && (err.statusCode == 413 || err.status == 413)) || /maximum allowed size|too large|payload/i.test(em);
+      showErr(tooBig
+        ? 'Supabase ha rechazado el PDF por tamaño: el límite de archivo del proyecto es más bajo que ' + Math.round(maxBytes / (1024*1024)) + ' MB. Súbelo en Supabase > Storage > Settings, o exporta el PDF más ligero.'
+        : 'No se pudo guardar el PDF.');
     });
   }
 
